@@ -1,5 +1,13 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AgentStatus, ApprovalRequest, ConfigPatch, ElectronAPI, Mood, Task } from "../utils/types";
+import type {
+  AgentStatus,
+  ApprovalRequest,
+  ChatEvent,
+  ConfigPatch,
+  ElectronAPI,
+  Mood,
+  Task,
+} from "../utils/types";
 
 /**
  * contextIsolation is on, so the renderer only gets these named channels; the raw
@@ -12,19 +20,29 @@ const on = <T>(channel: string, callback: (payload: T) => void): (() => void) =>
 };
 
 const api: ElectronAPI = {
-  processMessage: (message: string) => ipcRenderer.invoke("process-message", message),
+  processMessage: (conversationId, message, attachment) =>
+    ipcRenderer.invoke("process-message", conversationId, message, attachment),
+  regenerate: (conversationId) => ipcRenderer.invoke("regenerate", conversationId),
   getCurrentMood: () => ipcRenderer.invoke("get-current-mood"),
   setMood: (mood: Mood) => ipcRenderer.invoke("set-mood", mood),
   cycleMood: () => ipcRenderer.invoke("cycle-mood"),
   getAgentStatus: () => ipcRenderer.invoke("get-agent-status"),
   getModelStatus: () => ipcRenderer.invoke("get-model-status"),
   getTasks: () => ipcRenderer.invoke("get-tasks"),
-  getMessages: (limit?: number) => ipcRenderer.invoke("get-messages", limit),
+  getMessages: (conversationId: string) => ipcRenderer.invoke("get-messages", conversationId),
+  getConversations: () => ipcRenderer.invoke("get-conversations"),
+  createConversation: () => ipcRenderer.invoke("create-conversation"),
+  switchConversation: (id: string) => ipcRenderer.invoke("switch-conversation", id),
+  renameConversation: (id: string, title: string) => ipcRenderer.invoke("rename-conversation", id, title),
+  setConversationPinned: (id: string, pinned: boolean) =>
+    ipcRenderer.invoke("pin-conversation", id, pinned),
+  deleteConversation: (id: string) => ipcRenderer.invoke("delete-conversation", id),
+  searchConversations: (query: string) => ipcRenderer.invoke("search-conversations", query),
+  attachFile: () => ipcRenderer.invoke("attach-file"),
   getConfig: () => ipcRenderer.invoke("get-config"),
   setConfig: (patch: ConfigPatch) => ipcRenderer.invoke("set-config", patch),
   approveTask: (requestId: string, approved: boolean) => ipcRenderer.invoke("approve-task", requestId, approved),
   stopGeneration: () => ipcRenderer.invoke("stop-generation"),
-  newConversation: () => ipcRenderer.invoke("new-conversation"),
   switchProvider: (provider: "mlx" | "bonsai") => ipcRenderer.invoke("switch-provider", provider),
   downloadModel: () => ipcRenderer.invoke("download-model"),
   cancelModelDownload: () => ipcRenderer.invoke("cancel-model-download"),
@@ -45,6 +63,7 @@ const api: ElectronAPI = {
     on<ApprovalRequest>("approval-request", callback),
   onOpenSettings: (callback: () => void) => on<undefined>("open-settings", () => callback()),
   onModelDownloadStatus: (callback) => on("model-download-status", callback),
+  onChatEvent: (callback) => on<ChatEvent>("chat-event", callback),
 };
 
 contextBridge.exposeInMainWorld("electron", api);

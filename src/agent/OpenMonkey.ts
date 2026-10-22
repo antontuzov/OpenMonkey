@@ -8,15 +8,47 @@ import storage from "../utils/storage";
 import logger from "../utils/logger";
 import { allowedRoots } from "../utils/config";
 import { MOODS } from "../utils/types";
-import type { AgentStatus, Message, ModelStatus, Mood } from "../utils/types";
+import type {
+  AgentStatus,
+  Attachment,
+  ChatErrorCode,
+  ChatEvent,
+  Conversation,
+  ConversationSearchHit,
+  Message,
+  ModelStatus,
+  Mood,
+} from "../utils/types";
 
 const HISTORY_TURNS = 10;
+const DEFAULT_TITLE = "New chat";
+const TOOL_FENCE = "```task";
+/** Hold back a short tail so a task fence split across chunks never flashes in the UI. */
+const STREAM_TAIL = 8;
+
+const messageId = () => `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const titleFrom = (text: string): string => {
+  const line = text.replace(/\s+/g, " ").trim();
+  return line.length > 48 ? `${line.slice(0, 47)}…` : line || DEFAULT_TITLE;
+};
+
+const formatBytes = (bytes: number): string =>
+  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+const classifyError = (message: string): ChatErrorCode => {
+  if (/context|too many tokens|sequence length|n_ctx/i.test(message)) return "context-overflow";
+  if (/fetch|ECONNREFUSED|server|unreachable|HTTP \d/i.test(message)) return "offline";
+  if (/not loaded|loading its model|no local model|not ready/i.test(message)) return "not-ready";
+  return "unknown";
+};
 
 export class OpenMonkey extends EventEmitter {
   private modelManager: ModelManager;
   private taskManager: TaskManager;
   private logoManager: LogoManager;
   private conversationHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
+  private activeConversationId: string | null = null;
   private currentMood: Mood = "neutral";
   private statusInfo: AgentStatus = { state: "starting" };
   private controller: AbortController | null = null;
@@ -33,14 +65,15 @@ export class OpenMonkey extends EventEmitter {
     storage.init();
     const savedMood = config.get("ui").currentMood;
     if ((MOODS as string[]).includes(savedMood)) this.setCurrentMood(savedMood as Mood);
-    this.conversationHistory = storage
-      .getRecentMessages(HISTORY_TURNS)
-      .filter((message) => message.role === "user" || message.role === "assistant")
-      .map((message) => ({ role: message.role as "user" | "assistant", content: message.content }));
+
+    const active = storage.latestConversation() ?? storage.createConversation();
+    this.activeConversationId = active.id;
+    this.conversationHistory = this.historyFor(active.id);
 
     try {
       await this.modelManager.initialize();
       await this.taskManager.initialize();
+      this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
       this.setStatus({ state: "ready", provider: this.modelManager.active ?? undefined });
       this.emit("ready");
     } catch (error) {
@@ -51,53 +84,293 @@ export class OpenMonkey extends EventEmitter {
     }
   }
 
-  async processUserMessage(message: string): Promise<string> {
+  getActiveConversationId(): string | null {
+    return this.activeConversationId;
+  }
+
+  getConversations(): Conversation[] {
+    return storage.listConversations();
+  }
+
+  searchConversations(query: string): ConversationSearchHit[] {
+    return storage.searchConversations(query);
+  }
+
+  createConversation(): Conversation {
+    this.stopGeneration();
+    const conversation = storage.createConversation();
+    this.activateConversation(conversation.id);
+    return conversation;
+  }
+
+  /** Loads the stored turns and re-seeds the local session before the first question. */
+  switchConversation(conversationId: string): Message[] {
+    const conversation = storage.getConversation(conversationId);
+    if (!conversation) throw new Error("That conversation no longer exists");
+    this.stopGeneration();
+    this.activateConversation(conversationId);
+    return storage.getMessages(conversationId);
+  }
+
+  renameConversation(id: string, title: string): void {
+    storage.renameConversation(id, title);
+  }
+
+  setConversationPinned(id: string, pinned: boolean): void {
+    storage.setConversationPinned(id, pinned);
+  }
+
+  deleteConversation(id: string): Conversation | null {
+    const wasActive = this.activeConversationId === id;
+    if (wasActive) this.stopGeneration();
+    const next = storage.deleteConversation(id);
+    if (!wasActive) return next;
+    const fallback = next ?? storage.createConversation();
+    this.activateConversation(fallback.id);
+    return fallback;
+  }
+
+  getMessages(conversationId?: string, limit = 80): Message[] {
+    const id = conversationId ?? this.activeConversationId;
+    return id ? storage.getMessages(id, limit) : [];
+  }
+
+  async processUserMessage(
+    conversationId: string,
+    message: string,
+    attachment?: Attachment
+  ): Promise<Message | null> {
     if (this.statusInfo.state !== "ready") {
       throw new Error(this.statusInfo.message ?? "OpenMonkey is still loading its model");
     }
+    if (this.controller) throw new Error("OpenMonkey is already answering. Stop that reply first.");
 
-    this.detectMood(message);
-    const systemPrompt = this.buildSystemPrompt();
-    this.remember({ role: "user", content: message });
+    const conversation = storage.getConversation(conversationId);
+    if (!conversation) throw new Error("That conversation no longer exists");
+    if (this.activeConversationId !== conversationId) this.activateConversation(conversationId);
 
-    this.controller = new AbortController();
-    const response = await this.modelManager.generateResponse(message, {
-      systemPrompt,
-      history: this.modelManager.active === "mlx" ? this.promptHistory() : undefined,
-      temperature: config.get("model").temperature,
-      maxTokens: config.get("model").maxTokens,
-      signal: this.controller.signal,
-    });
+    const display = message.trim() || (attachment ? `Attached ${attachment.name}` : "");
+    if (!display) throw new Error("Empty message");
 
-    const { visibleText, requests } = this.taskManager.parseTaskBlocks(response);
-    let finalText = visibleText;
+    this.detectMood(display);
+    const prompt = attachment
+      ? `The user attached a text file named "${attachment.name}" (${formatBytes(attachment.bytes)}). Use it as context.\n\n--- ${attachment.name} ---\n${attachment.text}\n--- end ${attachment.name} ---\n\n${message.trim()}`
+      : message.trim();
 
-    if (requests.length) {
-      const outcomes = [];
-      for (const request of requests) {
-        outcomes.push(await this.taskManager.executeTask(request));
-      }
-      finalText = await this.summarizeTaskOutcomes(outcomes, systemPrompt, visibleText);
+    const userMessage: Message = {
+      id: messageId(),
+      role: "user",
+      content: display,
+      timestamp: new Date(),
+      metadata: {
+        mood: this.currentMood,
+        attachment: attachment ? { name: attachment.name, bytes: attachment.bytes } : undefined,
+      },
+    };
+    storage.saveMessage(conversationId, userMessage, prompt);
+    this.pushHistory({ role: "user", content: prompt });
+
+    return await this.generateReply(conversationId, prompt, display);
+  }
+
+  /** Drop the previous answer and run the last user turn again. */
+  async regenerate(conversationId: string): Promise<Message | null> {
+    if (this.statusInfo.state !== "ready") {
+      throw new Error(this.statusInfo.message ?? "OpenMonkey is still loading its model");
+    }
+    if (this.controller) throw new Error("OpenMonkey is already answering. Stop that reply first.");
+    const conversation = storage.getConversation(conversationId);
+    if (!conversation) throw new Error("That conversation no longer exists");
+    const lastUser = storage.getLastUserMessage(conversationId);
+    if (!lastUser) return null;
+    const prompt = storage.getLastUserPrompt(conversationId) ?? lastUser.content;
+
+    if (this.activeConversationId !== conversationId) this.activateConversation(conversationId);
+    storage.removeLastAssistantMessage(conversationId);
+    this.conversationHistory = this.historyFor(conversationId);
+
+    // The GGUF session already holds the user turn when the history includes it; seed
+    // only the turns before it so prompt() adds the question exactly once.
+    if (this.modelManager.active === "bonsai") {
+      this.modelManager.restoreConversation(
+        this.conversationHistory.slice(0, -1),
+        this.buildSystemPrompt()
+      );
     }
 
-    this.controller = null;
-    const answer = finalText || "(no text)";
-    this.remember({ role: "assistant", content: answer });
-    this.emit("response", answer);
-    return answer;
+    return await this.generateReply(conversationId, prompt, lastUser.content);
+  }
+
+  private async generateReply(
+    conversationId: string,
+    prompt: string,
+    titleCandidate: string
+  ): Promise<Message | null> {
+    const systemPrompt = this.buildSystemPrompt();
+    const assistantId = messageId();
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    this.controller = controller;
+
+    this.emitChat({
+      type: "start",
+      conversationId,
+      message: { id: assistantId, role: "assistant", content: "", timestamp: new Date() },
+    });
+
+    let accumulated = "";
+    let pending = "";
+    let toolSeen = false;
+
+    const emitToken = (token: string) => {
+      if (!token) return;
+      this.emitChat({ type: "token", conversationId, messageId: assistantId, token });
+    };
+
+    const onTextChunk = (chunk: string) => {
+      accumulated += chunk;
+      if (toolSeen) return;
+      pending += chunk;
+      const fence = pending.indexOf(TOOL_FENCE);
+      if (fence >= 0) {
+        toolSeen = true;
+        emitToken(pending.slice(0, fence));
+        pending = "";
+        return;
+      }
+      if (pending.length > STREAM_TAIL) {
+        const safe = pending.slice(0, pending.length - STREAM_TAIL);
+        pending = pending.slice(-STREAM_TAIL);
+        emitToken(safe);
+      }
+    };
+
+    try {
+      const response = await this.modelManager.generateResponse(prompt, {
+        systemPrompt,
+        history: this.modelManager.active === "mlx" ? this.promptHistory() : undefined,
+        temperature: config.get("model").temperature,
+        maxTokens: config.get("model").maxTokens,
+        signal: controller.signal,
+        onTextChunk,
+      });
+      accumulated = response;
+      if (!toolSeen) {
+        const tail = pending;
+        pending = "";
+        emitToken(tail);
+      }
+
+      const { visibleText, requests } = this.taskManager.parseTaskBlocks(accumulated);
+      let finalText = visibleText.trim();
+
+      if (requests.length) {
+        const outcomes = [];
+        for (const request of requests) {
+          outcomes.push(await this.taskManager.executeTask(request));
+        }
+        finalText = await this.summarizeTaskOutcomes(outcomes, systemPrompt, visibleText, conversationId);
+        this.emitChat({
+          type: "replace",
+          conversationId,
+          messageId: assistantId,
+          content: finalText,
+        });
+      }
+
+      const message: Message = {
+        id: assistantId,
+        role: "assistant",
+        content: finalText || "(no text)",
+        timestamp: new Date(),
+        metadata: { durationMs: Date.now() - startedAt, mood: this.currentMood },
+      };
+      storage.saveMessage(conversationId, message);
+      if (this.activeConversationId === conversationId) {
+        this.pushHistory({ role: "assistant", content: finalText || "(no text)" });
+      }
+
+      let title: string | undefined;
+      const conversation = storage.getConversation(conversationId);
+      if (conversation && (conversation.title === DEFAULT_TITLE || !conversation.title)) {
+        title = titleFrom(titleCandidate);
+        storage.renameConversation(conversationId, title);
+      }
+
+      this.emitChat({ type: "done", conversationId, message, title });
+      return message;
+    } catch (error) {
+      const aborted = controller.signal.aborted;
+      const visible = this.taskManager.parseTaskBlocks(accumulated).visibleText.trim();
+      const durationMs = Date.now() - startedAt;
+
+      if (aborted) {
+        const message: Message = {
+          id: assistantId,
+          role: "assistant",
+          content: visible,
+          timestamp: new Date(),
+          metadata: { stopped: true, durationMs, mood: this.currentMood },
+        };
+        if (visible) {
+          storage.saveMessage(conversationId, message);
+          if (this.activeConversationId === conversationId) {
+            this.pushHistory({ role: "assistant", content: visible });
+          }
+        }
+        this.emitChat({ type: "stopped", conversationId, message });
+        logger.info("chat.stopped", { conversationId, chars: visible.length });
+        return visible ? message : null;
+      }
+
+      const text = error instanceof Error ? error.message : String(error);
+      const code = classifyError(text);
+      logger.error("chat.failed", { error: text, code });
+
+      let partial: Message | undefined;
+      if (visible) {
+        partial = {
+          id: assistantId,
+          role: "assistant",
+          content: visible,
+          timestamp: new Date(),
+          metadata: { stopped: true, durationMs, mood: this.currentMood },
+        };
+        storage.saveMessage(conversationId, partial);
+        if (this.activeConversationId === conversationId) {
+          this.pushHistory({ role: "assistant", content: visible });
+        }
+      }
+
+      this.emitChat({
+        type: "error",
+        conversationId,
+        messageId: assistantId,
+        error: text,
+        code,
+        message: partial,
+      });
+      return partial ?? null;
+    } finally {
+      if (this.controller === controller) this.controller = null;
+    }
   }
 
   /** One short follow-up turn so tool output actually reaches the user as an answer. */
   private async summarizeTaskOutcomes(
     tasks: Array<{ description: string; status: string; result?: string; error?: string }>,
     systemPrompt: string,
-    priorText: string
+    priorText: string,
+    conversationId: string
   ): Promise<string> {
     const report = tasks
-      .map((task, index) => `${index + 1}. ${task.description} → ${task.status}: ${(task.result ?? task.error ?? "").slice(0, 1200)}`)
+      .map(
+        (task, index) =>
+          `${index + 1}. ${task.description} → ${task.status}: ${(task.result ?? task.error ?? "").slice(0, 1200)}`
+      )
       .join("\n");
 
-    if (this.modelManager.active === "mlx") {
+    if (this.modelManager.active === "mlx" && this.activeConversationId === conversationId) {
       this.conversationHistory.push({ role: "assistant", content: priorText });
     }
 
@@ -118,22 +391,34 @@ export class OpenMonkey extends EventEmitter {
     }
   }
 
+  private historyFor(conversationId: string): Array<{ role: "user" | "assistant"; content: string }> {
+    return storage
+      .getMessages(conversationId, HISTORY_TURNS)
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .map((message) => ({ role: message.role as "user" | "assistant", content: message.content }));
+  }
+
+  private activateConversation(conversationId: string): void {
+    this.activeConversationId = conversationId;
+    this.conversationHistory = this.historyFor(conversationId);
+    if (this.modelManager.active) {
+      this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
+    }
+  }
+
   private promptHistory(): Array<{ role: "user" | "assistant"; content: string }> {
     return this.conversationHistory.slice(0, -1).slice(-HISTORY_TURNS);
   }
 
-  private remember(turn: { role: "user" | "assistant"; content: string }): void {
+  private pushHistory(turn: { role: "user" | "assistant"; content: string }): void {
     this.conversationHistory.push(turn);
     if (this.conversationHistory.length > HISTORY_TURNS * 2) {
       this.conversationHistory = this.conversationHistory.slice(-HISTORY_TURNS * 2);
     }
-    storage.saveMessage({
-      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      role: turn.role,
-      content: turn.content,
-      timestamp: new Date(),
-      metadata: { mood: this.currentMood },
-    });
+  }
+
+  private emitChat(event: ChatEvent): void {
+    this.emit("chat", event);
   }
 
   private detectMood(message: string): void {
@@ -153,9 +438,9 @@ export class OpenMonkey extends EventEmitter {
 Your characteristics:
 - You are privacy-focused and all data stays on the user's device
 - You can perform various tasks like file management, web browsing, shell commands, and automation
-- You have a dynamic personality that changes based on the user's mood (currently: ${this.currentMood})
+- You have a dynamic, ${agentConfig.personality} personality
 - You are free and open-source
-- You provide clear, concise responses
+- You provide clear, concise responses, using Markdown when it helps readability
 - When performing tasks, you explain what you're doing step by step
 
 Today is ${new Date().toDateString()}.
@@ -223,25 +508,16 @@ Always maintain a helpful, professional tone while being approachable.`;
     return await this.modelManager.status();
   }
 
-  /** Oldest-first, so the renderer can append straight away. */
-  getMessages(limit = 80): Message[] {
-    return storage.getRecentMessages(limit);
-  }
-
   private setStatus(status: AgentStatus): void {
     this.statusInfo = status;
     this.emit("status", status);
-  }
-
-  newConversation(): void {
-    this.conversationHistory = [];
-    this.modelManager.resetConversation(this.buildSystemPrompt());
   }
 
   async switchProvider(provider: "mlx" | "bonsai"): Promise<void> {
     this.setStatus({ state: "loading-model" });
     try {
       await this.modelManager.switchModel(provider);
+      this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
       this.setStatus({ state: "ready", provider });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -259,6 +535,7 @@ Always maintain a helpful, professional tone while being approachable.`;
     this.setStatus({ state: "loading-model" });
     try {
       await this.modelManager.initialize();
+      this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
       this.setStatus({ state: "ready", provider: this.modelManager.active ?? undefined });
       this.emit("ready");
     } catch (error) {

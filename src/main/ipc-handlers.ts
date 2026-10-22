@@ -1,7 +1,9 @@
-import { BrowserWindow, ipcMain, shell } from "electron";
+import { BrowserWindow, dialog, ipcMain, shell } from "electron";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { OpenMonkey } from "../agent/OpenMonkey";
 import config from "../utils/config";
-import { MOODS, MOOD_LOGOS, type Mood } from "../utils/types";
+import { MOODS, MOOD_LOGOS, type Attachment, type Mood } from "../utils/types";
 import { ModelDownloader } from "../models/model-downloader";
 import { openPermissionSettings, probeAutomation } from "./permissions";
 import logger from "../utils/logger";
@@ -11,6 +13,29 @@ export interface IpcDeps {
   getWindow: () => BrowserWindow | null;
   getAgent: () => OpenMonkey | null;
   getTray: () => TrayManager | null;
+}
+
+const MAX_ATTACHMENT_BYTES = 256 * 1024;
+const MAX_ATTACHMENT_TEXT = 400_000;
+const TEXT_EXTENSIONS = [
+  "txt", "md", "markdown", "json", "csv", "tsv", "log", "yaml", "yml", "toml", "xml",
+  "html", "css", "js", "jsx", "ts", "tsx", "py", "rb", "go", "rs", "swift", "sh",
+  "sql", "c", "h", "cpp", "java", "env", "ini", "conf",
+];
+
+function conversationId(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error("A conversation id is required");
+  return value;
+}
+
+function attachmentFrom(value: unknown): Attachment | undefined {
+  if (value == null) return undefined;
+  if (typeof value !== "object") throw new Error("Invalid attachment");
+  const { name, bytes, text } = value as Record<string, unknown>;
+  if (typeof name !== "string" || !name.trim()) throw new Error("Invalid attachment name");
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) throw new Error("Invalid attachment size");
+  if (typeof text !== "string" || text.length > MAX_ATTACHMENT_TEXT) throw new Error("Attachment text is too large");
+  return { name: name.slice(0, 120), bytes, text };
 }
 
 /** Every renderer → main call goes through here; nothing else is exposed by the preload. */
@@ -25,9 +50,54 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return instance;
   };
 
-  ipcMain.handle("process-message", async (_event, message: string) => {
-    if (typeof message !== "string" || !message.trim()) throw new Error("Empty message");
-    return await agent().processUserMessage(message);
+  ipcMain.handle("process-message", async (_event, id: unknown, message: unknown, attachment: unknown) => {
+    if (typeof message !== "string") throw new Error("Message must be text");
+    const file = attachmentFrom(attachment);
+    if (!message.trim() && !file) throw new Error("Empty message");
+    return await agent().processUserMessage(conversationId(id), message, file);
+  });
+
+  ipcMain.handle("regenerate", (_event, id: unknown) => agent().regenerate(conversationId(id)));
+
+  ipcMain.handle("get-conversations", () => agent().getConversations());
+  ipcMain.handle("create-conversation", () => agent().createConversation());
+  ipcMain.handle("switch-conversation", (_event, id: unknown) => agent().switchConversation(conversationId(id)));
+  ipcMain.handle("rename-conversation", (_event, id: unknown, title: unknown) => {
+    if (typeof title !== "string") throw new Error("Title must be text");
+    agent().renameConversation(conversationId(id), title);
+  });
+  ipcMain.handle("pin-conversation", (_event, id: unknown, pinned: unknown) => {
+    agent().setConversationPinned(conversationId(id), Boolean(pinned));
+  });
+  ipcMain.handle("delete-conversation", (_event, id: unknown) => agent().deleteConversation(conversationId(id)));
+  ipcMain.handle("search-conversations", (_event, query: unknown) => {
+    if (typeof query !== "string") return [];
+    return agent().searchConversations(query);
+  });
+
+  ipcMain.handle("attach-file", async () => {
+    const window = deps.getWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: "Attach a text file",
+      properties: ["openFile"],
+      filters: [{ name: "Text & code", extensions: TEXT_EXTENSIONS }],
+    };
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return null;
+    const filePath = result.filePaths[0];
+    const stat = fs.statSync(filePath);
+    if (stat.size > MAX_ATTACHMENT_BYTES) {
+      throw new Error(`That file is ${Math.round(stat.size / 1024)} KB. Attachments are capped at 256 KB.`);
+    }
+    const buffer = fs.readFileSync(filePath);
+    if (buffer.subarray(0, 8192).includes(0)) {
+      throw new Error("Only plain text and code files can be attached.");
+    }
+    return {
+      name: path.basename(filePath),
+      bytes: stat.size,
+      text: buffer.toString("utf8"),
+    } satisfies Attachment;
   });
 
   ipcMain.handle("get-current-mood", () => agent().getCurrentMood());
@@ -47,10 +117,6 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("stop-generation", () => {
     deps.getAgent()?.stopGeneration();
-  });
-
-  ipcMain.handle("new-conversation", () => {
-    agent().newConversation();
   });
 
   ipcMain.handle("switch-provider", async (_event, provider: "mlx" | "bonsai") => {
@@ -89,10 +155,10 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return await instance.modelStatus();
   });
 
-  ipcMain.handle("get-messages", (_event, limit?: number) => {
+  ipcMain.handle("get-messages", (_event, id: unknown) => {
     const instance = deps.getAgent();
     if (!instance) return [];
-    return instance.getMessages(typeof limit === "number" ? limit : 80);
+    return instance.getMessages(typeof id === "string" && id ? id : undefined);
   });
 
   ipcMain.handle("get-tasks", () => agent().getTaskManager().getActiveTasks());

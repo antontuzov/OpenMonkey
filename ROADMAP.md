@@ -12,7 +12,10 @@ and approval-gated tools. Nothing here is a mock screen.
 
 - Native Electron shell: hidden inset title bar, 1360 × 860 window, tray, Dock icon, single instance.
 - Local model runtime: Bonsai-4B GGUF via node-llama-cpp, optional MLX server, provider switching.
-- Chat: message history from encrypted SQLite, typing state, model error states, stop generation.
+- First run: onboarding wizard, in-app model manager with resume/verify, macOS permissions page.
+- Chat: token streaming over IPC, stop with partial persistence, regenerate, per-session encrypted
+  history, multi-session sidebar with auto-title, rename, pin, delete and search, text attachments,
+  failure states with recovery actions, per-session drafts.
 - Agent: file, web, shell, calendar/mail tools with per-action approval prompts and auto-execute.
 - Appearance: light/dark/system, eight accents, 12 mood logos propagated to window, tray and Dock.
 - Settings: Profile, Appearance, Approvals, Privacy, Model pages with search and real controls.
@@ -21,10 +24,8 @@ and approval-gated tools. Nothing here is a mock screen.
 
 **Known gaps**
 
-- No first-run onboarding; a new user lands in chat with no model and no guidance.
-- Model download is a terminal script, not an app flow.
-- Responses arrive all at once; no streaming, regenerate or edit.
-- One conversation thread ("Main Session"); no session list, search or rename.
+- Edit-and-resend, slash commands, tables and true FTS are deferred (see Phase 2 notes).
+- MLX streaming is implemented but untested — MLX is not installed on this machine.
 - No memory, no MCP/extension system.
 - No signed builds or auto-update.
 
@@ -63,20 +64,37 @@ and approval-gated tools. Nothing here is a mock screen.
 
 ---
 
-## Phase 2 — Chat people want to live in (P0, ~2 weeks)
+## Phase 2 — Chat people want to live in (P0, ~2 weeks) — ✅ core complete 2026-10-22
 
-8. **Streaming + control**: token streaming over IPC, stop mid-stream, regenerate, edit and
-   resend, persist partials safely on quit. *(L)*
-   *Done when first token appears under ~1 s after model load and Stop leaves a clean message.*
-9. **Message craft**: Markdown, syntax-highlighted code with copy, tables, link policy, token
-   and duration meta, message actions (copy/retry/delete). *(M)*
-10. **Sessions**: auto-title from the first message, rename, pin, archive, delete, full-text
-    search over decrypted history, migrate the existing thread. *(L)*
-    *Done when the sidebar SESSIONS group is real, searchable and keyboard navigable.*
-11. **Composer upgrades**: drafts per session, drag-and-drop text files, attachment chips with
-    size limits, slash commands (`/file`, `/web`, `/shell`), Cmd+Enter send, Shift+Enter newline. *(M)*
-12. **Failure UX**: model OOM, context overflow, tool denied, offline, corrupt DB — each with a
-    specific message and a working fix button. *(S)*
+8. ✅ **Streaming + control**: one `chat-event` channel carries start/token/replace/done/stopped/
+   error; tokens are held back briefly so a `task` fence never flashes in the reply; Stop aborts
+   and keeps the partial answer (marked “Stopped”); regenerate replaces the stored answer and
+   replays the original expanded prompt, including attachment text; drafts survive session
+   switches. Edit-and-resend is deferred. Streaming verified natively with Bonsai; MLX SSE
+   parsing exists but was not exercised because MLX is not installed. *(L)*
+9. ✅ **Message craft (core)**: fenced code with language label and Copy/Copied, inline bold/
+   code/links through the external-link policy, attachment chips, per-message duration and
+   stopped/meta line. Tables and per-message delete are deferred. *(M)*
+10. ✅ **Sessions**: auto-title from the first message, real sidebar ordered pinned-first,
+    rename inline (Enter/Escape), pin, delete with 5 s inline confirmation, Arrow Up/Down
+    navigation, debounced search over titles and decrypted message bodies, legacy single-thread
+    migration to `conv_legacy`. Search scans recent decrypted rows rather than FTS5 (encrypted
+    columns cannot be indexed on disk); archive is deferred. *(L)*
+11. ✅ **Composer upgrades (core)**: per-session drafts, drag-and-drop text attachments with
+    extension allowlist, NUL-byte rejection and a 256 KB cap, native file picker through IPC,
+    attachment chips, Enter sends, Shift+Enter newline. Slash commands are deferred to the
+    Agent v2 command surface. *(M)*
+12. ✅ **Failure UX (core)**: specific cards for model-not-ready, context overflow, offline and
+    unknown errors, with retry / new chat / model settings actions; pre-send failures restore
+    the draft and attachment and say the message was not sent. Tool-denied and corrupt-DB
+    messages are deferred to Phases 3 and 7. The context-overflow branch is implemented but
+    could not be forced live: llama.cpp truncated a 117 KB prompt instead of failing. *(S)*
+
+**Phase 2 verification:** driven through the running Electron app over CDP — legacy migration,
+streaming, Stop partial persistence, regenerate replacement, session create/auto-title/rename/
+pin/search/switch/delete, drag-drop attachment answer, rejected drop, failed send with draft
+restore, Enter-to-send, and the sidebar hover-actions layout. The native picker path is wired
+but was not automated; drag-and-drop ingestion and attachment-aware replies were verified.
 
 ---
 

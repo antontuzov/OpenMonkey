@@ -6,8 +6,51 @@ export interface Message {
   metadata?: {
     mood?: string;
     taskType?: string;
+    durationMs?: number;
+    stopped?: boolean;
+    attachment?: { name: string; bytes: number };
   };
 }
+
+export interface Conversation {
+  id: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+  pinned: boolean;
+  archived: boolean;
+  messageCount: number;
+  preview: string;
+}
+
+export interface ConversationSearchHit {
+  conversation: Conversation;
+  snippet: string;
+}
+
+export interface Attachment {
+  name: string;
+  bytes: number;
+  text: string;
+}
+
+export type ChatErrorCode = "not-ready" | "context-overflow" | "offline" | "unknown";
+
+/** Streamed over one IPC channel so the chat can render before the model finishes. */
+export type ChatEvent =
+  | { type: "start"; conversationId: string; message: Message }
+  | { type: "token"; conversationId: string; messageId: string; token: string }
+  | { type: "replace"; conversationId: string; messageId: string; content: string }
+  | { type: "done"; conversationId: string; message: Message; title?: string }
+  | { type: "stopped"; conversationId: string; message: Message }
+  | {
+      type: "error";
+      conversationId: string;
+      messageId: string;
+      error: string;
+      code: ChatErrorCode;
+      message?: Message;
+    };
 
 export interface Task {
   id: string;
@@ -184,19 +227,27 @@ export type ModelProvider = "mlx" | "bonsai";
 export type ConfigPatch = Partial<Pick<Config, "onboarding" | "model" | "ui" | "privacy" | "agent">>;
 
 export interface ElectronAPI {
-  processMessage: (message: string) => Promise<string>;
+  processMessage: (conversationId: string, message: string, attachment?: Attachment) => Promise<Message | null>;
+  regenerate: (conversationId: string) => Promise<Message | null>;
   getCurrentMood: () => Promise<Mood>;
   setMood: (mood: Mood) => Promise<void>;
   cycleMood: () => Promise<Mood>;
   getAgentStatus: () => Promise<AgentStatus>;
   getModelStatus: () => Promise<ModelStatus>;
   getTasks: () => Promise<Task[]>;
-  getMessages: () => Promise<Message[]>;
+  getMessages: (conversationId: string) => Promise<Message[]>;
+  getConversations: () => Promise<Conversation[]>;
+  createConversation: () => Promise<Conversation>;
+  switchConversation: (id: string) => Promise<Message[]>;
+  renameConversation: (id: string, title: string) => Promise<void>;
+  setConversationPinned: (id: string, pinned: boolean) => Promise<void>;
+  deleteConversation: (id: string) => Promise<Conversation | null>;
+  searchConversations: (query: string) => Promise<ConversationSearchHit[]>;
+  attachFile: () => Promise<Attachment | null>;
   getConfig: () => Promise<Config>;
   setConfig: (patch: ConfigPatch) => Promise<Config>;
   approveTask: (requestId: string, approved: boolean) => Promise<void>;
   stopGeneration: () => Promise<void>;
-  newConversation: () => Promise<void>;
   switchProvider: (provider: "mlx" | "bonsai") => Promise<void>;
   downloadModel: () => Promise<ModelDownloadStatus>;
   cancelModelDownload: () => Promise<void>;
@@ -216,6 +267,7 @@ export interface ElectronAPI {
   onApprovalRequest: (callback: (request: ApprovalRequest) => void) => () => void;
   onOpenSettings: (callback: () => void) => () => void;
   onModelDownloadStatus: (callback: (status: ModelDownloadStatus) => void) => () => void;
+  onChatEvent: (callback: (event: ChatEvent) => void) => () => void;
 }
 
 declare global {

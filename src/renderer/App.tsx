@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderOpen, PanelRight, Settings2, ShieldAlert } from "lucide-react";
+import { FolderOpen, Loader, PanelRight, Settings2, ShieldAlert } from "lucide-react";
 import { ChatInterface } from "./components/ChatInterface";
 import { TaskMonitor } from "./components/TaskMonitor";
 import { AppSidebar } from "./components/AppSidebar";
@@ -11,6 +11,8 @@ import {
   type ApprovalRequest,
   type Config,
   type ConfigPatch,
+  type Conversation,
+  type ConversationSearchHit,
   type Mood,
 } from "../utils/types";
 
@@ -23,7 +25,9 @@ export default function App() {
   const [view, setView] = useState<View>("chat");
   const [config, setConfig] = useState<Config | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
-  const [chatReset, setChatReset] = useState(0);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [busyConversationId, setBusyConversationId] = useState<string | null>(null);
 
   useEffect(() => {
     const api = window.electron;
@@ -59,6 +63,157 @@ export default function App() {
     return () => media.removeEventListener("change", apply);
   }, [accent, theme]);
 
+  const refreshConversations = useCallback(async () => {
+    const api = window.electron;
+    if (!api) return [];
+    try {
+      const list = await api.getConversations();
+      setConversations(list);
+      return list;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const conversationsChanged = useCallback(() => {
+    void refreshConversations();
+  }, [refreshConversations]);
+
+  useEffect(() => {
+    if (status.state !== "ready" || !config?.onboarding.completed) return;
+
+    let cancelled = false;
+    void (async () => {
+      const api = window.electron;
+      if (!api) return;
+      try {
+        let list = await api.getConversations();
+        if (!list.length) {
+          await api.createConversation();
+          list = await api.getConversations();
+        }
+        if (cancelled) return;
+        setConversations(list);
+        setActiveConversationId((current) =>
+          current && list.some((conversation) => conversation.id === current)
+            ? current
+            : list[0]?.id ?? null
+        );
+      } catch {
+        /* the agent announces readiness again after a model reload */
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status.state, config?.onboarding.completed]);
+
+  useEffect(() => {
+    const api = window.electron;
+    if (!api) return;
+
+    return api.onChatEvent((event) => {
+      if (event.type === "start") {
+        setBusyConversationId(event.conversationId);
+        return;
+      }
+      if (event.type === "done" || event.type === "stopped" || event.type === "error") {
+        setBusyConversationId((current) => (current === event.conversationId ? null : current));
+        void api.getConversations().then(setConversations).catch(() => undefined);
+      }
+    });
+  }, []);
+
+  const newChat = useCallback(async () => {
+    const api = window.electron;
+    if (!api) return;
+    const current = conversations.find((conversation) => conversation.id === activeConversationId);
+    if (current && current.messageCount === 0) return;
+
+    try {
+      setBusyConversationId(null);
+      const created = await api.createConversation();
+      const list = await api.getConversations();
+      setConversations(list.length ? list : [created]);
+      setActiveConversationId(created.id);
+    } catch {
+      /* keep the current chat if a new one cannot be created yet */
+    }
+  }, [activeConversationId, conversations]);
+
+  const selectConversation = useCallback(
+    async (id: string) => {
+      if (!id || id === activeConversationId) return;
+      const api = window.electron;
+      if (!api) return;
+      try {
+        await api.switchConversation(id);
+        setBusyConversationId(null);
+        setActiveConversationId(id);
+      } catch {
+        void refreshConversations();
+      }
+    },
+    [activeConversationId, refreshConversations]
+  );
+
+  const renameConversation = useCallback(async (id: string, title: string) => {
+    const api = window.electron;
+    if (!api) return;
+    try {
+      await api.renameConversation(id, title.trim());
+      setConversations((current) =>
+        current.map((conversation) =>
+          conversation.id === id ? { ...conversation, title: title.trim() } : conversation
+        )
+      );
+    } catch {
+      /* the title stays as it was */
+    }
+  }, []);
+
+  const pinConversation = useCallback(async (id: string, pinned: boolean) => {
+    const api = window.electron;
+    if (!api) return;
+    try {
+      await api.setConversationPinned(id, pinned);
+      const list = await api.getConversations();
+      setConversations(list);
+    } catch {
+      /* ignore a failed pin */
+    }
+  }, []);
+
+  const deleteConversation = useCallback(
+    async (id: string) => {
+      const api = window.electron;
+      if (!api) return;
+      try {
+        const fallback = await api.deleteConversation(id);
+        const list = await api.getConversations();
+        setConversations(list);
+        if (id === activeConversationId) {
+          setActiveConversationId(fallback?.id ?? list[0]?.id ?? null);
+          setBusyConversationId(null);
+        } else if (id === busyConversationId) {
+          setBusyConversationId(null);
+        }
+      } catch {
+        /* keep the list unchanged */
+      }
+    },
+    [activeConversationId, busyConversationId]
+  );
+
+  const searchConversations = useCallback(async (query: string): Promise<ConversationSearchHit[]> => {
+    try {
+      return (await window.electron?.searchConversations(query)) ?? [];
+    } catch {
+      return [];
+    }
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (config && !config.onboarding.completed) return;
@@ -67,10 +222,14 @@ export default function App() {
         event.preventDefault();
         setView("settings");
       }
+      if (event.key.toLowerCase() === "n" && event.metaKey && view === "chat") {
+        event.preventDefault();
+        void newChat();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [config]);
+  }, [config, newChat, view]);
 
   const respond = useCallback(
     async (approved: boolean) => {
@@ -102,6 +261,9 @@ export default function App() {
 
   const agentName = config?.agent.name ?? "OpenMonkey";
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
+  const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId);
+  const activeTitle = activeConversation?.title ?? "New chat";
+  const activeBusy = busyConversationId != null && busyConversationId === activeConversationId;
 
   if (!config) {
     return (
@@ -149,9 +311,17 @@ export default function App() {
         status={status}
         agentName={agentName}
         panelOpen={panelOpen}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        busyConversationId={busyConversationId}
         onTogglePanel={() => setPanelOpen((open) => !open)}
         onSettings={() => setView("settings")}
-        onNewChat={() => setChatReset((count) => count + 1)}
+        onNewChat={() => void newChat()}
+        onSelectConversation={(id) => void selectConversation(id)}
+        onRenameConversation={(id, title) => void renameConversation(id, title)}
+        onPinConversation={(id, pinned) => void pinConversation(id, pinned)}
+        onDeleteConversation={(id) => void deleteConversation(id)}
+        onSearchConversations={searchConversations}
       />
 
       <main className="flex-1 flex flex-col min-w-0">
@@ -160,9 +330,14 @@ export default function App() {
             <FolderOpen size={14} className="text-faint shrink-0" />
             <span className="text-faint">workspace</span>
             <span className="text-faint">/</span>
-            <span className="flex items-center gap-1.5 text-ink truncate">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-              Main Session
+            <span className="flex items-center gap-1.5 text-ink min-w-0">
+              {activeBusy ? (
+                <Loader size={11} className="animate-spin text-accent-ink shrink-0" />
+              ) : (
+                <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+              )}
+              <span className="truncate">{activeTitle}</span>
+              {activeBusy && <span className="chip chip-accent !h-5 shrink-0">Answering</span>}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -187,14 +362,18 @@ export default function App() {
           status={status}
           mood={mood}
           agentName={agentName}
-          autoExecute={config?.agent.autoExecuteTasks ?? false}
-          resetKey={chatReset}
+          autoExecute={config.agent.autoExecuteTasks}
+          conversationId={activeConversationId}
+          busyConversationId={busyConversationId}
+          onConversationsChanged={conversationsChanged}
+          onOpenSettings={() => setView("settings")}
+          onNewConversation={() => void newChat()}
         />
       </main>
 
       {panelOpen && (
         <aside className="w-[300px] shrink-0 border-l border-line bg-card-2 overflow-y-auto">
-          <TaskMonitor autoExecute={config?.agent.autoExecuteTasks ?? false} />
+          <TaskMonitor autoExecute={config.agent.autoExecuteTasks} />
         </aside>
       )}
 

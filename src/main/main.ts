@@ -103,6 +103,7 @@ async function initializeOpenMonkey(): Promise<void> {
   });
   openMonkey.on("task-update", (task) => send("task-update", task));
   openMonkey.on("approval-request", (request: ApprovalRequest) => send("approval-request", request));
+  openMonkey.on("chat", (event) => send("chat-event", event));
 
   try {
     await openMonkey.initialize();
