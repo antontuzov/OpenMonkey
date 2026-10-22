@@ -26,6 +26,14 @@ const api: ElectronAPI = {
   stopGeneration: () => ipcRenderer.invoke("stop-generation"),
   newConversation: () => ipcRenderer.invoke("new-conversation"),
   switchProvider: (provider: "mlx" | "bonsai") => ipcRenderer.invoke("switch-provider", provider),
+  downloadModel: () => ipcRenderer.invoke("download-model"),
+  cancelModelDownload: () => ipcRenderer.invoke("cancel-model-download"),
+  verifyModel: () => ipcRenderer.invoke("verify-model"),
+  getModelDownloadStatus: () => ipcRenderer.invoke("get-model-download-status"),
+  reloadModel: () => ipcRenderer.invoke("reload-model"),
+  probeAutomation: (area: "calendar" | "mail") => ipcRenderer.invoke("probe-automation", area),
+  openPermissionSettings: (area: "automation" | "notifications") =>
+    ipcRenderer.invoke("open-permission-settings", area),
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
 
   onAgentReady: (callback: () => void) => on<undefined>("agent-ready", () => callback()),
@@ -36,6 +44,7 @@ const api: ElectronAPI = {
   onApprovalRequest: (callback: (request: ApprovalRequest) => void) =>
     on<ApprovalRequest>("approval-request", callback),
   onOpenSettings: (callback: () => void) => on<undefined>("open-settings", () => callback()),
+  onModelDownloadStatus: (callback) => on("model-download-status", callback),
 };
 
 contextBridge.exposeInMainWorld("electron", api);

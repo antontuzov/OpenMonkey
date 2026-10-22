@@ -9,27 +9,17 @@ import * as path from "node:path";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { BONSAI_4B, hfResolveUrl } from "../src/models/catalog";
 
 const execFileAsync = promisify(execFile);
 
 const ROOT = path.resolve(__dirname, "..");
 const MODELS_DIR = path.join(ROOT, "models");
 
-const BONSAI = {
-  repo: "prism-ml/Bonsai-4B-gguf",
-  file: "Bonsai-4B.gguf",
-  dirName: "Bonsai-4B-gguf",
-  approxBytes: 572_300_000,
-};
-
 const MLX_MODEL = {
   repo: "arcee-ai/Virtuoso-Lite-8bit-mlx",
   dirName: "Virtuoso-Lite-8bit-mlx",
 };
-
-function hfUrl(repo: string, file: string): string {
-  return `https://huggingface.co/${repo}/resolve/main/${file}`;
-}
 
 async function downloadFile(url: string, dest: string, label: string): Promise<void> {
   if (fs.existsSync(dest)) {
@@ -83,28 +73,15 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1_000_000).toFixed(1)} MB`;
 }
 
-/** Verify the file llama.cpp reports, when the repo publishes SHA256SUMS. */
-async function verifyAgainstRepoChecksums(filePath: string, repo: string, file: string): Promise<boolean> {
-  try {
-    const response = await fetch(hfUrl(repo, "SHA256SUMS"));
-    if (!response.ok) return true;
-    const sums = await response.text();
-    const expected = sums
-      .split("\n")
-      .map((line) => line.trim().split(/\s+/))
-      .find(([, name]) => name === file)?.[0];
-    if (!expected) return true;
-
-    const actual = await hashFile(filePath);
-    if (actual !== expected) {
-      console.error(`  checksum mismatch: expected ${expected}, got ${actual}`);
-      return false;
-    }
-    console.log("  checksum verified");
-    return true;
-  } catch {
-    return true;
+/** The catalog pins both the revision and the digest, so this is a real verification. */
+async function verifyPinnedChecksum(filePath: string): Promise<boolean> {
+  const actual = await hashFile(filePath);
+  if (actual !== BONSAI_4B.sha256) {
+    console.error(`  checksum mismatch: expected ${BONSAI_4B.sha256}, got ${actual}`);
+    return false;
   }
+  console.log("  checksum verified against the pinned SHA-256");
+  return true;
 }
 
 function hashFile(filePath: string): Promise<string> {
@@ -118,12 +95,12 @@ function hashFile(filePath: string): Promise<string> {
 }
 
 async function downloadBonsaiGGUF(): Promise<string> {
-  console.log(`Bonsai-4B GGUF (${BONSAI.repo})\n  ~${formatBytes(BONSAI.approxBytes)}`);
-  const dest = path.join(MODELS_DIR, BONSAI.dirName, BONSAI.file);
-  await downloadFile(hfUrl(BONSAI.repo, BONSAI.file), dest, BONSAI.file);
-  if (!(await verifyAgainstRepoChecksums(dest, BONSAI.repo, BONSAI.file))) {
+  console.log(`Bonsai-4B GGUF (${BONSAI_4B.repo})\n  ~${formatBytes(BONSAI_4B.bytes)}`);
+  const dest = path.join(MODELS_DIR, BONSAI_4B.dirName, BONSAI_4B.file);
+  await downloadFile(hfResolveUrl(BONSAI_4B), dest, BONSAI_4B.file);
+  if (!(await verifyPinnedChecksum(dest))) {
     fs.rmSync(dest, { force: true });
-    throw new Error(`Checksum failed for ${BONSAI.file}; re-run npm run download-models`);
+    throw new Error(`Checksum failed for ${BONSAI_4B.file}; re-run npm run download-models`);
   }
   return dest;
 }

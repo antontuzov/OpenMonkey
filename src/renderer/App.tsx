@@ -4,6 +4,7 @@ import { ChatInterface } from "./components/ChatInterface";
 import { TaskMonitor } from "./components/TaskMonitor";
 import { AppSidebar } from "./components/AppSidebar";
 import { SettingsView } from "./components/SettingsView";
+import { Onboarding } from "./components/Onboarding";
 import {
   MOOD_LOGOS,
   type AgentStatus,
@@ -60,6 +61,7 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (config && !config.onboarding.completed) return;
       if (event.key === "Escape") setView("chat");
       if (event.key === "," && event.metaKey) {
         event.preventDefault();
@@ -68,7 +70,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [config]);
 
   const respond = useCallback(
     async (approved: boolean) => {
@@ -101,8 +103,34 @@ export default function App() {
   const agentName = config?.agent.name ?? "OpenMonkey";
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
 
+  if (!config) {
+    return (
+      <div className="h-screen bg-paper flex flex-col items-center justify-center gap-4">
+        <img
+          src={`/logos/${logo.file}`}
+          alt=""
+          className="w-16 h-16 rounded-full logo-mood-change"
+          style={{ boxShadow: "0 0 0 2px var(--color-accent-soft), 0 18px 40px -22px var(--color-accent)" }}
+        />
+        <p className="text-[10px] uppercase tracking-[0.18em] text-faint">Waking up</p>
+      </div>
+    );
+  }
+
+  if (!config.onboarding.completed) {
+    return (
+      <Onboarding
+        status={status}
+        mood={mood}
+        config={config}
+        onPatch={patchConfig}
+        onRefreshStatus={refreshStatus}
+      />
+    );
+  }
+
   if (view === "settings") {
-    return config ? (
+    return (
       <SettingsView
         status={status}
         mood={mood}
@@ -111,10 +139,6 @@ export default function App() {
         onClose={() => setView("chat")}
         onRefreshStatus={refreshStatus}
       />
-    ) : (
-      <div className="h-screen bg-paper flex items-center justify-center">
-        <p className="text-faint text-xs">Loading settings…</p>
-      </div>
     );
   }
 

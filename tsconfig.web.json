@@ -20,5 +20,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/renderer", "src/utils/types.ts"]
+  "include": ["src/renderer", "src/utils/types.ts", "src/models/catalog.ts"]
 }

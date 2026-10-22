@@ -2,6 +2,8 @@ import { BrowserWindow, ipcMain, shell } from "electron";
 import type { OpenMonkey } from "../agent/OpenMonkey";
 import config from "../utils/config";
 import { MOODS, MOOD_LOGOS, type Mood } from "../utils/types";
+import { ModelDownloader } from "../models/model-downloader";
+import { openPermissionSettings, probeAutomation } from "./permissions";
 import logger from "../utils/logger";
 import type { TrayManager } from "./tray-manager";
 
@@ -13,6 +15,10 @@ export interface IpcDeps {
 
 /** Every renderer → main call goes through here; nothing else is exposed by the preload. */
 export function registerIpcHandlers(deps: IpcDeps): void {
+  const downloader = new ModelDownloader((status) => {
+    deps.getWindow()?.webContents.send("model-download-status", status);
+  });
+
   const agent = () => {
     const instance = deps.getAgent();
     if (!instance) throw new Error("OpenMonkey has not finished starting");
@@ -49,6 +55,30 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("switch-provider", async (_event, provider: "mlx" | "bonsai") => {
     await agent().switchProvider(provider);
+  });
+
+  ipcMain.handle("download-model", async () => {
+    const status = await downloader.download();
+    if (status.phase === "done") {
+      const instance = deps.getAgent();
+      if (instance && instance.getStatus().state !== "ready") {
+        await instance.reloadModel().catch(() => undefined);
+      }
+    }
+    return status;
+  });
+  ipcMain.handle("cancel-model-download", () => downloader.cancel());
+  ipcMain.handle("verify-model", () => downloader.verifyInstalled());
+  ipcMain.handle("get-model-download-status", () => downloader.current);
+  ipcMain.handle("reload-model", () => agent().reloadModel());
+
+  ipcMain.handle("probe-automation", (_event, area: "calendar" | "mail") => {
+    if (area !== "calendar" && area !== "mail") throw new Error(`Unknown automation target: ${area}`);
+    return probeAutomation(area);
+  });
+  ipcMain.handle("open-permission-settings", (_event, area: "automation" | "notifications") => {
+    if (area !== "automation" && area !== "notifications") throw new Error(`Unknown settings pane: ${area}`);
+    return openPermissionSettings(area);
   });
 
   ipcMain.handle("get-agent-status", () => deps.getAgent()?.getStatus() ?? { state: "starting" as const });

@@ -45,19 +45,21 @@ and approval-gated tools. Nothing here is a mock screen.
 
 ---
 
-## Phase 1 — First run that earns trust (P0, ~1.5 weeks)
+## Phase 1 — First run that earns trust (P0) — ✅ core complete 2026-10-22
 
-5. **Onboarding wizard** (the reference wizard, rebuilt for real features only):
-   Welcome → Profile (name, accent) → Workspace folders → Model setup → Ready. Persist an
-   `onboarded` flag; allow resume and "Skip for now". *(M)*
-   *Done when a fresh `userData` completes the wizard without a terminal and lands in chat.*
-6. **Model Manager UI**: catalog for Bonsai GGUF (and any local MLX endpoint), download with
-   progress/resume/checksum, disk usage, delete, tok/s benchmark, RAM-based recommendation,
-   context size, GPU layer count. First-run download lives here. *(L)*
-   *Done when a user can go from zero to a loaded model inside the app, with cancel and retry.*
-7. **macOS permissions page**: Automation (Calendar/Mail) and Notifications status with deep
-   links via `x-apple.systempreferences:`, re-check button, explanation of each grant. *(M)*
-   *Done when the page reflects changes without restarting the app.*
+5. ✅ **Onboarding wizard**: Welcome → Identity (name, personality, accent) → Approvals →
+   Model → chat. Skippable, persists `onboarding.completed`, accent previews live, branded
+   loading state while config resolves. A workspace-folders step is deferred until the tool
+   sandbox accepts user-chosen roots. *(M)*
+6. ✅ **Model Manager UI (core)**: pinned Bonsai GGUF catalog, download to `.part` with
+   HTTP Range resume, cancel/retry, SHA-256 verification, partial-download hydration after
+   restart, and auto-load on completion. Verify was exercised in-app against the installed
+   572 MB file. The zero-to-model network path was not re-run because the weights were
+   already on disk. Deferred premium extras: delete/disk management, tok/s benchmark,
+   RAM-based recommendation, context/GPU controls. *(L)*
+7. ✅ **macOS permissions page**: honest Automation probes for Calendar and Mail with
+   per-click re-check, Notifications labelled as managed by macOS (no fake status), and
+   deep links into the relevant Privacy & Security panes. *(M)*
 
 ---
 

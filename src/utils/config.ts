@@ -3,8 +3,12 @@ import { app } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { Config } from "./types";
+import { BONSAI_4B } from "../models/catalog";
 
 const defaultConfig: Config = {
+  onboarding: {
+    completed: false,
+  },
   model: {
     provider: "bonsai",
     temperature: 0.7,
@@ -95,7 +99,7 @@ export function allowedRoots(): string[] {
 }
 
 export function ggufPath(): string {
-  return path.join(modelsRoot(), "Bonsai-4B-gguf", "Bonsai-4B.gguf");
+  return path.join(modelsRoot(), BONSAI_4B.dirName, BONSAI_4B.file);
 }
 
 export function mlxModelPath(): string {

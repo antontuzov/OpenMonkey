@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  Bell,
   CalendarClock,
   Check,
   ChevronDown,
   Cpu,
+  ExternalLink,
   Files,
+  Fingerprint,
   Globe,
   Info,
   Loader,
   Lock,
   LockOpen,
+  Mail,
   MessageSquare,
   Palette,
   RefreshCw,
@@ -19,10 +23,13 @@ import {
   SquareTerminal,
   UserRound,
 } from "lucide-react";
+import { ModelDownloadCard } from "./ModelDownloadCard";
+import { ACCENTS } from "../constants";
 import {
   MOODS,
   MOOD_LOGOS,
   type AgentStatus,
+  type AutomationProbe,
   type Config,
   type ConfigPatch,
   type ModelStatus,
@@ -38,18 +45,8 @@ interface SettingsViewProps {
   onRefreshStatus: () => Promise<void>;
 }
 
-type Section = "profile" | "appearance" | "approvals" | "privacy" | "model";
+type Section = "profile" | "appearance" | "approvals" | "permissions" | "privacy" | "model";
 
-const ACCENTS = [
-  { name: "Mint", value: "#3ecf8e" },
-  { name: "Coral", value: "#f07a6a" },
-  { name: "Amber", value: "#e8b04b" },
-  { name: "Teal", value: "#3fb6b0" },
-  { name: "Blue", value: "#5b9de8" },
-  { name: "Iris", value: "#8f8cf0" },
-  { name: "Rose", value: "#e879a8" },
-  { name: "Slate", value: "#7b8794" },
-];
 
 const TOOLS = [
   { icon: Files, name: "Files", copy: "Read, write and move files inside your allowed folders." },
@@ -73,6 +70,7 @@ const NAV: Array<{
     label: "Control",
     items: [
       { id: "approvals", label: "Approvals", icon: ShieldCheck },
+      { id: "permissions", label: "Permissions", icon: Fingerprint },
       { id: "privacy", label: "Privacy", icon: Lock },
     ],
   },
@@ -94,6 +92,10 @@ const TITLES: Record<Section, { title: string; lede: string }> = {
   approvals: {
     title: "Approvals",
     lede: "Decide what runs on its own. With approvals on, every tool call shows its arguments before it executes.",
+  },
+  permissions: {
+    title: "Permissions",
+    lede: "macOS controls access to Calendar, Mail and notifications. Nothing is requested until you ask for it.",
   },
   privacy: {
     title: "Privacy",
@@ -160,6 +162,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [query, setQuery] = useState("");
   const [models, setModels] = useState<ModelStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [probes, setProbes] = useState<Partial<Record<"calendar" | "mail", AutomationProbe | "checking">>>({});
 
   const { model, agent, privacy } = config;
   const accent = config.ui.accent ?? ACCENTS[0].value;
@@ -171,6 +174,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   useEffect(() => {
     void window.electron?.getModelStatus().then(setModels).catch(() => undefined);
   }, []);
+
+  const refreshModels = async () => {
+    const next = await window.electron?.getModelStatus();
+    if (next) setModels(next);
+    await onRefreshStatus();
+  };
+
+  const checkAutomation = async (area: "calendar" | "mail") => {
+    setProbes((current) => ({ ...current, [area]: "checking" }));
+    try {
+      const result = await window.electron?.probeAutomation(area);
+      setProbes((current) => ({ ...current, [area]: result ?? { state: "unknown" } }));
+    } catch (error) {
+      setProbes((current) => ({
+        ...current,
+        [area]: { state: "unknown", message: error instanceof Error ? error.message : String(error) },
+      }));
+    }
+  };
+
+  const probeChip = (area: "calendar" | "mail") => {
+    const probe = probes[area];
+    if (probe === "checking") return { label: "checking…", tone: "" };
+    if (probe?.state === "granted") return { label: "allowed", tone: "chip-accent" };
+    if (probe?.state === "denied") return { label: "blocked", tone: "!text-danger" };
+    if (probe?.state === "unknown") return { label: "not checked", tone: "" };
+    return { label: "not checked", tone: "" };
+  };
 
   const groups = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -197,9 +228,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const checkAgain = async () => {
     setBusy(true);
     try {
-      const next = await window.electron?.getModelStatus();
-      if (next) setModels(next);
-      await onRefreshStatus();
+      await refreshModels();
     } finally {
       setBusy(false);
     }
@@ -548,6 +577,113 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </>
             )}
 
+            {section === "permissions" && (
+              <>
+                <section>
+                  <p className="section-label">Automation</p>
+                  <div className="card">
+                    <div className="row">
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 h-7 rounded-lg bg-card-2 flex items-center justify-center">
+                          <CalendarClock size={14} className="text-muted" />
+                        </span>
+                        <div>
+                          <p className="row-title">Calendar</p>
+                          <p className="row-copy">Only when you ask it to read events or create one. Checking may open Calendar once.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`chip ${probeChip("calendar").tone}`}>{probeChip("calendar").label}</span>
+                        <button
+                          onClick={() => void checkAutomation("calendar")}
+                          disabled={probes.calendar === "checking"}
+                          className="btn"
+                        >
+                          Check
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="row">
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 h-7 rounded-lg bg-card-2 flex items-center justify-center">
+                          <Mail size={14} className="text-muted" />
+                        </span>
+                        <div>
+                          <p className="row-title">Mail</p>
+                          <p className="row-copy">Only when you ask it to draft a message. It never sends without approval.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`chip ${probeChip("mail").tone}`}>{probeChip("mail").label}</span>
+                        <button
+                          onClick={() => void checkAutomation("mail")}
+                          disabled={probes.mail === "checking"}
+                          className="btn"
+                        >
+                          Check
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {(["calendar", "mail"] as const).map((area) => {
+                    const probe = probes[area];
+                    if (!probe || probe === "checking" || !probe.message) return null;
+                    return (
+                      <p
+                        key={area}
+                        className={`text-[10.5px] mt-2 px-1 leading-relaxed ${
+                          probe.state === "denied" ? "text-danger" : "text-muted"
+                        }`}
+                      >
+                        {probe.message}
+                      </p>
+                    );
+                  })}
+                </section>
+
+                <section>
+                  <p className="section-label">Notifications</p>
+                  <div className="card">
+                    <SettingRow
+                      title="Approval and completion alerts"
+                      copy="macOS owns this permission, so there is no in-app switch. Open the system pane to change it."
+                    >
+                      <span className="chip">
+                        <Bell size={11} />
+                        managed by macOS
+                      </span>
+                      <button
+                        onClick={() => void window.electron?.openPermissionSettings("notifications")}
+                        className="btn"
+                      >
+                        <ExternalLink size={12} />
+                        Open settings
+                      </button>
+                    </SettingRow>
+                  </div>
+                </section>
+
+                <div className="card p-4 flex items-start gap-2.5">
+                  <Info size={14} className="text-faint mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[11px] text-muted leading-relaxed">
+                      Automation requests appear the first time OpenMonkey touches Calendar or Mail, never at launch.
+                      If you denied one, re-enable it under Privacy &amp; Security → Automation.
+                    </p>
+                    <button
+                      onClick={() => void window.electron?.openPermissionSettings("automation")}
+                      className="link text-[10.5px] mt-2 inline-flex items-center gap-1"
+                    >
+                      Open Automation settings
+                      <ExternalLink size={10} />
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
             {section === "privacy" && (
               <>
                 <section>
@@ -605,6 +741,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {section === "model" && (
               <>
                 <section>
+                  <p className="section-label">Model library</p>
+                  <ModelDownloadCard
+                    installed={models?.bonsaiAvailable ?? false}
+                    ready={ready}
+                    onChanged={refreshModels}
+                  />
+                </section>
+
+                <section>
                   <p className="section-label">Status</p>
                   <div className="card p-4 flex items-center gap-3.5">
                     <span className="w-9 h-9 rounded-full bg-accent-soft flex items-center justify-center shrink-0">
@@ -650,14 +795,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           { value: "mlx", label: "MLX", disabled: !models?.mlxAvailable || busy },
                         ]}
                       />
-                    </SettingRow>
-                    <SettingRow
-                      title="Bonsai-4B GGUF"
-                      copy="Portable weights for macOS and Windows. Downloaded with npm run download-models."
-                    >
-                      <span className={`chip ${models?.bonsaiAvailable ? "chip-accent" : ""}`}>
-                        {models?.bonsaiAvailable ? "ready" : "not downloaded"}
-                      </span>
                     </SettingRow>
                     <SettingRow
                       title="MLX"

@@ -239,8 +239,33 @@ Always maintain a helpful, professional tone while being approachable.`;
   }
 
   async switchProvider(provider: "mlx" | "bonsai"): Promise<void> {
-    await this.modelManager.switchModel(provider);
-    this.setStatus({ state: "ready", provider });
+    this.setStatus({ state: "loading-model" });
+    try {
+      await this.modelManager.switchModel(provider);
+      this.setStatus({ state: "ready", provider });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setStatus({ state: "error", message });
+      throw error;
+    }
+  }
+
+  /** Load weights that appeared after startup, e.g. once an in-app download finishes. */
+  async reloadModel(): Promise<void> {
+    if (this.modelManager.active) {
+      this.setStatus({ state: "ready", provider: this.modelManager.active });
+      return;
+    }
+    this.setStatus({ state: "loading-model" });
+    try {
+      await this.modelManager.initialize();
+      this.setStatus({ state: "ready", provider: this.modelManager.active ?? undefined });
+      this.emit("ready");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.setStatus({ state: "error", message });
+      throw error;
+    }
   }
 
   async shutdown(): Promise<void> {

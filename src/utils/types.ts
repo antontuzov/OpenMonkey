@@ -130,6 +130,9 @@ export interface AgentStatus {
  * type-checks against this file and must not pull in Electron or Node types.
  */
 export interface Config {
+  onboarding: {
+    completed: boolean;
+  };
   model: {
     provider: "mlx" | "bonsai";
     temperature: number;
@@ -158,10 +161,27 @@ export interface ModelStatus {
   bonsaiAvailable: boolean;
 }
 
+export type ModelDownloadPhase = "idle" | "downloading" | "verifying" | "done" | "error" | "cancelled";
+
+export interface AutomationProbe {
+  state: "granted" | "denied" | "unknown";
+  message?: string;
+}
+
+export interface ModelDownloadStatus {
+  phase: ModelDownloadPhase;
+  bytesReceived: number;
+  totalBytes: number;
+  speedBytesPerSecond: number;
+  /** null while unknown/untested, true after the pinned SHA-256 matches. */
+  verified: boolean | null;
+  error?: string;
+}
+
 export type ModelProvider = "mlx" | "bonsai";
 
 /** Sections of Config the renderer may change, one at a time. */
-export type ConfigPatch = Partial<Pick<Config, "model" | "ui" | "privacy" | "agent">>;
+export type ConfigPatch = Partial<Pick<Config, "onboarding" | "model" | "ui" | "privacy" | "agent">>;
 
 export interface ElectronAPI {
   processMessage: (message: string) => Promise<string>;
@@ -178,6 +198,13 @@ export interface ElectronAPI {
   stopGeneration: () => Promise<void>;
   newConversation: () => Promise<void>;
   switchProvider: (provider: "mlx" | "bonsai") => Promise<void>;
+  downloadModel: () => Promise<ModelDownloadStatus>;
+  cancelModelDownload: () => Promise<void>;
+  verifyModel: () => Promise<ModelDownloadStatus>;
+  getModelDownloadStatus: () => Promise<ModelDownloadStatus>;
+  reloadModel: () => Promise<void>;
+  probeAutomation: (area: "calendar" | "mail") => Promise<AutomationProbe>;
+  openPermissionSettings: (area: "automation" | "notifications") => Promise<void>;
   openExternal: (url: string) => Promise<void>;
 
   /** Each subscription returns an unsubscribe function for the effect cleanup. */
@@ -188,6 +215,7 @@ export interface ElectronAPI {
   onTaskUpdate: (callback: (task: Task) => void) => () => void;
   onApprovalRequest: (callback: (request: ApprovalRequest) => void) => () => void;
   onOpenSettings: (callback: () => void) => () => void;
+  onModelDownloadStatus: (callback: (status: ModelDownloadStatus) => void) => () => void;
 }
 
 declare global {

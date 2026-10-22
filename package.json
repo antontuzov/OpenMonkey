@@ -55,6 +55,9 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
+      "extendInfo": {
+        "NSAppleEventsUsageDescription": "OpenMonkey controls Calendar and Mail only when you ask it to work with them."
+      },
       "target": [
         "dmg",
         "zip"
