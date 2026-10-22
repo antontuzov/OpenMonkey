@@ -147,6 +147,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     timeoutMs: 75_000,
   },
   {
+    type: "memory",
+    action: "search_workspace",
+    description: "Search indexed workspace files for relevant passages with file and line citations",
+    args: { query: { type: "string", required: true, description: "What to look for", maxLength: 512 } },
+    mutating: false,
+    timeoutMs: 45_000,
+  },
+  {
     type: "calendar",
     action: "list_events",
     description: "List upcoming Calendar events",
@@ -230,8 +238,8 @@ const typeLabel = (spec: ArgSpec): string => {
 };
 
 /** Compact protocol text generated from the definitions above. */
-export function describeBuiltInTools(): string {
-  const lines = TOOL_DEFINITIONS.map((definition) => {
+export function describeBuiltInTools(includeMemory = true): string {
+  const lines = TOOL_DEFINITIONS.filter((definition) => includeMemory || definition.type !== "memory").map((definition) => {
     const args = Object.entries(definition.args)
       .map(([name, spec]) => `${name}:${typeLabel(spec)}`)
       .join(", ");

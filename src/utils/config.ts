@@ -24,6 +24,10 @@ const defaultConfig: Config = {
     encryptData: true,
     autoDeleteAfter: 30,
   },
+  memory: {
+    enabled: true,
+    workspaceSearch: false,
+  },
   agent: {
     name: "OpenMonkey",
     personality: "helpful",

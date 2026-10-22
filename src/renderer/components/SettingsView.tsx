@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Bell,
+  Brain,
   CalendarClock,
   Check,
   ChevronDown,
@@ -12,6 +13,7 @@ import {
   Fingerprint,
   FolderOpen,
   FolderPlus,
+  FolderSearch,
   Globe,
   Info,
   Loader,
@@ -20,6 +22,7 @@ import {
   Mail,
   MessageSquare,
   Palette,
+  Pin,
   Plug,
   Plus,
   RefreshCw,
@@ -44,8 +47,10 @@ import {
   type ConfigPatch,
   type McpServerConfig,
   type McpServerStatus,
+  type MemorySnapshot,
   type ModelStatus,
   type Mood,
+  type WorkspaceHit,
 } from "../../utils/types";
 
 interface SettingsViewProps {
@@ -61,6 +66,7 @@ type Section =
   | "profile"
   | "appearance"
   | "approvals"
+  | "memory"
   | "workspace"
   | "permissions"
   | "privacy"
@@ -148,6 +154,7 @@ const NAV: Array<{
     label: "Control",
     items: [
       { id: "approvals", label: "Approvals", icon: ShieldCheck },
+      { id: "memory", label: "Memory", icon: Brain },
       { id: "workspace", label: "Workspace", icon: FolderOpen },
       { id: "permissions", label: "Permissions", icon: Fingerprint },
       { id: "privacy", label: "Privacy", icon: Lock },
@@ -175,6 +182,10 @@ const TITLES: Record<Section, { title: string; lede: string }> = {
   approvals: {
     title: "Approvals",
     lede: "Decide what runs on its own. Every call is previewed before it executes and recorded in the audit log.",
+  },
+  memory: {
+    title: "Memory",
+    lede: "What OpenMonkey recalls across chats. Facts and digests stay local, and workspace search is opt-in.",
   },
   workspace: {
     title: "Workspace",
@@ -212,13 +223,19 @@ const SettingRow: React.FC<{ title: string; copy?: string; children: React.React
   </div>
 );
 
-const Toggle: React.FC<{ on: boolean; label: string; onChange: () => void }> = ({ on, label, onChange }) => (
+const Toggle: React.FC<{ on: boolean; label: string; onChange: () => void; disabled?: boolean }> = ({
+  on,
+  label,
+  onChange,
+  disabled,
+}) => (
   <button
     role="switch"
     aria-checked={on}
     aria-label={label}
+    disabled={disabled}
     onClick={onChange}
-    className={`toggle ${on ? "toggle-on" : ""}`}
+    className={`toggle ${on ? "toggle-on" : ""} ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
   />
 );
 
@@ -268,11 +285,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [serverEnv, setServerEnv] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [expandedServer, setExpandedServer] = useState<string | null>(null);
+  const [memory, setMemory] = useState<MemorySnapshot | null>(null);
+  const [factDraft, setFactDraft] = useState("");
+  const [memoryNotice, setMemoryNotice] = useState("");
+  const [memoryBusy, setMemoryBusy] = useState(false);
+  const [confirmClearFacts, setConfirmClearFacts] = useState(false);
+  const [workspaceQuery, setWorkspaceQuery] = useState("");
+  const [workspaceHits, setWorkspaceHits] = useState<WorkspaceHit[] | null>(null);
 
   const { model, agent, privacy } = config;
+  const memoryConfig = config.memory ?? { enabled: true, workspaceSearch: false };
   const policies = { ...DEFAULT_POLICIES, ...(agent.approvalPolicies ?? {}) };
   const workspaceRoots = agent.workspaceRoots ?? [];
   const servers = config.mcp?.servers ?? [];
+  const facts = memory?.facts ?? [];
+  const digests = memory?.digests ?? [];
+  const workspace = memory?.workspace;
   const accent = config.ui.accent ?? ACCENTS[0].value;
   const accentName = ACCENTS.find((item) => item.value === accent)?.name ?? "Custom";
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
@@ -321,6 +349,96 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const refreshMcp = async () => {
     const status = await window.electron?.getMcpStatus().catch(() => []);
     if (status) setMcp(status);
+  };
+
+  const refreshMemory = async () => {
+    const snapshot = await window.electron?.getMemorySnapshot().catch(() => null);
+    if (snapshot) setMemory(snapshot);
+  };
+
+  const addFact = async () => {
+    if (!factDraft.trim() || memoryBusy) return;
+    setMemoryBusy(true);
+    setMemoryNotice("");
+    try {
+      const snapshot = await window.electron?.addMemoryFact(factDraft);
+      if (snapshot) setMemory(snapshot);
+      setFactDraft("");
+      setMemoryNotice("Fact saved and injected into the next prompt.");
+    } catch (error) {
+      setMemoryNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryBusy(false);
+    }
+  };
+
+  const removeFact = async (id: string) => {
+    setMemoryNotice("");
+    try {
+      const snapshot = await window.electron?.deleteMemoryFact(id);
+      if (snapshot) setMemory(snapshot);
+      setMemoryNotice("Fact removed.");
+    } catch (error) {
+      setMemoryNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const clearAllFacts = async () => {
+    if (!confirmClearFacts) {
+      setConfirmClearFacts(true);
+      setMemoryNotice("Click again to delete every pinned fact.");
+      window.setTimeout(() => setConfirmClearFacts(false), 4_000);
+      return;
+    }
+    setConfirmClearFacts(false);
+    try {
+      const snapshot = await window.electron?.clearMemoryFacts();
+      if (snapshot) setMemory(snapshot);
+      setMemoryNotice("All pinned facts deleted.");
+    } catch (error) {
+      setMemoryNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const toggleMemory = async (changes: Partial<Config["memory"]>) => {
+    setMemoryNotice("");
+    setWorkspaceHits(null);
+    await onPatch({ memory: { ...memoryConfig, ...changes } });
+    await refreshMemory();
+  };
+
+  const rebuildWorkspace = async () => {
+    setMemoryBusy(true);
+    setMemoryNotice("");
+    setWorkspaceHits(null);
+    try {
+      await window.electron?.rebuildWorkspaceIndex();
+      await refreshMemory();
+    } finally {
+      setMemoryBusy(false);
+    }
+  };
+
+  const clearWorkspaceIndex = async () => {
+    setWorkspaceHits(null);
+    await window.electron?.clearWorkspaceIndex();
+    await refreshMemory();
+  };
+
+  const searchWorkspace = async () => {
+    if (!workspaceQuery.trim()) return;
+    setMemoryBusy(true);
+    setMemoryNotice("");
+    try {
+      const hits = await window.electron?.searchWorkspaceMemory(workspaceQuery);
+      setWorkspaceHits(hits ?? []);
+    } catch (error) {
+      setWorkspaceHits([]);
+      setMemoryNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setMemoryBusy(false);
+      await refreshMemory();
+    }
   };
 
   const patchServer = async (id: string, changes: Partial<McpServerConfig>) => {
@@ -426,6 +544,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     void refreshMcp();
   }, [section]);
 
+  useEffect(() => {
+    if (section !== "memory") return;
+    void refreshMemory();
+    const timer = window.setInterval(() => void refreshMemory(), 2_500);
+    return () => window.clearInterval(timer);
+  }, [section]);
+
   const probeChip = (area: "calendar" | "mail") => {
     const probe = probes[area];
     if (probe === "checking") return { label: "checking…", tone: "" };
@@ -465,6 +590,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setBusy(false);
     }
   };
+
+  const workspaceChip = !memoryConfig.enabled
+    ? { label: "memory off", tone: "" }
+    : !memoryConfig.workspaceSearch
+      ? { label: "off", tone: "" }
+      : workspace?.state === "building"
+        ? { label: "indexing…", tone: "!text-warn" }
+        : workspace?.state === "error"
+          ? { label: "failed", tone: "!text-danger" }
+          : workspace?.state === "ready"
+            ? { label: `${workspace.files} files · ${workspace.chunks} passages`, tone: "chip-accent" }
+            : { label: "not indexed", tone: "" };
 
   const head = TITLES[section];
 
@@ -575,6 +712,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </button>
             )}
           </div>
+
+          {section === "memory" && memoryNotice && (
+            <div className="card px-3.5 py-2.5 mb-6 flex items-center gap-2">
+              <Info size={13} className="text-faint shrink-0" />
+              <span className="text-[11.5px] text-muted flex-1">{memoryNotice}</span>
+              <button onClick={() => setMemoryNotice("")} aria-label="Dismiss notice" className="icon-btn">
+                <X size={11} />
+              </button>
+            </div>
+          )}
 
           <div className="space-y-8">
             {section === "profile" && (
@@ -932,6 +1079,250 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <p className="text-[11px] text-muted leading-relaxed">
                     Approval prompts show a diff, command or draft preview before anything runs. Paths stay inside an
                     allowed workspace root even when a policy is set to Allow.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {section === "memory" && (
+              <>
+                <section>
+                  <p className="section-label">Recall</p>
+                  <div className="card">
+                    <SettingRow
+                      title="Local memory"
+                      copy="Pinned facts and recent conversation digests are added to the system prompt with citation labels. Nothing leaves this Mac."
+                    >
+                      <Toggle
+                        on={memoryConfig.enabled}
+                        label="Local memory"
+                        onChange={() => void toggleMemory({ enabled: !memoryConfig.enabled })}
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      title="Workspace search"
+                      copy="Let the agent search text files in your workspace folders and cite file and line. The index lives in memory only."
+                    >
+                      <Toggle
+                        on={memoryConfig.workspaceSearch}
+                        label="Workspace search"
+                        disabled={!memoryConfig.enabled}
+                        onChange={() => void toggleMemory({ workspaceSearch: !memoryConfig.workspaceSearch })}
+                      />
+                    </SettingRow>
+                  </div>
+                  <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                    Facts are sealed with AES-256-GCM. Digests are computed from stored messages when the prompt is
+                    built. Turning workspace search off clears its index immediately; pinned facts stay until you
+                    delete them.
+                  </p>
+                </section>
+
+                <section>
+                  <div className="flex items-center justify-between gap-4 mb-2">
+                    <p className="section-label !mb-0">Pinned facts</p>
+                    <span className="chip">{facts.length} / 50</span>
+                  </div>
+                  <div className="card">
+                    {facts.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <Pin size={18} className="mx-auto text-faint" />
+                        <p className="text-[11.5px] text-muted mt-2">
+                          No pinned facts yet. Add something the agent should remember across chats.
+                        </p>
+                      </div>
+                    ) : (
+                      facts.map((fact) => {
+                        const created = new Date(fact.createdAt);
+                        return (
+                          <div key={fact.id} className="row">
+                            <div className="min-w-0">
+                              <p className="row-title leading-relaxed">{fact.content}</p>
+                              <p className="row-copy font-mono">
+                                [fact:{fact.id.slice(-6)}] ·{" "}
+                                {created.toLocaleDateString([], { month: "short", day: "numeric" })}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => void removeFact(fact.id)}
+                              aria-label="Delete fact"
+                              className="icon-btn"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                    <div className="p-3 border-t border-line flex flex-wrap gap-2">
+                      <input
+                        value={factDraft}
+                        onChange={(event) => setFactDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void addFact();
+                          }
+                        }}
+                        maxLength={500}
+                        disabled={!memoryConfig.enabled}
+                        placeholder={memoryConfig.enabled ? "e.g. I write TypeScript and prefer pnpm" : "Turn memory on to save facts"}
+                        className="field flex-1 min-w-[220px]"
+                      />
+                      <button
+                        onClick={() => void addFact()}
+                        disabled={!memoryConfig.enabled || memoryBusy || !factDraft.trim()}
+                        className="btn btn-primary"
+                      >
+                        <Plus size={11} />
+                        Add fact
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 mt-2 px-1">
+                    <p className="text-[10.5px] text-muted leading-relaxed">
+                      {memoryConfig.enabled
+                        ? "Only what you pin here is guaranteed to be recalled; the 12 most recent facts are injected. Digests are short extracts, not model-written summaries."
+                        : "Memory is off, so these facts are not injected. They stay here until you delete them."}
+                    </p>
+                    {facts.length > 0 && (
+                      <button
+                        onClick={() => void clearAllFacts()}
+                        className={`btn !h-7 !px-2.5 shrink-0 ${confirmClearFacts ? "!text-danger" : ""}`}
+                      >
+                        <Trash2 size={11} />
+                        {confirmClearFacts ? "Confirm" : "Clear all"}
+                      </button>
+                    )}
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">Recent conversations</p>
+                  <div className="card">
+                    {digests.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <MessageSquare size={18} className="mx-auto text-faint" />
+                        <p className="text-[11.5px] text-muted mt-2">
+                          Chats with at least two messages appear here as short digests. The active chat is excluded.
+                        </p>
+                      </div>
+                    ) : (
+                      digests.map((digest) => {
+                        const updated = new Date(digest.updatedAt);
+                        return (
+                          <div key={digest.conversationId} className="row !items-start">
+                            <div className="min-w-0">
+                              <p className="row-title">{digest.title}</p>
+                              <p className="row-copy leading-relaxed">{digest.digest}</p>
+                              <p className="text-[10px] text-faint mt-1 font-mono">
+                                {`[chat "${digest.title}"] · ${digest.messageCount} messages · ${updated.toLocaleDateString([], { month: "short", day: "numeric" })}`}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                    Digests give the model continuity without sending another request. They combine the first and
+                    latest asks with the last answer, and cite the conversation title.
+                  </p>
+                </section>
+
+                <section>
+                  <div className="flex items-center justify-between gap-4 mb-2">
+                    <p className="section-label !mb-0">Workspace index</p>
+                    <span className={`chip ${workspaceChip.tone}`}>
+                      <FolderSearch size={11} />
+                      {workspaceChip.label}
+                    </span>
+                  </div>
+                  <div className="card">
+                    <SettingRow
+                      title="Index status"
+                      copy={
+                        workspace?.error
+                          ? workspace.error
+                          : workspace?.builtAt
+                            ? `Built ${new Date(workspace.builtAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} from ${workspace.files} files (${(workspace.bytes / 1024 / 1024).toFixed(1)} MB).`
+                            : "The index is built on demand and lives in RAM only."
+                      }
+                    >
+                      <button
+                        onClick={() => void rebuildWorkspace()}
+                        disabled={!memoryConfig.enabled || !memoryConfig.workspaceSearch || memoryBusy}
+                        className="btn !h-7 !px-2.5"
+                      >
+                        <RefreshCw size={11} />
+                        Rebuild
+                      </button>
+                      <button
+                        onClick={() => void clearWorkspaceIndex()}
+                        disabled={!workspace?.files && !workspace?.chunks}
+                        className="btn !h-7 !px-2.5"
+                      >
+                        <Trash2 size={11} />
+                        Clear
+                      </button>
+                    </SettingRow>
+                    <div className="p-3 border-t border-line flex flex-wrap gap-2">
+                      <input
+                        value={workspaceQuery}
+                        onChange={(event) => setWorkspaceQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void searchWorkspace();
+                          }
+                        }}
+                        placeholder="Try a keyword search across workspace files"
+                        className="field flex-1 min-w-[220px]"
+                        disabled={!memoryConfig.enabled || !memoryConfig.workspaceSearch}
+                      />
+                      <button
+                        onClick={() => void searchWorkspace()}
+                        disabled={!memoryConfig.enabled || !memoryConfig.workspaceSearch || memoryBusy || !workspaceQuery.trim()}
+                        className="btn"
+                      >
+                        <Search size={11} />
+                        Search
+                      </button>
+                    </div>
+                    {workspaceHits && (
+                      <div className="border-t border-line">
+                        {workspaceHits.length === 0 ? (
+                          <p className="p-4 text-[11px] text-muted">
+                            No passages matched. Rebuild the index after adding files.
+                          </p>
+                        ) : (
+                          workspaceHits.map((hit, index) => (
+                            <div key={`${hit.path}-${hit.startLine}`} className="p-3 border-b border-line last:border-0">
+                              <p className="text-[10px] font-mono text-muted truncate">
+                                [{index + 1}] {hit.path}:{hit.startLine}-{hit.endLine}
+                              </p>
+                              <pre className="mt-1.5 text-[10.5px] text-muted whitespace-pre-wrap break-words max-h-32 overflow-hidden">
+                                {hit.excerpt}
+                              </pre>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                    Keyword (lexical) search over text files: up to 1,200 files, 3,000 passages and 8 MB. Hidden
+                    folders, node_modules, keys and dotfiles are skipped. Semantic embeddings are not part of this
+                    build.
+                  </p>
+                </section>
+
+                <div className="card p-4 flex items-start gap-2.5">
+                  <Info size={14} className="text-faint mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-muted leading-relaxed">
+                    Memory is context, not truth: the model is told to cite what it uses and never to invent a memory.
+                    Turn Local memory off to stop all injection; the index clears immediately and pinned facts remain
+                    until you delete them.
                   </p>
                 </div>
               </>

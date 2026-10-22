@@ -219,12 +219,31 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return agent().restartMcpServer(id);
   });
 
+  ipcMain.handle("get-memory-snapshot", () => agent().getMemorySnapshot());
+  ipcMain.handle("add-memory-fact", (_event, content: unknown) => {
+    if (typeof content !== "string") throw new Error("A fact is required");
+    return agent().addMemoryFact(content);
+  });
+  ipcMain.handle("delete-memory-fact", (_event, id: unknown) => {
+    if (typeof id !== "string" || !id.trim()) throw new Error("A fact id is required");
+    return agent().deleteMemoryFact(id);
+  });
+  ipcMain.handle("clear-memory-facts", () => agent().clearMemoryFacts());
+  ipcMain.handle("rebuild-workspace-index", () => agent().rebuildWorkspaceIndex());
+  ipcMain.handle("clear-workspace-index", () => agent().clearWorkspaceIndex());
+  ipcMain.handle("search-workspace-memory", (_event, query: unknown) => {
+    if (typeof query !== "string" || !query.trim()) throw new Error("A search query is required");
+    return agent().searchWorkspaceMemory(query);
+  });
+
   ipcMain.handle("get-config", () => config.getAll());
 
   ipcMain.handle("set-config", async (_event, patch: Parameters<typeof config.merge>[0]) => {
     const updated = config.merge(patch);
     logger.info("config.updated", { keys: Object.keys(patch) });
     if (patch && "mcp" in patch) await agent().refreshMcp();
+    if (patch && "memory" in patch) agent().refreshMemory(true);
+    else if (patch && "agent" in patch) agent().refreshMemory(true);
     return updated;
   });
 

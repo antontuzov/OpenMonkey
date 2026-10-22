@@ -4,6 +4,7 @@ import { WebBrowserTools } from "./tools/web-browser";
 import { ShellTools } from "./tools/shell-commands";
 import { CalendarEmailTools } from "./tools/calendar-email";
 import { McpManager } from "./mcp-manager";
+import { MemoryManager } from "./memory-manager";
 import { buildPreview } from "./previews";
 import {
   getToolDefinition,
@@ -29,7 +30,7 @@ import type {
 
 const TASK_BLOCK = /```task\s*([\s\S]*?)```/g;
 const UNCLOSED_BLOCK = /```task\s*([\s\S]*)$/;
-const TOOL_TYPES = new Set<TaskType>(["file", "web", "shell", "calendar", "email", "mcp"]);
+const TOOL_TYPES = new Set<TaskType>(["file", "web", "shell", "calendar", "email", "mcp", "memory"]);
 
 interface ExecutableTool {
   execute(action: string, args: Record<string, unknown>, context?: ToolContext): Promise<string>;
@@ -48,6 +49,7 @@ export class TaskManager {
   private shell = new ShellTools();
   private calendarEmail = new CalendarEmailTools();
   private mcp = new McpManager();
+  private memory = new MemoryManager();
   private activeTasks = new Map<string, Task>();
   private pendingApprovals = new Map<string, (resolution: ApprovalResolution) => void>();
   private sessionDecisions = new Map<string, boolean>();
@@ -75,6 +77,10 @@ export class TaskManager {
 
   getMcpManager(): McpManager {
     return this.mcp;
+  }
+
+  getMemoryManager(): MemoryManager {
+    return this.memory;
   }
 
   getMcpStatus(): McpServerStatus[] {
@@ -141,6 +147,8 @@ export class TaskManager {
       case "calendar":
       case "email":
         return this.calendarEmail;
+      case "memory":
+        return this.memory;
       default:
         return null;
     }
@@ -166,10 +174,12 @@ export class TaskManager {
     };
     this.activeTasks.set(task.id, task);
     this.publish(task);
+    // Updates replace the map entry, so callers must read the latest task.
+    const latest = () => this.activeTasks.get(task.id) ?? task;
 
     if (!TOOL_TYPES.has(request.type)) {
       this.finish(task, "completed", "No tool required - OpenMonkey answered this directly");
-      return task;
+      return latest();
     }
 
     if (request.type === "shell") {
@@ -182,7 +192,7 @@ export class TaskManager {
       const message = `Tool validation failed: ${validated.error}`;
       this.finish(task, "failed", message);
       this.recordAudit(task, conversationId, request, {}, "invalid", "failed", message);
-      return task;
+      return latest();
     }
 
     const definition = validated.definition;
@@ -214,7 +224,7 @@ export class TaskManager {
           cancelled ? "cancelled" : "denied",
           message
         );
-        return task;
+        return latest();
       }
       decision = authorization.decision;
     } else if (!config.get("agent").autoExecuteTasks) {
@@ -225,7 +235,7 @@ export class TaskManager {
         const message = "Blocked by your approval policy in Settings → Approvals";
         this.finish(task, "denied", message);
         this.recordAudit(task, conversationId, request, args, "blocked", "denied", message);
-        return task;
+        return latest();
       }
     }
 
@@ -243,7 +253,7 @@ export class TaskManager {
       this.updateAudit(task.id, "cancelled", "Cancelled by you");
       externalSignal?.removeEventListener("abort", forwardAbort);
       this.running.delete(task.id);
-      return task;
+      return latest();
     }
 
     const tool = this.toolFor(request.type);
@@ -305,7 +315,7 @@ export class TaskManager {
       if (publishTimer) clearTimeout(publishTimer);
     }
 
-    return task;
+    return latest();
   }
 
   private async validateAndNormalize(

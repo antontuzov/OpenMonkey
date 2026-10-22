@@ -16,9 +16,14 @@ import type {
   Conversation,
   ConversationSearchHit,
   McpServerStatus,
+  MemoryFact,
+  MemorySnapshot,
   Message,
   ModelStatus,
   Mood,
+  Task,
+  WorkspaceHit,
+  WorkspaceIndexStatus,
 } from "../utils/types";
 import { describeBuiltInTools } from "./tool-registry";
 
@@ -54,6 +59,7 @@ export class OpenMonkey extends EventEmitter {
   private currentMood: Mood = "neutral";
   private statusInfo: AgentStatus = { state: "starting" };
   private controller: AbortController | null = null;
+  private pendingReseed = false;
 
   constructor() {
     super();
@@ -78,6 +84,9 @@ export class OpenMonkey extends EventEmitter {
       this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
       this.setStatus({ state: "ready", provider: this.modelManager.active ?? undefined });
       this.emit("ready");
+      if (config.get("memory")?.workspaceSearch) {
+        void this.taskManager.getMemoryManager().rebuild();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error("agent.init.failed", { error: message });
@@ -172,7 +181,9 @@ export class OpenMonkey extends EventEmitter {
     storage.saveMessage(conversationId, userMessage, prompt);
     this.pushHistory({ role: "user", content: prompt });
 
-    return await this.generateReply(conversationId, prompt, display);
+    const retrieval = await this.taskManager.getMemoryManager().contextFor(message);
+    const modelPrompt = retrieval ? `${retrieval}\n\n${prompt}` : prompt;
+    return await this.generateReply(conversationId, modelPrompt, display, retrieval);
   }
 
   /** Drop the previous answer and run the last user turn again. */
@@ -200,14 +211,18 @@ export class OpenMonkey extends EventEmitter {
       );
     }
 
-    return await this.generateReply(conversationId, prompt, lastUser.content);
+    const retrieval = await this.taskManager.getMemoryManager().contextFor(prompt);
+    const modelPrompt = retrieval ? `${retrieval}\n\n${prompt}` : prompt;
+    return await this.generateReply(conversationId, modelPrompt, lastUser.content, retrieval);
   }
 
   private async generateReply(
     conversationId: string,
     prompt: string,
-    titleCandidate: string
+    titleCandidate: string,
+    retrieval?: string
   ): Promise<Message | null> {
+    if (retrieval) logger.info("memory.context.injected", { conversationId, chars: retrieval.length });
     const systemPrompt = this.buildSystemPrompt();
     const assistantId = messageId();
     const startedAt = Date.now();
@@ -266,7 +281,20 @@ export class OpenMonkey extends EventEmitter {
       const { visibleText, requests, errors } = this.taskManager.parseTaskBlocks(accumulated);
       let finalText = visibleText.trim();
 
-      if (requests.length || errors.length) {
+      if (retrieval && (requests.length || errors.length || !finalText)) {
+        // The small model often reaches for a file tool even when retrieval already
+        // answered the question; show the retrieved passage instead of tool chatter.
+        if (requests.length || errors.length) {
+          logger.info("memory.tasks.ignored", { conversationId, requests: requests.length, errors: errors.length });
+        }
+        finalText = this.groundCitations(this.retrievalFallback(retrieval), retrieval);
+        this.emitChat({
+          type: "replace",
+          conversationId,
+          messageId: assistantId,
+          content: finalText,
+        });
+      } else if (requests.length || errors.length) {
         const outcomes = [];
         for (const request of requests) {
           outcomes.push(await this.taskManager.executeTask(request, conversationId, controller.signal));
@@ -275,12 +303,15 @@ export class OpenMonkey extends EventEmitter {
           outcomes.push(this.taskManager.recordInvalidRequest(error, conversationId));
         }
         finalText = await this.summarizeTaskOutcomes(outcomes, systemPrompt, visibleText, conversationId);
+        if (retrieval) finalText = this.groundCitations(finalText, retrieval);
         this.emitChat({
           type: "replace",
           conversationId,
           messageId: assistantId,
           content: finalText,
         });
+      } else if (retrieval) {
+        finalText = this.groundCitations(finalText, retrieval);
       }
 
       const message: Message = {
@@ -357,23 +388,78 @@ export class OpenMonkey extends EventEmitter {
       });
       return partial ?? null;
     } finally {
-      if (this.controller === controller) this.controller = null;
+      if (this.controller === controller) {
+        this.controller = null;
+        if (this.pendingReseed) {
+          this.pendingReseed = false;
+          this.reseedModel();
+        }
+      }
     }
+  }
+
+  /**
+   * The model mislabels citations, so drop its inline tags and pick the retrieved
+   * passage that actually contains a distinctive term from its answer.
+   */
+  private groundCitations(text: string, retrieval: string): string {
+    const blocks = [...retrieval.matchAll(/\[file:([^\]]+)\]\n([\s\S]*?)(?=\n\n\[file:|$)/g)].map(
+      (match) => ({ label: match[1], excerpt: match[2].toLowerCase() })
+    );
+    if (!blocks.length) return text;
+
+    const cleaned = text
+      .replace(/\[file:[^\]]+\]/g, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    const anchors = [
+      ...cleaned.matchAll(/[\w./-]*\d[\w./-]*|"[^"]{4,}"|`[^`]{4,}`/g),
+    ]
+      .map((match) => match[0].replace(/^["`]|["`]$/g, ""))
+      .filter((anchor) => anchor.length >= 4);
+
+    const supporting = blocks.filter((block) =>
+      anchors.some((anchor) => block.excerpt.includes(anchor.toLowerCase()))
+    );
+    const chosen = supporting.length ? supporting : blocks.slice(0, 1);
+    const labels = [...new Set(chosen.map((block) => `[file:${block.label}]`))];
+    return `${cleaned}\n\nSources: ${labels.join(", ")}`;
+  }
+
+  /** Answer from the top retrieved passage when the model spends its turn on a tool call. */
+  private retrievalFallback(retrieval: string): string {
+    const top = retrieval.match(/\[file:([^\]]+)\]\n([\s\S]*?)(?=\n\n\[file:|$)/);
+    if (!top) return "No matching passage was found in your workspace.";
+    return `I found this in your workspace:\n\n${top[2].trim()}`;
   }
 
   /** One short follow-up turn so tool output actually reaches the user as an answer. */
   private async summarizeTaskOutcomes(
-    tasks: Array<{ description: string; status: string; result?: string; error?: string }>,
+    tasks: Array<Pick<Task, "type" | "description" | "status" | "result" | "error">>,
     systemPrompt: string,
     priorText: string,
     conversationId: string
   ): Promise<string> {
+    // Search results are already grounded excerpts with citations; a 4B rewrite
+    // tends to contradict them, so a pure memory turn answers from the results.
+    if (tasks.length && tasks.every((task) => task.type === "memory")) {
+      const failed = tasks.find((task) => task.status !== "completed");
+      if (failed) return failed.error || "Workspace search did not complete.";
+      const answer = tasks
+        .map((task) => (task.result ?? "").replace(/\n\nCite as \[file:<path>:<line>\]\.$/, "").trim())
+        .filter(Boolean)
+        .join("\n\n");
+      if (answer) return answer;
+    }
+
     const report = tasks
       .map(
         (task, index) =>
           `${index + 1}. ${task.description} → ${task.status}: ${(task.result ?? task.error ?? "").slice(0, 1200)}`
       )
       .join("\n");
+    const question = (storage.getLastUserMessage(conversationId)?.content ?? "").slice(0, 400);
 
     if (this.modelManager.active === "mlx" && this.activeConversationId === conversationId) {
       this.conversationHistory.push({ role: "assistant", content: priorText });
@@ -381,7 +467,14 @@ export class OpenMonkey extends EventEmitter {
 
     try {
       return await this.modelManager.generateResponse(
-        `Tool results:\n${report}\nTell me what happened in 1-3 sentences. Do not repeat this JSON-like text.`,
+        `The user asked: ${question || "(see conversation)"}
+
+Tool results (final, not pending):
+${report}
+
+Answer the user's question in 1-3 sentences using these results. If a result contains a
+[file:...] or [fact:...] label, cite it exactly. Do not repeat the raw report and do not
+say the action is still running.`,
         {
           systemPrompt,
           history: this.modelManager.active === "mlx" ? this.promptHistory() : undefined,
@@ -438,6 +531,9 @@ export class OpenMonkey extends EventEmitter {
 
   private buildSystemPrompt(): string {
     const agentConfig = config.get("agent");
+    const memoryConfig = config.get("memory");
+    const memoryTools = Boolean(memoryConfig?.enabled && memoryConfig.workspaceSearch);
+    const memorySection = this.taskManager.getMemoryManager().promptSection(this.activeConversationId);
     return `You are ${agentConfig.name}, a friendly AI agent that runs locally on the user's machine.
 
 Your characteristics:
@@ -460,9 +556,16 @@ Arguments are validated before anything runs. If a call fails validation, correc
 arguments on your next turn instead of claiming the task succeeded.
 
 Available actions:
-${describeBuiltInTools()}${this.taskManager.getMcpManager().protocolText()}
+${describeBuiltInTools(memoryTools)}${this.taskManager.getMcpManager().protocolText()}
 
 Workspace folders: ${allowedRoots().join(", ")}.
+${memorySection}
+${memorySection ? `Use pinned facts and conversation digests only when they are relevant, and cite them
+with the labels shown. Never claim a memory you were not given.` : ""}
+${memoryTools ? `A "Workspace context" block may be supplied in the user's request. Answer from it directly
+and cite each passage as [file:<path>:<line>]; do not run tools on that turn. If no block is
+supplied and the question is about local files, search with the task block
+{"type":"memory","action":"search_workspace","arguments":{"query":"..."}}. Never invent a citation.` : ""}
 
 Mutating actions (writes, shell commands, calendar changes, mail drafts, MCP calls without a
 read-only hint) ask the user for approval first, so say what you are about to do. Never use
@@ -520,9 +623,59 @@ Always maintain a helpful, professional tone while being approachable.`;
     return status;
   }
 
+  getMemorySnapshot(): MemorySnapshot {
+    return this.taskManager.getMemoryManager().snapshot(this.activeConversationId);
+  }
+
+  addMemoryFact(content: string): MemorySnapshot {
+    const fact: MemoryFact = this.taskManager.getMemoryManager().addFact(content);
+    logger.info("memory.fact.saved", { id: fact.id });
+    this.reseedModel();
+    return this.getMemorySnapshot();
+  }
+
+  deleteMemoryFact(id: string): MemorySnapshot {
+    this.taskManager.getMemoryManager().deleteFact(id);
+    this.reseedModel();
+    return this.getMemorySnapshot();
+  }
+
+  clearMemoryFacts(): MemorySnapshot {
+    this.taskManager.getMemoryManager().clearFacts();
+    this.reseedModel();
+    return this.getMemorySnapshot();
+  }
+
+  async rebuildWorkspaceIndex(): Promise<WorkspaceIndexStatus> {
+    return await this.taskManager.getMemoryManager().rebuild();
+  }
+
+  clearWorkspaceIndex(): WorkspaceIndexStatus {
+    return this.taskManager.getMemoryManager().clearIndex();
+  }
+
+  async searchWorkspaceMemory(query: string): Promise<WorkspaceHit[]> {
+    return await this.taskManager.getMemoryManager().search(query, 6);
+  }
+
+  /** Settings changed memory or workspace roots: drop derived data when off, rebuild when asked. */
+  refreshMemory(rebuildIndex = false): void {
+    const memory = config.get("memory");
+    const manager = this.taskManager.getMemoryManager();
+    if (!memory?.enabled || !memory.workspaceSearch) manager.clearIndex();
+    this.reseedModel();
+    if (memory?.enabled && memory.workspaceSearch && (rebuildIndex || manager.status().state === "idle")) {
+      void manager.rebuild();
+    }
+  }
+
   /** New tool catalogs change the system prompt; only reseed while idle. */
   private reseedModel(): void {
-    if (this.controller || !this.modelManager.active) return;
+    if (!this.modelManager.active) return;
+    if (this.controller) {
+      this.pendingReseed = true;
+      return;
+    }
     this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
   }
 

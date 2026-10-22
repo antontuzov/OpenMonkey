@@ -21,6 +21,10 @@ and approval-gated tools. Nothing here is a mock screen.
   live shell output with kill, Trash deletes.
 - Extensions: local stdio MCP servers with discovery, per-server approvals, health, restart,
   enable/disable and JSON-Schema-checked arguments.
+- Memory: encrypted pinned facts, extractive cross-chat digests, an opt-in in-memory lexical
+  workspace index, automatic retrieval plus a `memory.search_workspace` tool, and grounded
+  `[file:<path>:<line>]` / `[fact:<id>]` citations. Settings → Memory exposes facts, digests,
+  index status, rebuild/clear/search and a full opt-out.
 - Appearance: light/dark/system, eight accents, 12 mood logos propagated to window, tray and Dock.
 - Settings: Profile, Appearance, Approvals, Workspace, Privacy, Model and MCP servers pages
   with search and real controls.
@@ -32,7 +36,12 @@ and approval-gated tools. Nothing here is a mock screen.
 
 - Edit-and-resend, slash commands, tables and true FTS are deferred (see Phase 2 notes).
 - MLX streaming is implemented but untested — MLX is not installed on this machine.
-- No memory or RAG yet (Phase 4).
+- Memory digests are extractive (recent messages and last answers), not model-written rolling
+  summaries. Workspace search is lexical and lives only in RAM — no sqlite-vec, no embedding
+  model, no persisted index, and the 4B model still mis-selects tools on some workspace turns.
+  Automatic retrieval only triggers for messages containing workspace/file/folder/project-style
+  words; lexical scoring can surface an irrelevant passage, so citations are grounded against
+  the retrieved blocks rather than trusted from the model.
 - MCP is local stdio only — no HTTP/SSE transport, OAuth or auto-install. Shell execution is
   piped, not a PTY, so interactive/TUI programs do not work. No tool retry or plan preview.
 - Calendar/mail live paths are untested here to avoid new macOS Automation prompts.
@@ -171,13 +180,38 @@ calendar/mail calls, and adding/removing an MCP server through the Settings form
 
 ---
 
-## Phase 4 — Local memory (P1, ~2 weeks)
+## Phase 4 — Local memory (P1, ~2 weeks) — ✅ core complete 2026-10-22
 
-20. **Conversation memory**: rolling summaries + pinned facts, injected with citations;
-    "what do you remember?" page to view and delete entries. *(L)*
-21. **Local RAG**: `sqlite-vec` + a small local embedding model, index workspace documents on
-    demand, retrieve with sources, hard size limits, full opt-out. *(L)*
-    *Done when answers cite file + line and disabling memory removes all derived data.*
+20. ✅ **Conversation memory**: pinned facts are encrypted at rest (AES-256-GCM, `enc:v1:`),
+    capped at 50 entries and injected newest-first (12 facts / 3,000 characters) with
+    `[fact:<id>]` labels. Cross-chat digests are computed on demand from stored messages —
+    extractive excerpts of each chat plus its last answer, labelled `[chat "<title>"]` — so
+    no second model call and no summary cache. Settings → Memory lists facts and digests,
+    supports add/delete/clear and shows exactly what is injected. Disabling memory stops all
+    injection while keeping explicitly pinned facts visible and deletable. *(L)*
+21. ✅ **Local RAG (core)**: opt-in lexical index of text files in the configured workspace
+    roots, held in memory (1,200 files / 3,000 chunks / 256 KB per file / 8 MB total; hidden,
+    secret-looking and symlinked paths skipped). Retrieval happens automatically for
+    workspace-intent messages (top 2 passages, 700-character excerpts) and through the
+    read-only `memory.search_workspace` tool (4 hits, one best passage per file). A turn with
+    retrieved context is answer-only: tool blocks are ignored and the retrieved passage is used
+    if the model spends its turn on a call. The 4B model's inline citations are stripped and
+    replaced with a deterministic `Sources: [file:<path>:<line>]` built from the passage that
+    contains a distinctive term from its answer, because the model otherwise invents or
+    mislabels paths. Disabling memory or workspace search clears the in-memory index at once;
+    digests are derived on demand and disappear with the setting.
+    Deferred: sqlite-vec/embeddings (no extra model was downloaded), index persistence, file
+    watching, and semantic (non-lexical) ranking. *(L)*
+
+**Phase 4 verification:** driven through the running Electron app. Pinned fact add/persist,
+encrypted row in SQLite and key mode 0600; fact recall with `[fact:…]` citation; index
+status/rebuild and direct IPC search; a natural-language workspace question answered with the
+launch codename and `Sources: [file:/tmp/om-memory-workspace/project-notes.md:1]` while the log
+showed `memory.context.injected` (no task was run); a stray retrieved source-code passage was
+rejected by the grounding pass; memory-off cleared the index to 0 files/0 chunks, made search
+return an explicit error, prevented retrieval injection, and kept the pinned fact visible but
+not injected. Test workspace, facts, conversations and screenshots were removed afterwards;
+default config is memory on, workspace search off.
 
 ---
 

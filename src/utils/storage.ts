@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { config, dataRoot } from "./config";
-import type { AuditEntry, Conversation, ConversationSearchHit, Message, Task } from "./types";
+import type { AuditEntry, Conversation, ConversationSearchHit, MemoryFact, Message, Task } from "./types";
 
 const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
@@ -105,6 +105,11 @@ export class Storage {
         created_at INTEGER NOT NULL,
         completed_at INTEGER
       );
+      CREATE TABLE IF NOT EXISTS memory_facts (
+        id TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
     `);
 
     const columns = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
@@ -125,6 +130,7 @@ export class Storage {
       CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages (conversation_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations (updated_at);
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit (created_at);
+      CREATE INDEX IF NOT EXISTS idx_memory_facts_created ON memory_facts (created_at);
     `);
 
     // The key has to exist before migration reads legacy content to name the thread.
@@ -462,6 +468,35 @@ export class Storage {
       createdAt: new Date(row.created_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
     }));
+  }
+
+  addMemoryFact(content: string): MemoryFact {
+    const fact: MemoryFact = { id: idFor("fact"), content, createdAt: new Date() };
+    this.db
+      ?.prepare("INSERT INTO memory_facts (id, content, created_at) VALUES (?, ?, ?)")
+      .run(fact.id, this.seal(content), fact.createdAt.getTime());
+    return fact;
+  }
+
+  /** Newest first, so the UI and the prompt both prefer recent facts. */
+  getMemoryFacts(limit = 100): MemoryFact[] {
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare("SELECT * FROM memory_facts ORDER BY created_at DESC LIMIT ?")
+      .all(limit) as Array<{ id: string; content: string; created_at: number }>;
+    return rows.map((row) => ({
+      id: row.id,
+      content: this.open(row.content),
+      createdAt: new Date(row.created_at),
+    }));
+  }
+
+  deleteMemoryFact(id: string): void {
+    this.db?.prepare("DELETE FROM memory_facts WHERE id = ?").run(id);
+  }
+
+  clearMemoryFacts(): void {
+    this.db?.prepare("DELETE FROM memory_facts").run();
   }
 
   saveAudit(entry: AuditEntry): void {

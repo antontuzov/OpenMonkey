@@ -34,6 +34,45 @@ export interface Attachment {
   text: string;
 }
 
+export interface MemoryFact {
+  id: string;
+  content: string;
+  createdAt: Date;
+}
+
+/** Extractive cross-chat digest; no second model call is made. */
+export interface MemoryDigest {
+  conversationId: string;
+  title: string;
+  messageCount: number;
+  digest: string;
+  updatedAt: Date;
+}
+
+export interface WorkspaceHit {
+  path: string;
+  startLine: number;
+  endLine: number;
+  excerpt: string;
+  score: number;
+}
+
+export interface WorkspaceIndexStatus {
+  state: "idle" | "building" | "ready" | "error";
+  enabled: boolean;
+  files: number;
+  chunks: number;
+  bytes: number;
+  builtAt?: Date;
+  error?: string;
+}
+
+export interface MemorySnapshot {
+  facts: MemoryFact[];
+  digests: MemoryDigest[];
+  workspace: WorkspaceIndexStatus;
+}
+
 export type ChatErrorCode = "not-ready" | "context-overflow" | "offline" | "unknown";
 
 /** Streamed over one IPC channel so the chat can render before the model finishes. */
@@ -76,6 +115,7 @@ export type TaskType =
   | "email"
   | "calendar"
   | "mcp"
+  | "memory"
   | "search"
   | "code"
   | "writing"
@@ -264,6 +304,11 @@ export interface Config {
     encryptData: boolean;
     autoDeleteAfter: number;
   };
+  memory: {
+    enabled: boolean;
+    /** Opt-in: scan workspaces into a memory-only lexical index. */
+    workspaceSearch: boolean;
+  };
   agent: {
     name: string;
     personality: string;
@@ -305,7 +350,9 @@ export interface ModelDownloadStatus {
 export type ModelProvider = "mlx" | "bonsai";
 
 /** Sections of Config the renderer may change, one at a time. */
-export type ConfigPatch = Partial<Pick<Config, "onboarding" | "model" | "ui" | "privacy" | "agent" | "mcp">>;
+export type ConfigPatch = Partial<
+  Pick<Config, "onboarding" | "model" | "ui" | "privacy" | "memory" | "agent" | "mcp">
+>;
 
 export interface ElectronAPI {
   processMessage: (conversationId: string, message: string, attachment?: Attachment) => Promise<Message | null>;
@@ -335,6 +382,13 @@ export interface ElectronAPI {
   chooseWorkspaceFolder: () => Promise<string | null>;
   getMcpStatus: () => Promise<McpServerStatus[]>;
   restartMcpServer: (id: string) => Promise<McpServerStatus[]>;
+  getMemorySnapshot: () => Promise<MemorySnapshot>;
+  addMemoryFact: (content: string) => Promise<MemorySnapshot>;
+  deleteMemoryFact: (id: string) => Promise<MemorySnapshot>;
+  clearMemoryFacts: () => Promise<MemorySnapshot>;
+  rebuildWorkspaceIndex: () => Promise<WorkspaceIndexStatus>;
+  clearWorkspaceIndex: () => Promise<WorkspaceIndexStatus>;
+  searchWorkspaceMemory: (query: string) => Promise<WorkspaceHit[]>;
   stopGeneration: () => Promise<void>;
   switchProvider: (provider: "mlx" | "bonsai") => Promise<void>;
   downloadModel: () => Promise<ModelDownloadStatus>;
