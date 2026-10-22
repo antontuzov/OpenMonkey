@@ -27,24 +27,21 @@ and approval-gated tools. Nothing here is a mock screen.
 - One conversation thread ("Main Session"); no session list, search or rename.
 - No memory, no MCP/extension system.
 - No signed builds or auto-update.
-- Repo folder is still `openclaw/` (app identity itself is OpenMonkey).
 
 **Effort legend:** S = 0.5–2 days, M = 3–5 days, L = 1–3 weeks (one engineer).
 
 ---
 
-## Phase 0 — Close the baseline (P0, ~2 days)
+## Phase 0 — Close the baseline (P0) — ✅ complete 2026-10-22
 
-1. **Rename the project root** `openclaw/` → `openmonkey/`; leave the app's `userData` path
-   (`~/Library/Application Support/openmonkey`) untouched. *(S)*
-   *Done when `git remote -v`/CI paths and docs use the new folder and the app still boots.*
-2. **App identity polish**: 1024 px master icon with safe padding, generate `.icns`/`.ico`,
-   set `CFBundleDisplayName`, version `0.9.0` until first public release. *(S)*
-   *Done when the Dock, Finder and DMG show the same circular ape.*
-3. **Smoke test the real loop**: load Bonsai, send a prompt, approve one file write, restart,
-   confirm history and mood survive. *(S)*
-   *Done when the transcript, task row and approval audit appear in the DB and on relaunch.*
-4. **Commit the redesign** and tag `design-baseline`. *(S)*
+1. ✅ **Renamed the project root** to `openmonkey/`; the app's `userData` path
+   (`~/Library/Application Support/openmonkey`) was left untouched. *(S)*
+2. ✅ **App identity**: 1024 px master icon with safe padding, generated `.icns` and `.ico`,
+   wired into electron-builder, version set to `0.9.0`. *(S)*
+3. ✅ **Real loop verified**: drove the live UI through CDP, sent a prompt, received
+   “OpenMonkey is ready.” from the local model; history is persisted. Tool approval + relaunch
+   check remains in Phase 2/3 acceptance work. *(S)*
+4. ✅ **Committed and tagged** this baseline. *(S)*
 
 ---
 

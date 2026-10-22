@@ -1,6 +1,6 @@
 {
   "name": "openmonkey",
-  "version": "1.0.0",
+  "version": "0.9.0",
   "description": "OpenMonkey - Local AI Agent with Dynamic Personality",
   "main": "dist/main/main.js",
   "author": "OpenMonkey contributors",
@@ -59,13 +59,13 @@
         "dmg",
         "zip"
       ],
-      "icon": "assets/logos/monkey-neutral-blue.png"
+      "icon": "assets/app-icon.icns"
     },
     "win": {
       "target": [
         "nsis"
       ],
-      "icon": "assets/logos/monkey-neutral-blue.png"
+      "icon": "assets/app-icon.ico"
     },
     "nsis": {
       "oneClick": false

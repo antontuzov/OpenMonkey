@@ -53,7 +53,7 @@ function createWindow(): void {
       sandbox: true,
       preload: PRELOAD,
     },
-    icon: assetPath("logos", "monkey-neutral-blue.png"),
+    icon: assetPath("app-icon.png"),
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 12, y: 12 },
   });
