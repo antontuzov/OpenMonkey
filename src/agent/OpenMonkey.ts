@@ -3,22 +3,24 @@ import { ModelManager } from "../models/model-manager";
 import { TaskManager } from "./task-manager";
 import { LogoManager } from "../ui/logo-manager";
 import { detectMood } from "../ui/mood-detector";
-import config from "../utils/config";
+import config, { allowedRoots } from "../utils/config";
 import storage from "../utils/storage";
 import logger from "../utils/logger";
-import { allowedRoots } from "../utils/config";
 import { MOODS } from "../utils/types";
 import type {
   AgentStatus,
   Attachment,
+  AuditEntry,
   ChatErrorCode,
   ChatEvent,
   Conversation,
   ConversationSearchHit,
+  McpServerStatus,
   Message,
   ModelStatus,
   Mood,
 } from "../utils/types";
+import { describeBuiltInTools } from "./tool-registry";
 
 const HISTORY_TURNS = 10;
 const DEFAULT_TITLE = "New chat";
@@ -261,13 +263,16 @@ export class OpenMonkey extends EventEmitter {
         emitToken(tail);
       }
 
-      const { visibleText, requests } = this.taskManager.parseTaskBlocks(accumulated);
+      const { visibleText, requests, errors } = this.taskManager.parseTaskBlocks(accumulated);
       let finalText = visibleText.trim();
 
-      if (requests.length) {
+      if (requests.length || errors.length) {
         const outcomes = [];
         for (const request of requests) {
-          outcomes.push(await this.taskManager.executeTask(request));
+          outcomes.push(await this.taskManager.executeTask(request, conversationId, controller.signal));
+        }
+        for (const error of errors) {
+          outcomes.push(this.taskManager.recordInvalidRequest(error, conversationId));
         }
         finalText = await this.summarizeTaskOutcomes(outcomes, systemPrompt, visibleText, conversationId);
         this.emitChat({
@@ -451,17 +456,17 @@ block per action, exactly like this:
 {"type":"file","action":"read_file","arguments":{"path":"~/Documents/notes.md"},"summary":"Read the notes"}
 \`\`\`
 Use one block per action and never invent results - the real output comes back to you.
+Arguments are validated before anything runs. If a call fails validation, correct the
+arguments on your next turn instead of claiming the task succeeded.
 
-Allowed actions:
-- type "file": list_dir, read_file, write_file, append_file, move_file, copy_file, create_folder, find_files
-  (only inside: ${allowedRoots().join(", ")})
-- type "web": fetch_page {url}, search {query}, open_in_browser {url}
-- type "shell": run_command {command, cwd}
-- type "calendar": list_events {days}, create_event {summary, start, end}
-- type "email": list_mail {count}, draft_mail {to, subject, body}
+Available actions:
+${describeBuiltInTools()}${this.taskManager.getMcpManager().protocolText()}
 
-Mutating actions (writes, shell commands, calendar changes, mail drafts) ask the user for
-approval first, so say what you are about to do. Never use draft_mail to claim a mail was sent.
+Workspace folders: ${allowedRoots().join(", ")}.
+
+Mutating actions (writes, shell commands, calendar changes, mail drafts, MCP calls without a
+read-only hint) ask the user for approval first, so say what you are about to do. Never use
+draft_mail to claim a mail was sent. Delete uses the macOS Trash, never a permanent erase.
 
 Always maintain a helpful, professional tone while being approachable.`;
   }
@@ -491,13 +496,48 @@ Always maintain a helpful, professional tone while being approachable.`;
     return this.taskManager;
   }
 
-  resolveApproval(requestId: string, approved: boolean): void {
-    this.taskManager.resolveApproval(requestId, approved);
+  getAuditLog(limit = 100): AuditEntry[] {
+    return storage.getAuditLog(limit);
+  }
+
+  clearAuditLog(): void {
+    storage.clearAuditLog();
+  }
+
+  getMcpStatus(): McpServerStatus[] {
+    return this.taskManager.getMcpStatus();
+  }
+
+  async refreshMcp(): Promise<McpServerStatus[]> {
+    await this.taskManager.getMcpManager().refresh();
+    this.reseedModel();
+    return this.taskManager.getMcpStatus();
+  }
+
+  async restartMcpServer(id: string): Promise<McpServerStatus[]> {
+    const status = await this.taskManager.restartMcpServer(id);
+    this.reseedModel();
+    return status;
+  }
+
+  /** New tool catalogs change the system prompt; only reseed while idle. */
+  private reseedModel(): void {
+    if (this.controller || !this.modelManager.active) return;
+    this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
+  }
+
+  resolveApproval(requestId: string, approved: boolean, remember = false): void {
+    this.taskManager.resolveApproval(requestId, approved, remember);
+  }
+
+  cancelTask(taskId: string): void {
+    this.taskManager.cancelTask(taskId);
   }
 
   stopGeneration(): void {
     this.controller?.abort();
     this.controller = null;
+    this.taskManager.abortActive();
   }
 
   getStatus(): AgentStatus {

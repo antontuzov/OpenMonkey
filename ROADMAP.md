@@ -16,17 +16,28 @@ and approval-gated tools. Nothing here is a mock screen.
 - Chat: token streaming over IPC, stop with partial persistence, regenerate, per-session encrypted
   history, multi-session sidebar with auto-title, rename, pin, delete and search, text attachments,
   failure states with recovery actions, per-session drafts.
-- Agent: file, web, shell, calendar/mail tools with per-action approval prompts and auto-execute.
+- Agent v2: schema-validated tool registry, Ask/Allow/Block per tool, session approvals,
+  diff/shell/draft previews, encrypted audit log with export, symlink-safe workspace roots,
+  live shell output with kill, Trash deletes.
+- Extensions: local stdio MCP servers with discovery, per-server approvals, health, restart,
+  enable/disable and JSON-Schema-checked arguments.
 - Appearance: light/dark/system, eight accents, 12 mood logos propagated to window, tray and Dock.
-- Settings: Profile, Appearance, Approvals, Privacy, Model pages with search and real controls.
-- Privacy: AES-256-GCM rows, key file mode 0600, path confinement, local-only by default.
+- Settings: Profile, Appearance, Approvals, Workspace, Privacy, Model and MCP servers pages
+  with search and real controls.
+- Privacy: AES-256-GCM rows, key file mode 0600, path confinement, local-only by default;
+  the app's data folder is not a tool workspace root.
 - Build: typecheck + production build pass; macOS/Windows packaging configured.
 
 **Known gaps**
 
 - Edit-and-resend, slash commands, tables and true FTS are deferred (see Phase 2 notes).
 - MLX streaming is implemented but untested — MLX is not installed on this machine.
-- No memory, no MCP/extension system.
+- No memory or RAG yet (Phase 4).
+- MCP is local stdio only — no HTTP/SSE transport, OAuth or auto-install. Shell execution is
+  piped, not a PTY, so interactive/TUI programs do not work. No tool retry or plan preview.
+- Calendar/mail live paths are untested here to avoid new macOS Automation prompts.
+- The 4B model frequently emits malformed task JSON; validation rejects it and shows a failed
+  task instead of guessing at the intended call.
 - No signed builds or auto-update.
 
 **Effort legend:** S = 0.5–2 days, M = 3–5 days, L = 1–3 weeks (one engineer).
@@ -98,23 +109,65 @@ but was not automated; drag-and-drop ingestion and attachment-aware replies were
 
 ---
 
-## Phase 3 — Agent v2: capability with guardrails (P1, ~3 weeks)
+## Phase 3 — Agent v2: capability with guardrails (P1, ~3 weeks) — ✅ core complete 2026-10-22
 
-13. **Tool protocol hardening**: JSON-schema validation, per-tool timeouts, observation
-    truncation, retry with backoff, multi-step plan shown before execution. *(M)*
-14. **Approval center**: per-tool/per-action policies, "remember for this session", dry-run
-    preview (diff for files, command preview for shell), queue for concurrent requests,
-    in-app audit log with export. *(M)*
-15. **Files v2**: workspace folder picker in-app, tree browser, diff before write, move to
-    Trash instead of delete, file watch, symlink resolution tests. *(M)*
-16. **Shell v2**: PTY with live output in the task rail, cwd/env display, kill button,
-    output caps, per-command approval. *(M)*
-17. **Web v2**: readability extraction, search with attribution, caching, robots.txt, rate
-    limits, "open in browser" stays the only mutating action. *(M)*
-18. **Calendar & mail v2**: TCC flow, draft preview, explicit send confirmation, account
-    selection, AppleScript timeouts and graceful failure. *(M)*
-19. **Extensions (MCP)**: local stdio server registry, tool discovery, per-server approvals,
-    health status, enable/disable. Only ship the Settings page once real servers work. *(L)*
+13. ✅ **Tool protocol hardening (core)**: one registry defines every built-in action with its
+    argument types, required flags, string/number caps, mutating flag and timeout, and the same
+    list generates the model's protocol text. Arguments are normalized and rejected before any
+    I/O on unknown keys, missing required values, wrong types, bad enums and overlong strings;
+    MCP inputs run through a small JSON-Schema validator (properties, required,
+    additionalProperties:false, items, enum, bounds, local $ref, anyOf/oneOf). Per-tool timeouts
+    abort work, observations are capped (256 KB reads, 12 K web text, 60 K shell capture, 20 K
+    live output), and invalid calls fail with a model-readable message plus an `invalid` audit
+    row. Retry-with-backoff and a pre-execution plan preview are deferred. *(M)*
+14. ✅ **Approval center**: six tool families each have Ask / Allow / Block; the master "Run
+    tool actions without asking" switch overrides them. Read-only calls never prompt, but Block
+    still refuses them. "Allow for session" is keyed to the exact `type.action` (or
+    `server.tool`). Previews cover LCS diffs, shell command + cwd, calendar events, mail drafts,
+    URL opens and MCP calls. Every call writes an encrypted audit row (AES-256-GCM) with
+    decision, status, args and result/error; the page polls pending work, expands details and
+    exports plain JSON mode 0600. Audit follows the retention job and clears via armed Confirm.
+    Approvals are handled per task; a deliberate cross-task queue was not built. *(M)*
+15. ✅ **Files v2 (core)**: Settings → Workspace lists Documents, Downloads and Desktop and adds
+    custom roots through the native picker (wired; picker not automated). Confinement checks the
+    lexical path, then realpath of the deepest existing ancestor, so symlinks cannot escape;
+    tests covered `../` traversal, a symlink to `/etc` and a shell cwd outside the roots. Writes
+    show a diff before approval; deletes use `shell.trashItem`; the app's own data folder (DB,
+    key, logs) is no longer a tool root. Tree browser and file watching are deferred. *(M)*
+16. ✅ **Shell v2 (core)**: commands run inside a workspace root with explicit cwd, per-command
+    approval, a command + cwd preview, live output in the task rail (last 20 K characters), a
+    60 K capture cap, a 75 s timeout and a Kill button that also closes a waiting approval.
+    Execution is piped (`child_process`), not a PTY, so interactive and full-screen TUI
+    programs are unsupported; env display is deferred. *(M)*
+17. ✅ **Web v2 (core)**: `fetch_page` extracts readable text (12 K cap), honors robots.txt with
+    longest-match rules and allow-on-tie, and caches responses (bounded, 30 min robots TTL).
+    `search` parses DuckDuckGo HTML results with title, host and URL attribution (8 results).
+    `open_in_browser` remains the only mutating web action. Per-host rate limiting is not
+    implemented; search depends on DuckDuckGo's HTML endpoint. *(M)*
+18. ✅ **Calendar & mail v2 (core)**: event and draft previews show the exact fields before
+    approval; drafts target the DRAFTS mailbox and there is deliberately no send action; account
+    selection is explicit; every AppleScript call has a 30 s timeout, 4 MB buffer and surfaced
+    stderr. The Phase 1 TCC probe page is unchanged. Live calendar/mail paths were intentionally
+    not exercised to avoid new macOS Automation prompts on this machine. *(M)*
+19. ✅ **Extensions (MCP)**: local stdio servers via `@modelcontextprotocol/sdk` — config
+    registry, connect on launch, tool discovery (`readOnlyHint` decides read-only), per-server
+    Ask/Allow/Block, enable/disable, restart, health/error state and tool list in Settings.
+    Server tools appear as `server.tool`, with schema-checked arguments, a 60 s call timeout and
+    abort support. The UI warns that env values are plain text and prefer wrapper scripts.
+    Stdio only — no HTTP/SSE, OAuth or auto-install. The add/remove form was wired but not
+    exercised end to end; a test server added via IPC was verified for connect, discovery,
+    restart, toggle, read-only and mutating calls, session approval and Block. *(L)*
+
+**Phase 3 verification:** driven through the running Electron app over CDP with native captures
+— MCP connect/discovery/restart/toggle and a read-only call; mutating MCP approval allow-once,
+deny and allow-for-session; policy Allow and Block (including read-only calls); invalid JSON,
+unknown action and unknown/missing argument rejection with `invalid` audit rows; file diff
+preview + write; traversal, true symlink escape and shell cwd escape; shell preview, live ticks
+and Kill mid-run (partial output persisted, no error); cancel while an approval is waiting
+(status `cancelled`, audit decision `cancelled`, no file change); Trash delete; workspace root removal;
+encryption-key read rejection; audit rows, decision labels, clear-with-confirm and empty state.
+Not automated: audit export through the native save dialog, workspace folder picker, live
+calendar/mail calls, and adding/removing an MCP server through the Settings form.
 
 ---
 

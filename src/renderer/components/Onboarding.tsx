@@ -337,8 +337,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ status, mood, config, on
                     <span>
                       <span className="row-title">Run tools freely</span>
                       <span className="row-copy block mt-1">
-                        Actions execute without a prompt. Filesystem access stays inside Documents, Downloads, Desktop
-                        and the app data folder.
+                        Actions execute without a prompt. Filesystem access stays inside Documents, Downloads and
+                        Desktop, plus any folder you add later in Settings.
                       </span>
                     </span>
                   </button>

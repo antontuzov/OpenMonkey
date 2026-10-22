@@ -30,6 +30,18 @@ const defaultConfig: Config = {
     // Task output can delete files and run commands, so a human approves each
     // action until they deliberately turn that off.
     autoExecuteTasks: false,
+    approvalPolicies: {
+      file: "ask",
+      web: "ask",
+      shell: "ask",
+      calendar: "ask",
+      email: "ask",
+      mcp: "ask",
+    },
+    workspaceRoots: [],
+  },
+  mcp: {
+    servers: [],
   },
 };
 
@@ -86,16 +98,23 @@ export function dataRoot(): string {
 
 /**
  * Folders the agent may touch without a path prompt. Deliberately narrow: a local
- * model that can browse the filesystem should not see the whole home directory.
+ * model that can browse the filesystem should not see the whole home directory,
+ * and it never gets the app's own data folder where the database and key live.
+ * Extra roots come only from the explicit folder picker in Settings → Workspace.
  */
 export function allowedRoots(): string[] {
   const home = process.env.HOME ?? app.getPath("home");
-  return [
+  const roots = [
     path.join(home, "Documents"),
     path.join(home, "Downloads"),
     path.join(home, "Desktop"),
-    dataRoot(),
+    ...(config.get("agent").workspaceRoots ?? []),
   ];
+  return [...new Set(roots.filter(Boolean).map((root) => path.resolve(root)))];
+}
+
+export function mcpServers() {
+  return config.get("mcp")?.servers ?? [];
 }
 
 export function ggufPath(): string {

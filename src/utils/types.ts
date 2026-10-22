@@ -62,6 +62,11 @@ export interface Task {
   result?: string;
   error?: string;
   emoji: string;
+  /** Set for shell calls so the rail can show what is running and offer a kill button. */
+  command?: string;
+  cwd?: string;
+  /** Live stdout/stderr while a shell call runs; the final clipped result lands in `result`. */
+  output?: string;
 }
 
 export type TaskType =
@@ -70,18 +75,26 @@ export type TaskType =
   | "shell"
   | "email"
   | "calendar"
+  | "mcp"
   | "search"
   | "code"
   | "writing"
   | "analysis"
   | "automation";
 
-export type TaskStatus = "pending" | "awaiting-approval" | "running" | "completed" | "failed" | "denied";
+export type TaskStatus =
+  | "pending"
+  | "awaiting-approval"
+  | "running"
+  | "completed"
+  | "failed"
+  | "denied"
+  | "cancelled";
 
 /** A single tool call the model asked OpenMonkey to run. */
 export interface TaskRequest {
   type: TaskType;
-  /** Tool action name, e.g. "read_file", "run_command". */
+  /** Tool action name, e.g. "read_file", "run_command". For MCP: "<serverId>.<tool>". */
   action: string;
   arguments: Record<string, unknown>;
   /** Human readable one-line summary shown in the approval dialog. */
@@ -90,10 +103,70 @@ export interface TaskRequest {
   mutating: boolean;
 }
 
+export type ApprovalPolicy = "ask" | "allow" | "block";
+
+export type AuditDecision =
+  | "read-only"
+  | "auto"
+  | "policy"
+  | "session"
+  | "approved"
+  | "denied"
+  | "blocked"
+  | "cancelled"
+  | "invalid";
+
 export interface ApprovalRequest {
   requestId: string;
   taskId: string;
   request: TaskRequest;
+  /** Diff, command or argument preview computed before anything runs. */
+  preview: string;
+  /** Policy that produced this prompt, shown in the dialog. */
+  policy: ApprovalPolicy;
+}
+
+/** One tool call, its authorization decision and its outcome. Persisted for export. */
+export interface AuditEntry {
+  id: string;
+  taskId: string;
+  conversationId: string | null;
+  type: TaskType;
+  action: string;
+  summary: string;
+  arguments: Record<string, unknown>;
+  decision: AuditDecision;
+  status: TaskStatus;
+  result?: string;
+  error?: string;
+  createdAt: Date;
+  completedAt?: Date;
+}
+
+export interface McpServerConfig {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+  enabled: boolean;
+  approval: ApprovalPolicy;
+}
+
+export interface McpToolInfo {
+  name: string;
+  description?: string;
+  readOnly: boolean;
+}
+
+export interface McpServerStatus {
+  id: string;
+  name: string;
+  enabled: boolean;
+  state: "stopped" | "connecting" | "ready" | "error";
+  toolCount: number;
+  tools: McpToolInfo[];
+  error?: string;
 }
 
 export type Mood =
@@ -194,7 +267,15 @@ export interface Config {
   agent: {
     name: string;
     personality: string;
+    /** Master switch: true authorizes every mutating tool call without prompting. */
     autoExecuteTasks: boolean;
+    /** Per-tool policy used when the master switch is off. */
+    approvalPolicies: Record<"file" | "web" | "shell" | "calendar" | "email" | "mcp", ApprovalPolicy>;
+    /** Extra folders the user granted in Settings → Workspace. */
+    workspaceRoots: string[];
+  };
+  mcp: {
+    servers: McpServerConfig[];
   };
 }
 
@@ -224,7 +305,7 @@ export interface ModelDownloadStatus {
 export type ModelProvider = "mlx" | "bonsai";
 
 /** Sections of Config the renderer may change, one at a time. */
-export type ConfigPatch = Partial<Pick<Config, "onboarding" | "model" | "ui" | "privacy" | "agent">>;
+export type ConfigPatch = Partial<Pick<Config, "onboarding" | "model" | "ui" | "privacy" | "agent" | "mcp">>;
 
 export interface ElectronAPI {
   processMessage: (conversationId: string, message: string, attachment?: Attachment) => Promise<Message | null>;
@@ -246,7 +327,14 @@ export interface ElectronAPI {
   attachFile: () => Promise<Attachment | null>;
   getConfig: () => Promise<Config>;
   setConfig: (patch: ConfigPatch) => Promise<Config>;
-  approveTask: (requestId: string, approved: boolean) => Promise<void>;
+  approveTask: (requestId: string, approved: boolean, remember?: boolean) => Promise<void>;
+  cancelTask: (taskId: string) => Promise<void>;
+  getAuditLog: (limit?: number) => Promise<AuditEntry[]>;
+  exportAuditLog: () => Promise<string | null>;
+  clearAuditLog: () => Promise<void>;
+  chooseWorkspaceFolder: () => Promise<string | null>;
+  getMcpStatus: () => Promise<McpServerStatus[]>;
+  restartMcpServer: (id: string) => Promise<McpServerStatus[]>;
   stopGeneration: () => Promise<void>;
   switchProvider: (provider: "mlx" | "bonsai") => Promise<void>;
   downloadModel: () => Promise<ModelDownloadStatus>;

@@ -9,7 +9,6 @@ import type { TaskType } from "../../utils/types";
  */
 export class CalendarEmailTools {
   readonly type: TaskType = "calendar";
-  readonly mutatingActions: ReadonlySet<string> = new Set(["create_event", "draft_mail"]);
 
   private get supported(): boolean {
     return process.platform === "darwin";
@@ -23,12 +22,26 @@ export class CalendarEmailTools {
     switch (action) {
       case "list_events":
         return this.listEvents(Number(args.days ?? 7));
+      case "list_calendars":
+        return this.listCalendars();
       case "create_event":
-        return this.createEvent(String(args.summary ?? ""), String(args.start ?? ""), String(args.end ?? ""), String(args.calendar ?? "Calendar"));
+        return this.createEvent(
+          String(args.summary ?? ""),
+          String(args.start ?? ""),
+          String(args.end ?? ""),
+          String(args.calendar ?? "Calendar")
+        );
       case "list_mail":
-        return this.listMail(Number(args.count ?? 10));
+        return this.listMail(Number(args.count ?? 10), String(args.account ?? ""));
+      case "list_accounts":
+        return this.listAccounts();
       case "draft_mail":
-        return this.draftMail(String(args.to ?? ""), String(args.subject ?? ""), String(args.body ?? ""));
+        return this.draftMail(
+          String(args.to ?? ""),
+          String(args.subject ?? ""),
+          String(args.body ?? ""),
+          String(args.account ?? "")
+        );
       default:
         throw new Error(`Unknown calendar/email action: ${action}`);
     }
@@ -38,12 +51,33 @@ export class CalendarEmailTools {
     return await new Promise((resolve, reject) => {
       execFile("osascript", ["-e", source], { timeout: 30_000, maxBuffer: 4_000_000 }, (error, stdout, stderr) => {
         if (error) {
-          reject(new Error(stderr.trim() || error.message));
+          const detail = stderr.trim() || error.message;
+          if (/not authori[sz]ed|not permitted|-1743|apple events/i.test(detail)) {
+            reject(
+              new Error(
+                "macOS blocked Automation for this app. Open Settings → Permissions, allow Calendar or Mail, then try again."
+              )
+            );
+            return;
+          }
+          reject(new Error(detail));
           return;
         }
         resolve(stdout.trim());
       });
     });
+  }
+
+  private async listCalendars(): Promise<string> {
+    const result = await this.osascript(`
+tell application "Calendar"
+  set output to ""
+  repeat with c in calendars
+    set output to output & (name of c) & linefeed
+  end repeat
+  return output
+end tell`);
+    return result || "No local calendars";
   }
 
   private async listEvents(days: number): Promise<string> {
@@ -73,12 +107,31 @@ end tell`;
     return await this.osascript(script);
   }
 
-  private async listMail(count: number): Promise<string> {
-    const script = `
-tell Application "Mail"
+  private async listAccounts(): Promise<string> {
+    const result = await this.osascript(`
+tell application "Mail"
   set output to ""
-  repeat with m in (messages of mailbox "INBOX" of account 1 whose read status is false)
-    if (count of (every message of mailbox "INBOX" of account 1 whose read status is false)) > ${Math.round(count)} then exit repeat
+  repeat with a in accounts
+    set output to output & (name of a) & linefeed
+  end repeat
+  return output
+end tell`);
+    return result || "No Mail accounts configured";
+  }
+
+  private mailAccount(account: string): string {
+    return account.trim() ? `account ${appleScriptQuote(account)}` : "account 1";
+  }
+
+  private async listMail(count: number, account: string): Promise<string> {
+    const script = `
+tell application "Mail"
+  set targetAccount to ${this.mailAccount(account)}
+  set output to ""
+  set msgs to (messages of mailbox "INBOX" of targetAccount whose read status is false)
+  repeat with i from 1 to (count of msgs)
+    if i > ${Math.round(count)} then exit repeat
+    set m to item i of msgs
     set output to output & (date received of m) & " | " & (sender of m) & " | " & (subject of m) & linefeed
   end repeat
   return output
@@ -88,11 +141,12 @@ end tell`;
   }
 
   /** Drafts only: the user reviews and sends, so a misread instruction cannot mail anyone. */
-  private async draftMail(to: string, subject: string, body: string): Promise<string> {
+  private async draftMail(to: string, subject: string, body: string, account: string): Promise<string> {
     if (!to.trim()) throw new Error("draft_mail needs a recipient");
     const script = `
-tell Application "Mail"
-  make new draft message at end of messages of mailbox "DRAFTS" of account 1 with properties {subject:${appleScriptQuote(subject)}, body:${appleScriptQuote(body)}, recipient:{{{address:${appleScriptQuote(to)}, form name:1, "display name":"${escapeQuotes(to)}"}}}
+tell application "Mail"
+  set targetAccount to ${this.mailAccount(account)}
+  make new draft message at end of messages of mailbox "DRAFTS" of targetAccount with properties {subject:${appleScriptQuote(subject)}, body:${appleScriptQuote(body)}, recipient:{{{address:${appleScriptQuote(to)}, form name:1, "display name":"${escapeQuotes(to)}"}}}
   return "Draft created for " & ${appleScriptQuote(to)}
 end tell`;
     return await this.osascript(script);

@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { config, dataRoot } from "./config";
-import type { Conversation, ConversationSearchHit, Message, Task } from "./types";
+import type { AuditEntry, Conversation, ConversationSearchHit, Message, Task } from "./types";
 
 const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
@@ -85,6 +85,23 @@ export class Storage {
         emoji TEXT NOT NULL,
         result TEXT,
         error TEXT,
+        command TEXT,
+        cwd TEXT,
+        created_at INTEGER NOT NULL,
+        completed_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS audit (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        conversation_id TEXT,
+        type TEXT NOT NULL,
+        action TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        arguments TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        status TEXT NOT NULL,
+        result TEXT,
+        error TEXT,
         created_at INTEGER NOT NULL,
         completed_at INTEGER
       );
@@ -98,9 +115,16 @@ export class Storage {
     if (!names.has("prompt")) this.db.exec("ALTER TABLE messages ADD COLUMN prompt TEXT");
     if (!names.has("duration_ms")) this.db.exec("ALTER TABLE messages ADD COLUMN duration_ms INTEGER");
     if (!names.has("stopped")) this.db.exec("ALTER TABLE messages ADD COLUMN stopped INTEGER");
+
+    const taskColumns = this.db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
+    const taskNames = new Set(taskColumns.map((column) => column.name));
+    if (!taskNames.has("command")) this.db.exec("ALTER TABLE tasks ADD COLUMN command TEXT");
+    if (!taskNames.has("cwd")) this.db.exec("ALTER TABLE tasks ADD COLUMN cwd TEXT");
+
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages (conversation_id, created_at);
       CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations (updated_at);
+      CREATE INDEX IF NOT EXISTS idx_audit_created ON audit (created_at);
     `);
 
     // The key has to exist before migration reads legacy content to name the thread.
@@ -384,8 +408,8 @@ export class Storage {
     if (!this.db) return;
     this.db
       .prepare(
-        `INSERT INTO tasks (id, type, description, status, emoji, result, error, created_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO tasks (id, type, description, status, emoji, result, error, command, cwd, created_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            status = excluded.status,
            result = excluded.result,
@@ -400,6 +424,8 @@ export class Storage {
         task.emoji,
         task.result ? this.seal(task.result) : null,
         task.error ? this.seal(task.error) : null,
+        task.command ?? null,
+        task.cwd ? this.seal(task.cwd) : null,
         task.createdAt.getTime(),
         task.completedAt?.getTime() ?? null
       );
@@ -417,6 +443,8 @@ export class Storage {
       emoji: string;
       result: string | null;
       error: string | null;
+      command: string | null;
+      cwd: string | null;
       created_at: number;
       completed_at: number | null;
     }>;
@@ -429,9 +457,90 @@ export class Storage {
       emoji: row.emoji,
       result: row.result ? this.open(row.result) : undefined,
       error: row.error ? this.open(row.error) : undefined,
+      command: row.command ?? undefined,
+      cwd: row.cwd ? this.open(row.cwd) : undefined,
       createdAt: new Date(row.created_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
     }));
+  }
+
+  saveAudit(entry: AuditEntry): void {
+    if (!this.db) return;
+    this.db
+      .prepare(
+        `INSERT INTO audit (id, task_id, conversation_id, type, action, summary, arguments, decision, status, result, error, created_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           decision = excluded.decision,
+           status = excluded.status,
+           result = excluded.result,
+           error = excluded.error,
+           completed_at = excluded.completed_at`
+      )
+      .run(
+        entry.id,
+        entry.taskId,
+        entry.conversationId,
+        entry.type,
+        entry.action,
+        entry.summary,
+        this.seal(JSON.stringify(entry.arguments)),
+        entry.decision,
+        entry.status,
+        entry.result ? this.seal(entry.result.slice(0, 8_000)) : null,
+        entry.error ? this.seal(entry.error.slice(0, 4_000)) : null,
+        entry.createdAt.getTime(),
+        entry.completedAt?.getTime() ?? null
+      );
+  }
+
+  getAuditLog(limit = 100): AuditEntry[] {
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare("SELECT * FROM audit ORDER BY created_at DESC LIMIT ?")
+      .all(Math.min(Math.max(1, limit), 500)) as Array<{
+      id: string;
+      task_id: string;
+      conversation_id: string | null;
+      type: AuditEntry["type"];
+      action: string;
+      summary: string;
+      arguments: string;
+      decision: AuditEntry["decision"];
+      status: AuditEntry["status"];
+      result: string | null;
+      error: string | null;
+      created_at: number;
+      completed_at: number | null;
+    }>;
+
+    return rows.map((row) => {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(this.open(row.arguments)) as Record<string, unknown>;
+      } catch {
+        args = {};
+      }
+      return {
+        id: row.id,
+        taskId: row.task_id,
+        conversationId: row.conversation_id,
+        type: row.type,
+        action: row.action,
+        summary: row.summary,
+        arguments: args,
+        decision: row.decision,
+        status: row.status,
+        result: row.result ? this.open(row.result) : undefined,
+        error: row.error ? this.open(row.error) : undefined,
+        createdAt: new Date(row.created_at),
+        completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+      };
+    });
+  }
+
+  clearAuditLog(): void {
+    this.db?.prepare("DELETE FROM audit").run();
   }
 
   private pruneOlderThan(days: number): void {
@@ -439,6 +548,7 @@ export class Storage {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
     this.db.prepare("DELETE FROM messages WHERE created_at < ?").run(cutoff);
     this.db.prepare("DELETE FROM tasks WHERE created_at < ?").run(cutoff);
+    this.db.prepare("DELETE FROM audit WHERE created_at < ?").run(cutoff);
     this.db
       .prepare(
         "DELETE FROM conversations WHERE updated_at < ? AND NOT EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id)"

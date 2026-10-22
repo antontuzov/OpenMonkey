@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderOpen, Loader, PanelRight, Settings2, ShieldAlert } from "lucide-react";
+import { FolderOpen, Loader, PanelRight, Settings2 } from "lucide-react";
 import { ChatInterface } from "./components/ChatInterface";
 import { TaskMonitor } from "./components/TaskMonitor";
 import { AppSidebar } from "./components/AppSidebar";
 import { SettingsView } from "./components/SettingsView";
 import { Onboarding } from "./components/Onboarding";
+import { ApprovalDialog } from "./components/ApprovalDialog";
 import {
   MOOD_LOGOS,
   type AgentStatus,
@@ -232,9 +233,9 @@ export default function App() {
   }, [config, newChat, view]);
 
   const respond = useCallback(
-    async (approved: boolean) => {
+    async (approved: boolean, remember = false) => {
       if (!approval) return;
-      await window.electron?.approveTask(approval.requestId, approved);
+      await window.electron?.approveTask(approval.requestId, approved, remember);
       setApproval(null);
     },
     [approval]
@@ -293,14 +294,17 @@ export default function App() {
 
   if (view === "settings") {
     return (
-      <SettingsView
-        status={status}
-        mood={mood}
-        config={config}
-        onPatch={patchConfig}
-        onClose={() => setView("chat")}
-        onRefreshStatus={refreshStatus}
-      />
+      <>
+        <SettingsView
+          status={status}
+          mood={mood}
+          config={config}
+          onPatch={patchConfig}
+          onClose={() => setView("chat")}
+          onRefreshStatus={refreshStatus}
+        />
+        {approval && <ApprovalDialog approval={approval} agentName={agentName} onResolve={respond} />}
+      </>
     );
   }
 
@@ -377,42 +381,7 @@ export default function App() {
         </aside>
       )}
 
-      {approval && (
-        <div className="fixed inset-0 bg-ink/25 backdrop-blur-[2px] flex items-center justify-center p-6 z-50">
-          <div className="card max-w-lg w-full p-6" style={{ boxShadow: "var(--shadow-pop)" }}>
-            <div className="flex items-start gap-3 mb-4">
-              <span
-                className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                style={{ background: "color-mix(in srgb, var(--color-warn) 16%, transparent)" }}
-              >
-                <ShieldAlert size={16} className="text-warn" />
-              </span>
-              <div>
-                <p className="section-label !mb-1">Action needs approval</p>
-                <h2 className="text-[15px] font-semibold leading-snug">{approval.request.summary}</h2>
-              </div>
-            </div>
-            <p className="text-muted text-[11.5px] leading-relaxed mb-3">
-              {agentName} wants to run{" "}
-              <span className="text-ink">
-                {approval.request.type}.{approval.request.action}
-              </span>
-              . Nothing on this Mac changes until you allow it.
-            </p>
-            <pre className="bg-card-2 border border-line rounded-xl p-3 text-[11px] text-muted overflow-x-auto max-h-48">
-              {JSON.stringify(approval.request.arguments, null, 2)}
-            </pre>
-            <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => void respond(false)} className="btn">
-                Deny
-              </button>
-              <button onClick={() => void respond(true)} className="btn btn-primary">
-                Allow once
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {approval && <ApprovalDialog approval={approval} agentName={agentName} onResolve={respond} />}
     </div>
   );
 }

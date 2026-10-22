@@ -6,9 +6,12 @@ import {
   Check,
   ChevronDown,
   Cpu,
+  Download,
   ExternalLink,
   Files,
   Fingerprint,
+  FolderOpen,
+  FolderPlus,
   Globe,
   Info,
   Loader,
@@ -17,11 +20,16 @@ import {
   Mail,
   MessageSquare,
   Palette,
+  Plug,
+  Plus,
   RefreshCw,
+  RotateCw,
   Search,
   ShieldCheck,
   SquareTerminal,
+  Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import { ModelDownloadCard } from "./ModelDownloadCard";
 import { ACCENTS } from "../constants";
@@ -29,9 +37,13 @@ import {
   MOODS,
   MOOD_LOGOS,
   type AgentStatus,
+  type ApprovalPolicy,
+  type AuditEntry,
   type AutomationProbe,
   type Config,
   type ConfigPatch,
+  type McpServerConfig,
+  type McpServerStatus,
   type ModelStatus,
   type Mood,
 } from "../../utils/types";
@@ -45,15 +57,81 @@ interface SettingsViewProps {
   onRefreshStatus: () => Promise<void>;
 }
 
-type Section = "profile" | "appearance" | "approvals" | "permissions" | "privacy" | "model";
+type Section =
+  | "profile"
+  | "appearance"
+  | "approvals"
+  | "workspace"
+  | "permissions"
+  | "privacy"
+  | "extensions"
+  | "model";
 
+const DEFAULT_POLICIES: Record<"file" | "web" | "shell" | "calendar" | "email" | "mcp", ApprovalPolicy> = {
+  file: "ask",
+  web: "ask",
+  shell: "ask",
+  calendar: "ask",
+  email: "ask",
+  mcp: "ask",
+};
 
-const TOOLS = [
-  { icon: Files, name: "Files", copy: "Read, write and move files inside your allowed folders." },
-  { icon: Globe, name: "Web", copy: "Fetch a page or open a link you asked about." },
-  { icon: SquareTerminal, name: "Shell", copy: "Run a command on this Mac and read its output." },
-  { icon: CalendarClock, name: "Calendar & mail", copy: "Draft events or emails for you to review." },
+const POLICY_ROWS: Array<{
+  type: keyof typeof DEFAULT_POLICIES;
+  icon: typeof Files;
+  name: string;
+  copy: string;
+}> = [
+  { type: "file", icon: Files, name: "Files", copy: "Read, write, move and Trash files." },
+  { type: "web", icon: Globe, name: "Web", copy: "Fetch a page or open a link you asked about." },
+  { type: "shell", icon: SquareTerminal, name: "Shell", copy: "Run a command and stream its output." },
+  { type: "calendar", icon: CalendarClock, name: "Calendar", copy: "Read events and create new ones." },
+  { type: "email", icon: Mail, name: "Mail", copy: "Read unread mail and create drafts. Never sends." },
+  { type: "mcp", icon: Plug, name: "MCP tools", copy: "Calls on local extension servers." },
 ];
+
+const POLICY_OPTIONS: Array<{ value: ApprovalPolicy; label: string }> = [
+  { value: "ask", label: "Ask" },
+  { value: "allow", label: "Allow" },
+  { value: "block", label: "Block" },
+];
+
+const DECISION_LABEL: Record<AuditEntry["decision"], string> = {
+  "read-only": "read-only",
+  auto: "master switch",
+  policy: "policy allowed",
+  session: "session allow",
+  approved: "you allowed",
+  denied: "you denied",
+  blocked: "blocked",
+  cancelled: "cancelled",
+  invalid: "invalid request",
+};
+
+const AUDIT_STATUS: Record<AuditEntry["status"], { label: string; tone: string }> = {
+  pending: { label: "queued", tone: "" },
+  "awaiting-approval": { label: "needs you", tone: "!text-warn" },
+  running: { label: "running", tone: "chip-accent" },
+  completed: { label: "done", tone: "chip-accent" },
+  failed: { label: "failed", tone: "!text-danger" },
+  denied: { label: "denied", tone: "" },
+  cancelled: { label: "cancelled", tone: "" },
+};
+
+const MCP_STATE: Record<McpServerStatus["state"], { label: string; tone: string }> = {
+  stopped: { label: "stopped", tone: "" },
+  connecting: { label: "starting…", tone: "!text-warn" },
+  ready: { label: "ready", tone: "chip-accent" },
+  error: { label: "error", tone: "!text-danger" },
+};
+
+function splitArgs(value: string): string[] {
+  const result: string[] = [];
+  const pattern = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(value))) result.push(match[1] ?? match[2] ?? match[3]);
+  return result;
+}
 
 const NAV: Array<{
   label: string | null;
@@ -70,9 +148,14 @@ const NAV: Array<{
     label: "Control",
     items: [
       { id: "approvals", label: "Approvals", icon: ShieldCheck },
+      { id: "workspace", label: "Workspace", icon: FolderOpen },
       { id: "permissions", label: "Permissions", icon: Fingerprint },
       { id: "privacy", label: "Privacy", icon: Lock },
     ],
+  },
+  {
+    label: "Extensions",
+    items: [{ id: "extensions", label: "MCP servers", icon: Plug }],
   },
   {
     label: "Model",
@@ -91,7 +174,15 @@ const TITLES: Record<Section, { title: string; lede: string }> = {
   },
   approvals: {
     title: "Approvals",
-    lede: "Decide what runs on its own. With approvals on, every tool call shows its arguments before it executes.",
+    lede: "Decide what runs on its own. Every call is previewed before it executes and recorded in the audit log.",
+  },
+  workspace: {
+    title: "Workspace",
+    lede: "The folders tools may touch. Mutating calls still stop for approval unless you change the policy.",
+  },
+  extensions: {
+    title: "Extensions",
+    lede: "Local MCP servers add tools over stdio. They run as child processes with the same approval and audit rules.",
   },
   permissions: {
     title: "Permissions",
@@ -163,8 +254,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [models, setModels] = useState<ModelStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [probes, setProbes] = useState<Partial<Record<"calendar" | "mail", AutomationProbe | "checking">>>({});
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  const [auditOpen, setAuditOpen] = useState<string | null>(null);
+  const [auditNotice, setAuditNotice] = useState("");
+  const [clearing, setClearing] = useState(false);
+  const [mcp, setMcp] = useState<McpServerStatus[]>([]);
+  const [mcpBusy, setMcpBusy] = useState<string | null>(null);
+  const [mcpError, setMcpError] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [serverName, setServerName] = useState("");
+  const [serverCommand, setServerCommand] = useState("");
+  const [serverArgs, setServerArgs] = useState("");
+  const [serverEnv, setServerEnv] = useState("");
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [expandedServer, setExpandedServer] = useState<string | null>(null);
 
   const { model, agent, privacy } = config;
+  const policies = { ...DEFAULT_POLICIES, ...(agent.approvalPolicies ?? {}) };
+  const workspaceRoots = agent.workspaceRoots ?? [];
+  const servers = config.mcp?.servers ?? [];
   const accent = config.ui.accent ?? ACCENTS[0].value;
   const accentName = ACCENTS.find((item) => item.value === accent)?.name ?? "Custom";
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
@@ -181,6 +289,118 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     await onRefreshStatus();
   };
 
+  const refreshAudit = async () => {
+    const entries = await window.electron?.getAuditLog(100).catch(() => []);
+    if (entries) setAudit(entries);
+  };
+
+  const exportAudit = async () => {
+    setAuditNotice("");
+    try {
+      const file = await window.electron?.exportAuditLog();
+      if (file) setAuditNotice(`Exported to ${file}`);
+    } catch (error) {
+      setAuditNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const requestClearAudit = () => {
+    if (!clearing) {
+      setClearing(true);
+      setAuditNotice("Click again to clear the local audit log.");
+      window.setTimeout(() => setClearing(false), 4_000);
+      return;
+    }
+    void window.electron?.clearAuditLog().then(() => {
+      setClearing(false);
+      setAuditNotice("Audit log cleared.");
+      void refreshAudit();
+    });
+  };
+
+  const refreshMcp = async () => {
+    const status = await window.electron?.getMcpStatus().catch(() => []);
+    if (status) setMcp(status);
+  };
+
+  const patchServer = async (id: string, changes: Partial<McpServerConfig>) => {
+    await onPatch({
+      mcp: { servers: servers.map((server) => (server.id === id ? { ...server, ...changes } : server)) },
+    });
+    await refreshMcp();
+  };
+
+  const addServer = async () => {
+    const name = serverName.trim();
+    const command = serverCommand.trim();
+    if (!name || !command) {
+      setMcpError("A display name and a command are required.");
+      return;
+    }
+    const env: Record<string, string> = {};
+    for (const line of serverEnv.split("\n").map((value) => value.trim()).filter(Boolean)) {
+      const index = line.indexOf("=");
+      if (index <= 0) {
+        setMcpError(`Environment line "${line}" needs the form KEY=value.`);
+        return;
+      }
+      env[line.slice(0, index).trim()] = line.slice(index + 1);
+    }
+    const server: McpServerConfig = {
+      id: `mcp_${Date.now().toString(36)}`,
+      name,
+      command,
+      args: splitArgs(serverArgs),
+      env: Object.keys(env).length ? env : undefined,
+      enabled: true,
+      approval: "ask",
+    };
+    setMcpError("");
+    try {
+      await onPatch({ mcp: { servers: [...servers, server] } });
+      await refreshMcp();
+      setAdding(false);
+      setServerName("");
+      setServerCommand("");
+      setServerArgs("");
+      setServerEnv("");
+    } catch (error) {
+      setMcpError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const removeServer = async (id: string) => {
+    await onPatch({ mcp: { servers: servers.filter((server) => server.id !== id) } });
+    setRemovingId(null);
+    await refreshMcp();
+  };
+
+  const restartServer = async (id: string) => {
+    setMcpBusy(id);
+    try {
+      const status = await window.electron?.restartMcpServer(id);
+      if (status) setMcp(status);
+    } finally {
+      setMcpBusy(null);
+    }
+  };
+
+  const addWorkspace = async () => {
+    const folder = await window.electron?.chooseWorkspaceFolder().catch(() => null);
+    if (!folder || workspaceRoots.includes(folder)) return;
+    await onPatch({ agent: { ...agent, workspaceRoots: [...workspaceRoots, folder] } });
+  };
+
+  const removeWorkspace = (folder: string) => {
+    void onPatch({
+      agent: { ...agent, workspaceRoots: workspaceRoots.filter((root) => root !== folder) },
+    });
+  };
+
+  const patchPolicy = (type: keyof typeof DEFAULT_POLICIES, value: ApprovalPolicy) => {
+    void onPatch({ agent: { ...agent, approvalPolicies: { ...policies, [type]: value } } });
+  };
+
   const checkAutomation = async (area: "calendar" | "mail") => {
     setProbes((current) => ({ ...current, [area]: "checking" }));
     try {
@@ -193,6 +413,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }));
     }
   };
+
+  useEffect(() => {
+    if (section !== "approvals") return;
+    void refreshAudit();
+    const timer = window.setInterval(() => void refreshAudit(), 4_000);
+    return () => window.clearInterval(timer);
+  }, [section]);
+
+  useEffect(() => {
+    if (section !== "extensions") return;
+    void refreshMcp();
+  }, [section]);
 
   const probeChip = (area: "calendar" | "mail") => {
     const probe = probes[area];
@@ -415,7 +647,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <SettingRow title="Tool approvals" copy="Whether actions stop for your confirmation first.">
                       <span className={`chip ${agent.autoExecuteTasks ? "" : "chip-accent"}`}>
                         {agent.autoExecuteTasks ? <LockOpen size={11} /> : <Lock size={11} />}
-                        {agent.autoExecuteTasks ? "Runs freely" : "Asks first"}
+                        {agent.autoExecuteTasks ? "Runs freely" : "Per tool"}
                       </span>
                     </SettingRow>
                     <SettingRow title="Stored history" copy="A local SQLite file, sealed with AES-256-GCM by default.">
@@ -523,7 +755,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="card">
                     <SettingRow
                       title="Run tool actions without asking"
-                      copy="Off by default. When off, file writes, shell commands, web fetches and mail drafts each wait for Allow once."
+                      copy="Off by default. When off, file writes, shell commands, calendar changes, mail drafts and MCP actions each follow their tool policy."
                     >
                       <Toggle
                         on={agent.autoExecuteTasks}
@@ -536,42 +768,452 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <SettingRow title="Current policy" copy="Applies immediately to the next tool call.">
                       <span className={`chip ${agent.autoExecuteTasks ? "" : "chip-accent"}`}>
                         {agent.autoExecuteTasks ? <LockOpen size={11} /> : <Lock size={11} />}
-                        {agent.autoExecuteTasks ? "Runs freely" : "Every action asks first"}
+                        {agent.autoExecuteTasks ? "Runs freely" : "Per-tool policy, reads stay free"}
                       </span>
                     </SettingRow>
                   </div>
                 </section>
 
                 <section>
-                  <p className="section-label">What can run</p>
+                  <p className="section-label">Per-tool policy</p>
                   <div className="card">
-                    {TOOLS.map((tool) => {
-                      const Icon = tool.icon;
+                    {POLICY_ROWS.map((row) => {
+                      const Icon = row.icon;
+                      const value = policies[row.type];
                       return (
-                        <div key={tool.name} className="row">
+                        <div key={row.type} className="row">
                           <div className="flex items-center gap-3">
                             <span className="w-7 h-7 rounded-lg bg-card-2 flex items-center justify-center">
                               <Icon size={14} className="text-muted" />
                             </span>
                             <div>
-                              <p className="row-title">{tool.name}</p>
-                              <p className="row-copy">{tool.copy}</p>
+                              <p className="row-title">{row.name}</p>
+                              <p className="row-copy">{row.copy}</p>
                             </div>
                           </div>
-                          <span className={`chip ${agent.autoExecuteTasks ? "" : "chip-accent"}`}>
-                            {agent.autoExecuteTasks ? "Runs freely" : "Asks first"}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {agent.autoExecuteTasks && <span className="chip">master override</span>}
+                            <div className="segmented">
+                              {POLICY_OPTIONS.map((option) => (
+                                <button
+                                  key={option.value}
+                                  disabled={agent.autoExecuteTasks}
+                                  onClick={() => patchPolicy(row.type, option.value)}
+                                  className={`${value === option.value ? "segmented-active" : ""} ${
+                                    value === "block" && option.value === "block" ? "!text-danger" : ""
+                                  }`}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
+                  <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                    Read-only calls such as listing a folder or reading a file never prompt. Allow runs that tool
+                    without asking; Block refuses every call of that type, including reads. The master switch above
+                    overrides every row.
+                  </p>
+                </section>
+
+                <section>
+                  <div className="flex items-center justify-between gap-4 mb-2">
+                    <p className="section-label !mb-0">Audit log</p>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => void refreshAudit()} className="btn !h-7 !px-2.5">
+                        <RefreshCw size={11} />
+                        Refresh
+                      </button>
+                      <button onClick={() => void exportAudit()} className="btn !h-7 !px-2.5">
+                        <Download size={11} />
+                        Export
+                      </button>
+                      <button
+                        onClick={requestClearAudit}
+                        className={`btn !h-7 !px-2.5 ${clearing ? "!text-danger !border-danger/40" : ""}`}
+                      >
+                        <Trash2 size={11} />
+                        {clearing ? "Confirm" : "Clear"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="card">
+                    {audit.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <ShieldCheck size={18} className="mx-auto text-faint" />
+                        <p className="text-[11.5px] text-muted mt-2">
+                          Every tool call lands here with its decision, arguments and outcome. Nothing has run yet.
+                        </p>
+                      </div>
+                    ) : (
+                      audit.map((entry) => {
+                        const Icon =
+                          entry.type === "file"
+                            ? Files
+                            : entry.type === "web"
+                              ? Globe
+                              : entry.type === "shell"
+                                ? SquareTerminal
+                                : entry.type === "calendar"
+                                  ? CalendarClock
+                                  : entry.type === "email"
+                                    ? Mail
+                                    : entry.type === "mcp"
+                                      ? Plug
+                                      : ShieldCheck;
+                        const status = AUDIT_STATUS[entry.status];
+                        const open = auditOpen === entry.id;
+                        const created = new Date(entry.createdAt);
+                        const stamp = `${created.toLocaleDateString([], { month: "short", day: "numeric" })} · ${created.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+                        return (
+                          <div key={entry.id}>
+                            <button
+                              onClick={() => setAuditOpen(open ? null : entry.id)}
+                              className="row w-full text-left"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="w-7 h-7 rounded-lg bg-card-2 flex items-center justify-center shrink-0">
+                                  <Icon size={14} className="text-muted" />
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="row-title truncate">{entry.action}</p>
+                                  <p className="row-copy truncate">{entry.summary}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[10px] text-faint tabular-nums">{stamp}</span>
+                                <span className="chip">{DECISION_LABEL[entry.decision]}</span>
+                                <span className={`chip ${status.tone}`}>{status.label}</span>
+                                <ChevronDown
+                                  size={13}
+                                  className={`text-faint transition-transform ${open ? "rotate-180" : ""}`}
+                                />
+                              </div>
+                            </button>
+                            {open && (
+                              <div className="px-4 pb-4 -mt-1 space-y-2">
+                                <div>
+                                  <p className="text-[9.5px] tracking-[0.08em] uppercase text-faint mb-1">Arguments</p>
+                                  <pre className="text-[10.5px] leading-relaxed bg-card-2 border border-line rounded-lg px-3 py-2 overflow-x-auto max-h-[220px] overflow-y-auto">
+                                    {JSON.stringify(entry.arguments, null, 2)}
+                                  </pre>
+                                </div>
+                                {entry.result && (
+                                  <div>
+                                    <p className="text-[9.5px] tracking-[0.08em] uppercase text-faint mb-1">Result</p>
+                                    <pre className="text-[10.5px] leading-relaxed bg-card-2 border border-line rounded-lg px-3 py-2 overflow-x-auto max-h-[180px] overflow-y-auto whitespace-pre-wrap">
+                                      {entry.result}
+                                    </pre>
+                                  </div>
+                                )}
+                                {entry.error && (
+                                  <p className="text-[10.5px] text-danger leading-relaxed">Error: {entry.error}</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  {auditNotice && <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">{auditNotice}</p>}
+                  <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                    Entries are sealed with the same AES-256-GCM key as chat history and pruned with the auto-delete
+                    window. Export writes a plain JSON file you choose, mode 0600.
+                  </p>
                 </section>
 
                 <div className="card p-4 flex items-start gap-2.5">
                   <Info size={14} className="text-faint mt-0.5 shrink-0" />
                   <p className="text-[11px] text-muted leading-relaxed">
-                    Approval prompts show the exact tool and arguments before anything runs, and the filesystem tool
-                    stays inside Documents, Downloads, Desktop and this app&apos;s data folder either way.
+                    Approval prompts show a diff, command or draft preview before anything runs. Paths stay inside an
+                    allowed workspace root even when a policy is set to Allow.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {section === "workspace" && (
+              <>
+                <section>
+                  <p className="section-label">Standard folders</p>
+                  <div className="card">
+                    {[
+                      { label: "Documents", copy: "Read and write inside your Documents folder." },
+                      { label: "Downloads", copy: "Read and write inside your Downloads folder." },
+                      { label: "Desktop", copy: "Read and write inside your Desktop folder." },
+                    ].map((folder) => (
+                      <div key={folder.label} className="row">
+                        <div>
+                          <p className="row-title">{folder.label}</p>
+                          <p className="row-copy">{folder.copy}</p>
+                        </div>
+                        <span className="chip chip-accent">always allowed</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                    These are resolved on every call, including through symlinks. If macOS blocks one of them, the
+                    tool reports the error instead of guessing a new path.
+                  </p>
+                </section>
+
+                <section>
+                  <div className="flex items-center justify-between gap-4 mb-2">
+                    <p className="section-label !mb-0">Additional folders</p>
+                    <button onClick={() => void addWorkspace()} className="btn !h-7 !px-2.5">
+                      <FolderPlus size={11} />
+                      Add folder…
+                    </button>
+                  </div>
+                  <div className="card">
+                    {workspaceRoots.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <FolderOpen size={18} className="mx-auto text-faint" />
+                        <p className="text-[11.5px] text-muted mt-2">
+                          No extra folders yet. Add a project folder when you want the file and shell tools to work
+                          there.
+                        </p>
+                      </div>
+                    ) : (
+                      workspaceRoots.map((root) => (
+                        <div key={root} className="row">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="w-7 h-7 rounded-lg bg-card-2 flex items-center justify-center shrink-0">
+                              <FolderOpen size={14} className="text-muted" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="row-title font-mono text-[11px] truncate">{root}</p>
+                              <p className="row-copy">Read, write, shell working directory and Trash.</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => removeWorkspace(root)}
+                            aria-label={`Remove ${root}`}
+                            className="icon-btn"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                    Removing a folder takes effect on the next call. Files already created stay where they are.
+                  </p>
+                </section>
+
+                <div className="card p-4 flex items-start gap-2.5">
+                  <Info size={14} className="text-faint mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-muted leading-relaxed">
+                    A workspace root expands what the agent can reach; it does not grant approval. Mutating calls still
+                    follow the per-tool policy, and the app never adds your entire home folder or filesystem root.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {section === "extensions" && (
+              <>
+                <section>
+                  <div className="flex items-center justify-between gap-4 mb-2">
+                    <p className="section-label !mb-0">Local servers</p>
+                    <button onClick={() => setAdding((value) => !value)} className="btn !h-7 !px-2.5">
+                      {adding ? <X size={11} /> : <Plus size={11} />}
+                      {adding ? "Cancel" : "Add server"}
+                    </button>
+                  </div>
+
+                  {adding && (
+                    <div className="card p-4 mb-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                          <span className="text-[10px] text-muted">Display name</span>
+                          <input
+                            value={serverName}
+                            onChange={(event) => setServerName(event.target.value)}
+                            placeholder="Filesystem tools"
+                            className="field w-full mt-1"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-[10px] text-muted">Command</span>
+                          <input
+                            value={serverCommand}
+                            onChange={(event) => setServerCommand(event.target.value)}
+                            placeholder="npx"
+                            className="field w-full mt-1 font-mono !text-[11px]"
+                          />
+                        </label>
+                      </div>
+                      <label className="block mt-3">
+                        <span className="text-[10px] text-muted">Arguments</span>
+                        <input
+                          value={serverArgs}
+                          onChange={(event) => setServerArgs(event.target.value)}
+                          placeholder="-y @modelcontextprotocol/server-filesystem ~/Documents/notes"
+                          className="field w-full mt-1 font-mono !text-[11px]"
+                        />
+                      </label>
+                      <label className="block mt-3">
+                        <span className="text-[10px] text-muted">Environment, one KEY=value per line</span>
+                        <textarea
+                          value={serverEnv}
+                          onChange={(event) => setServerEnv(event.target.value)}
+                          rows={2}
+                          placeholder="API_KEY=…"
+                          className="field w-full mt-1 font-mono !text-[11px] resize-y"
+                        />
+                      </label>
+                      <div className="flex items-start gap-2 mt-3">
+                        <ShieldCheck size={13} className="text-warn mt-0.5 shrink-0" />
+                        <p className="text-[10.5px] text-muted leading-relaxed">
+                          The command starts as your macOS user. Only add servers you trust; their tools can do
+                          anything that command can. Approval policies and the audit log still apply. Environment
+                          values are stored in the local config file in plain text, so prefer a wrapper script for
+                          secrets.
+                        </p>
+                      </div>
+                      {mcpError && <p className="text-[10.5px] text-danger mt-2">{mcpError}</p>}
+                      <div className="flex justify-end mt-3">
+                        <button onClick={() => void addServer()} className="btn btn-primary">
+                          <Plus size={12} />
+                          Add and start
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="card">
+                    {servers.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <Plug size={18} className="mx-auto text-faint" />
+                        <p className="text-[11.5px] text-muted mt-2">
+                          No MCP servers yet. Add a local stdio server to give the agent extra tools.
+                        </p>
+                      </div>
+                    ) : (
+                      servers.map((server) => {
+                        const live = mcp.find((item) => item.id === server.id);
+                        const state = live ? MCP_STATE[live.state] : MCP_STATE.stopped;
+                        const toggleExpanded = () => setExpandedServer(expandedServer === server.id ? null : server.id);
+                        const busy = mcpBusy === server.id;
+                        return (
+                          <div key={server.id}>
+                            <div className="row">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="w-7 h-7 rounded-lg bg-card-2 flex items-center justify-center shrink-0">
+                                  <Plug size={14} className="text-muted" />
+                                </span>
+                                <div className="min-w-0">
+                                  <p className="row-title truncate">{server.name}</p>
+                                  <p className="row-copy font-mono text-[10.5px] truncate">
+                                    {server.command} {server.args.join(" ")}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`chip ${state.tone}`}>{state.label}</span>
+                                {live && live.toolCount > 0 && <span className="chip">{live.toolCount} tools</span>}
+                                <div className="segmented">
+                                  {POLICY_OPTIONS.map((option) => (
+                                    <button
+                                      key={option.value}
+                                      onClick={() => void patchServer(server.id, { approval: option.value })}
+                                      className={`${server.approval === option.value ? "segmented-active" : ""} ${
+                                        option.value === "block" && server.approval === "block" ? "!text-danger" : ""
+                                      }`}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  ))}
+                                </div>
+                                <Toggle
+                                  on={server.enabled}
+                                  label={`Enable ${server.name}`}
+                                  onChange={() => void patchServer(server.id, { enabled: !server.enabled })}
+                                />
+                                <button
+                                  onClick={() => void restartServer(server.id)}
+                                  disabled={busy || !server.enabled}
+                                  aria-label={`Restart ${server.name}`}
+                                  className="icon-btn"
+                                >
+                                  <RotateCw size={12} className={busy ? "animate-spin" : ""} />
+                                </button>
+                                <button
+                                  onClick={() => (removingId === server.id ? void removeServer(server.id) : setRemovingId(server.id))}
+                                  aria-label={`Remove ${server.name}`}
+                                  className={`icon-btn ${removingId === server.id ? "!text-danger" : ""}`}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                                <button onClick={toggleExpanded} aria-label={`Show tools for ${server.name}`} className="icon-btn">
+                                  <ChevronDown
+                                    size={13}
+                                    className={`transition-transform ${expandedServer === server.id ? "rotate-180" : ""}`}
+                                  />
+                                </button>
+                              </div>
+                            </div>
+                            {removingId === server.id && (
+                              <p className="text-[10.5px] text-danger px-4 pb-3 -mt-1">
+                                Click the trash icon again to remove this server. Its tools disappear immediately.
+                              </p>
+                            )}
+                            {live?.error && (
+                              <p className="text-[10.5px] text-danger px-4 pb-3 -mt-1 leading-relaxed">{live.error}</p>
+                            )}
+                            {expandedServer === server.id && (
+                              <div className="px-4 pb-4 -mt-1">
+                                {live && live.tools.length > 0 ? (
+                                  <div className="space-y-1">
+                                    {live.tools.map((tool) => (
+                                      <div
+                                        key={tool.name}
+                                        className="flex items-start justify-between gap-3 bg-card-2 border border-line rounded-lg px-3 py-2"
+                                      >
+                                        <div className="min-w-0">
+                                          <p className="text-[11px] font-mono truncate">{tool.name}</p>
+                                          {tool.description && (
+                                            <p className="text-[10px] text-muted leading-relaxed mt-0.5 line-clamp-2">
+                                              {tool.description}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <span className={`chip shrink-0 ${tool.readOnly ? "chip-accent" : ""}`}>
+                                          {tool.readOnly ? "read-only" : "mutating"}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-[10.5px] text-muted">
+                                    No tools discovered. Restart the server or check its command and arguments.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                    Servers start with the app and reconnect when the config changes. Tools listed as read-only skip
+                    prompts; everything else follows the Ask / Allow / Block choice beside it.
+                  </p>
+                </section>
+
+                <div className="card p-4 flex items-start gap-2.5">
+                  <Info size={14} className="text-faint mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-muted leading-relaxed">
+                    OpenMonkey speaks MCP over local stdio only. There is no HTTP transport and no server is downloaded
+                    automatically; the command you enter is the command that runs.
                   </p>
                 </div>
               </>

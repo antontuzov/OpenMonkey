@@ -163,15 +163,68 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("get-tasks", () => agent().getTaskManager().getActiveTasks());
 
-  ipcMain.handle("approve-task", (_event, requestId: string, approved: boolean) => {
-    agent().resolveApproval(requestId, Boolean(approved));
+  ipcMain.handle("approve-task", (_event, requestId: string, approved: boolean, remember: boolean) => {
+    agent().resolveApproval(requestId, Boolean(approved), Boolean(remember));
+  });
+
+  ipcMain.handle("cancel-task", (_event, taskId: unknown) => {
+    if (typeof taskId !== "string") throw new Error("A task id is required");
+    agent().cancelTask(taskId);
+  });
+
+  ipcMain.handle("get-audit-log", (_event, limit: unknown) => {
+    const size = typeof limit === "number" && Number.isFinite(limit) ? limit : 100;
+    return agent().getAuditLog(size);
+  });
+
+  ipcMain.handle("clear-audit-log", () => {
+    agent().clearAuditLog();
+  });
+
+  ipcMain.handle("export-audit-log", async () => {
+    const window = deps.getWindow();
+    const options: Electron.SaveDialogOptions = {
+      title: "Export tool audit log",
+      defaultPath: `openmonkey-audit-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    };
+    const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    const entries = agent().getAuditLog(500);
+    fs.writeFileSync(
+      result.filePath,
+      JSON.stringify({ app: "OpenMonkey", exportedAt: new Date().toISOString(), entries }, null, 2),
+      { mode: 0o600 }
+    );
+    return result.filePath;
+  });
+
+  ipcMain.handle("choose-workspace-folder", async () => {
+    const window = deps.getWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: "Add a folder OpenMonkey may use",
+      message: "Tool calls still stop for approval unless you change the policy.",
+      properties: ["openDirectory", "createDirectory"],
+    };
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) return null;
+    const folder = path.resolve(result.filePaths[0]);
+    if (folder === path.parse(folder).root) throw new Error("The filesystem root cannot be a workspace folder");
+    return folder;
+  });
+
+  ipcMain.handle("get-mcp-status", () => agent().getMcpStatus());
+  ipcMain.handle("restart-mcp-server", (_event, id: unknown) => {
+    if (typeof id !== "string" || !id.trim()) throw new Error("A server id is required");
+    return agent().restartMcpServer(id);
   });
 
   ipcMain.handle("get-config", () => config.getAll());
 
-  ipcMain.handle("set-config", (_event, patch: Parameters<typeof config.merge>[0]) => {
+  ipcMain.handle("set-config", async (_event, patch: Parameters<typeof config.merge>[0]) => {
     const updated = config.merge(patch);
     logger.info("config.updated", { keys: Object.keys(patch) });
+    if (patch && "mcp" in patch) await agent().refreshMcp();
     return updated;
   });
 

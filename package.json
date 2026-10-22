@@ -17,6 +17,7 @@
     "package:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "better-sqlite3": "^13.0.3",
     "electron-store": "^8.2.0",
     "lucide-react": "^1.61.0",
