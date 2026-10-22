@@ -11,9 +11,9 @@ const defaultConfig: Config = {
     maxTokens: 2048,
   },
   ui: {
-    theme: "dark",
+    theme: "system",
+    accent: "#3ecf8e",
     currentMood: "neutral",
-    sidebarVisible: true,
   },
   privacy: {
     saveHistory: true,

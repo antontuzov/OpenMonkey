@@ -19,6 +19,7 @@
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "electron-store": "^8.2.0",
+    "lucide-react": "^1.61.0",
     "node-llama-cpp": "^3.22.2",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

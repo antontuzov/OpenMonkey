@@ -136,9 +136,9 @@ export interface Config {
     maxTokens: number;
   };
   ui: {
-    theme: "dark" | "light";
+    theme: "system" | "light" | "dark";
+    accent: string;
     currentMood: string;
-    sidebarVisible: boolean;
   };
   privacy: {
     saveHistory: boolean;

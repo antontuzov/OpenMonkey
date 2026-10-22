@@ -38,13 +38,14 @@ function send(channel: string, payload?: unknown): void {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
+    width: 1360,
+    height: 860,
+    minWidth: 980,
+    minHeight: 660,
+    center: true,
     // Native frame everywhere; on macOS hiddenInset slides the traffic lights into the
     // sidebar's top strip, which the renderer makes draggable.
-    backgroundColor: "#1a1a2e",
+    backgroundColor: "#f6f7f3",
     show: false,
     webPreferences: {
       nodeIntegration: false,
