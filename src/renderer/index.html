@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>OpenMonkey</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      No CSP meta tag here: @vitejs/plugin-react injects an inline Fast Refresh preamble
+      in dev, so a strict inline policy would break HMR. main.ts sets the production CSP
+      header on the packaged renderer instead.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>

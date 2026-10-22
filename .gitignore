@@ -1,0 +1,34 @@
+node_modules/
+dist/
+dist-ssr/
+out/
+release/
+*.tsbuildinfo
+
+# Model weights are downloaded per machine, never committed
+models/
+*.gguf
+*.safetensors
+*.part
+
+# User data and secrets
+.env
+.env.*
+*.local
+data/
+secret.key
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+._*
+Thumbs.db
+.idea/
+.vscode/
+*.swp
