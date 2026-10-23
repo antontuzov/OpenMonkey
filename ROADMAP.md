@@ -275,14 +275,52 @@ screen (local history loads faster than the debounce).
 
 ## Phase 6 — Privacy you can prove (P0, ~1 week)
 
-27. **Secrets & locking**: move the encryption key to Keychain (`safeStorage`), optional
-    passphrase, auto-lock, lock on sleep, erase-all with confirmation. *(M)*
+27. ✅ **Secrets & locking**: the history key is generated once and wrapped by `safeStorage`
+    into `secret.key.enc`, with the plaintext `secret.key` (0600) kept only as the no-vault
+    fallback and deleted after the wrapped copy has been read back. An **optional passphrase**
+    replaces that: setting one scrypt-wraps the key (N=2^15) into `secret.key.pass` at 0600 and
+    deletes every copy the vault could open alone, so a locked database is never even opened —
+    `storage.init()` refuses, the model still loads, and the app shows a full-screen lock gate.
+    **Auto-lock** polls `powerMonitor.getSystemIdleTime()` every 20 s at 1/5/15/60 minutes and
+    also fires on `suspend` and `lock-screen`; it is inert without a passphrase, and the picker
+    says so by disabling those choices. Locking, unlocking and erasing all route through one
+    path that closes the database (checkpointing the WAL), zeroes the in-memory key, empties the
+    agent's decrypted turns and the model's chat context, and rebuilds the windows so no
+    decrypted text survives in a renderer that already painted it. **Erase-all** needs the word
+    `ERASE` typed, then deletes the database, the key in every form it exists in and the logs,
+    and reopens an empty store with a fresh key. Turning encryption *off* is refused while a
+    passphrase is set — the wrapped copy is then the only key, and dropping encryption would
+    strand every stored row. Quick Ask refuses to answer while locked rather than replying from
+    an empty context it cannot write to. Retention now runs on a six-hour timer as well as at
+    launch, and `close()` folds the WAL back into the database. *(M)*
 28. **Portability**: encrypted export/import of sessions, memory and settings; DB schema
     versioning and migrations; WAL checkpoint on quit. *(M)*
 29. **Diagnostics**: rotating local logs with redaction, view/clear UI, offline indicator and
     a deny-all-network switch. No telemetry by default. *(S)*
 30. **Privacy page truthfulness**: every toggle enforces its claim (save history, encryption,
     retention run daily, not only at launch). *(S)*
+
+**Phase 6 verification (27):** every step below ran against the real Electron app, on the real
+profile, with `data/` and the config copied to `/tmp` first and restored afterwards. Cold boot
+read the wrapped key from the macOS keychain and decrypted all 43 stored messages; setting the
+passphrase left `secret.key.pass` (0600, 128 bytes) and removed `secret.key.enc`; the next cold
+boot came up `keySource: "locked"` with the database unopened, `getConversations()` empty, the
+model loaded to `ready`, and the lock gate on screen; a wrong passphrase cleared the field, set
+`aria-invalid` and reported "That passphrase does not match" without unlocking; the right one
+reopened the store with the 43 messages back in the chat. "Lock now" closed the database and left
+no `-wal`/`-shm` beside it, which is the same `close()` that shutdown uses. Removing the
+passphrase re-wrapped the key into the vault and the same 43 messages still decrypted, proving the
+wrap → unwrap → re-wrap round trip kept the key; asking to switch encryption off in that state came
+back with `encryptData: true` and a `privacy.encrypt.off.blocked` log line. Erase-all rejected `erase` ("Type ERASE to
+confirm") with nothing deleted, then on `ERASE` shrank the database from 200 KB to 4 KB, wrote a
+fresh key, deleted the log folder and kept logging into a new file; audit, facts and chats all
+came back empty. **Not exercised:** the idle auto-lock timer and the sleep/`lock-screen` hooks —
+`HIDIdleTime` was 0.002 s when checked, i.e. this Mac was in use, so the 60-second threshold never
+arrived; the code paths are wired but unproven on a real sleep. A genuine ⌘Q quit was not driven
+(the menu accelerator is unreachable from CDP), so the WAL fold is proven through `close()` on the
+lock path rather than through shutdown. Log rotation itself is not yet exercised either — the 2 MB
+threshold needs a long run.
+`npm run typecheck` and `npm run build` are clean.
 
 ---
 

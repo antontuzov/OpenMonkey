@@ -55,6 +55,7 @@ import {
   type MemorySnapshot,
   type ModelStatus,
   type Mood,
+  type PrivacyStatus,
   type WorkspaceHit,
 } from "../../utils/types";
 
@@ -300,6 +301,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [confirmClearFacts, setConfirmClearFacts] = useState(false);
   const [workspaceQuery, setWorkspaceQuery] = useState("");
   const [workspaceHits, setWorkspaceHits] = useState<WorkspaceHit[] | null>(null);
+  const [privacyStatus, setPrivacyStatus] = useState<PrivacyStatus | null>(null);
+  const [passDraft, setPassDraft] = useState("");
+  const [passNotice, setPassNotice] = useState("");
+  const [eraseDraft, setEraseDraft] = useState("");
+  const [eraseNotice, setEraseNotice] = useState("");
 
   const { model, agent, privacy } = config;
   const memoryConfig = config.memory ?? { enabled: true, workspaceSearch: false };
@@ -313,16 +319,86 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const accentName = ACCENTS.find((item) => item.value === accent)?.name ?? "Custom";
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
   const ready = status.state === "ready";
+  const keySource = privacyStatus?.keySource ?? "off";
+  const passphraseOn = privacyStatus?.passphraseConfigured ?? false;
+  const autoLockMinutes = privacyStatus?.autoLockMinutes ?? 0;
+  const keyCopy = !privacy.encryptData
+    ? "Off: messages, tasks and facts are written to the database in plain text."
+    : passphraseOn
+      ? "AES-256-GCM. The key only exists wrapped by your passphrase, so nothing opens the history until you type it. Remove the passphrase before turning encryption off."
+      : keySource === "keychain"
+        ? "AES-256-GCM. The key sits in this Mac's system keychain, not in a file."
+        : keySource === "file"
+          ? "AES-256-GCM. No system vault was available, so the key is a 0600 file in this app's support folder."
+          : "AES-256-GCM with a key this app generates on first run.";
   const providerLabel = status.provider === "mlx" ? "MLX" : "Bonsai 4B";
 
   useEffect(() => {
     void window.electron?.getModelStatus().then(setModels).catch(() => undefined);
+    void window.electron?.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
   }, []);
 
   const refreshModels = async () => {
     const next = await window.electron?.getModelStatus();
     if (next) setModels(next);
     await onRefreshStatus();
+  };
+
+  const refreshPrivacy = async () => {
+    const next = await window.electron?.getPrivacyStatus();
+    if (next) setPrivacyStatus(next);
+  };
+
+  const failureText = (value: unknown): string =>
+    value instanceof Error ? value.message : "The app did not answer.";
+
+  const applyPassphrase = async () => {
+    if (passDraft.length < 6) return;
+    setPassNotice("");
+    try {
+      const result = await window.electron?.setHistoryPassphrase(passDraft);
+      if (!result?.ok) {
+        setPassNotice(result?.error ?? "Could not set the passphrase.");
+        return;
+      }
+      setPassDraft("");
+      toast(t("toast.passphraseSet"));
+      await refreshPrivacy();
+    } catch (error) {
+      setPassNotice(failureText(error));
+    }
+  };
+
+  const removePassphrase = async () => {
+    if (passDraft.length < 6) return;
+    setPassNotice("");
+    try {
+      const result = await window.electron?.clearHistoryPassphrase(passDraft);
+      if (!result?.ok) {
+        setPassNotice(result?.error ?? t("lock.wrong"));
+        return;
+      }
+      setPassDraft("");
+      toast(t("toast.passphraseRemoved"));
+      await refreshPrivacy();
+    } catch (error) {
+      setPassNotice(failureText(error));
+    }
+  };
+
+  const eraseEverything = async () => {
+    if (eraseDraft !== "ERASE") {
+      setEraseNotice(t("privacy.eraseConfirm"));
+      return;
+    }
+    setEraseNotice("");
+    try {
+      const result = await window.electron?.eraseAllHistory(eraseDraft);
+      // On success the main process rebuilds this window over an empty database.
+      if (!result?.ok) setEraseNotice(result?.error ?? "Could not erase the history.");
+    } catch (error) {
+      setEraseNotice(failureText(error));
+    }
   };
 
   const refreshAudit = async () => {
@@ -1930,17 +2006,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         onChange={() => void onPatch({ privacy: { ...privacy, saveHistory: !privacy.saveHistory } })}
                       />
                     </SettingRow>
-                    <SettingRow
-                      title="Encrypt stored data"
-                      copy="AES-256-GCM with a 0600 key file in this app's support folder."
-                    >
+                    <SettingRow title="Encrypt stored data" copy={keyCopy}>
                       <Toggle
                         on={privacy.encryptData}
                         label="Encrypt stored data"
+                        disabled={passphraseOn}
                         onChange={() => void onPatch({ privacy: { ...privacy, encryptData: !privacy.encryptData } })}
                       />
                     </SettingRow>
-                    <SettingRow title="Auto-delete after" copy="Older messages and tasks are pruned on launch.">
+                    <SettingRow
+                      title="Auto-delete after"
+                      copy="Older messages, tasks and audit rows are pruned on launch and every six hours while the app runs."
+                    >
                       <Segmented
                         value={String(privacy.autoDeleteAfter)}
                         onChange={(value) =>
@@ -1950,6 +2027,106 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       />
                     </SettingRow>
                   </div>
+                </section>
+
+                <section>
+                  <p className="section-label">Locking</p>
+                  <div className="card">
+                    <SettingRow
+                      title={t("privacy.passphrase")}
+                      copy={
+                        passphraseOn
+                          ? t("privacy.passphraseOn")
+                          : t("privacy.passphraseOff", {
+                              where: keySource === "file" ? t("privacy.keyFile") : t("privacy.vault"),
+                            })
+                      }
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="password"
+                          value={passDraft}
+                          onChange={(event) => setPassDraft(event.target.value)}
+                          placeholder={passphraseOn ? t("privacy.currentPassphrase") : t("privacy.newPassphrase")}
+                          aria-label={passphraseOn ? t("privacy.currentPassphrase") : t("privacy.newPassphrase")}
+                          autoComplete="off"
+                          spellCheck={false}
+                          maxLength={256}
+                          className="field w-[168px]"
+                        />
+                        {passphraseOn ? (
+                          <>
+                            <button
+                              onClick={() => void removePassphrase()}
+                              disabled={passDraft.length < 6}
+                              className="btn"
+                            >
+                              {t("privacy.removePassphrase")}
+                            </button>
+                            <button
+                              onClick={() => void window.electron?.lockHistoryNow()}
+                              className="btn btn-primary"
+                            >
+                              <Lock size={11} />
+                              {t("privacy.lockNow")}
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => void applyPassphrase()}
+                            disabled={!privacy.encryptData || passDraft.length < 6}
+                            className="btn btn-primary"
+                          >
+                            {t("privacy.applyPassphrase")}
+                          </button>
+                        )}
+                      </div>
+                    </SettingRow>
+                    <SettingRow title={t("privacy.autoLock")} copy={t("privacy.autoLockCopy")}>
+                      <Segmented
+                        value={String(autoLockMinutes)}
+                        onChange={(value) =>
+                          void onPatch({ privacy: { ...privacy, autoLockMinutes: Number(value) } })
+                        }
+                        options={[0, 1, 5, 15, 60].map((minutes) => ({
+                          value: String(minutes),
+                          label: minutes ? t("privacy.autoLockMinutes", { count: minutes }) : t("privacy.autoLockOff"),
+                          // The watcher is inert without a passphrase, so the choices say so.
+                          disabled: minutes > 0 && !passphraseOn,
+                        }))}
+                      />
+                    </SettingRow>
+                    <SettingRow title={t("privacy.erase")} copy={t("privacy.eraseCopy")}>
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={eraseDraft}
+                          onChange={(event) => setEraseDraft(event.target.value)}
+                          placeholder={t("privacy.eraseConfirm")}
+                          aria-label={t("privacy.eraseConfirm")}
+                          className="field w-[110px] font-mono"
+                          maxLength={8}
+                        />
+                        <button
+                          onClick={() => void eraseEverything()}
+                          disabled={eraseDraft !== "ERASE"}
+                          className="btn text-danger"
+                        >
+                          <Trash2 size={11} />
+                          {t("privacy.eraseButton")}
+                        </button>
+                      </div>
+                    </SettingRow>
+                  </div>
+                  {passNotice && (
+                    <p role="status" className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                      {passNotice}
+                    </p>
+                  )}
+                  {eraseNotice && (
+                    <p role="status" className="text-[10.5px] text-danger mt-2 px-1 leading-relaxed">
+                      {eraseNotice}
+                    </p>
+                  )}
                 </section>
 
                 <section>
@@ -1963,6 +2140,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </SettingRow>
                     <SettingRow title="Logs" copy="logs/openmonkey.log in the same folder, rotated by the app.">
                       <span className="chip">local</span>
+                    </SettingRow>
+                    <SettingRow
+                      title="History key"
+                      copy={
+                        keySource === "locked"
+                          ? "The database is closed and the key is not in memory. Unlock it to read anything."
+                          : keySource === "passphrase"
+                            ? "Held in memory for this session only, unwrapped from the passphrase file."
+                            : keySource === "keychain"
+                              ? "Unwrapped by macOS when the app starts. Deleting it makes stored history unreadable on purpose."
+                              : keySource === "file"
+                                ? "secret.key in this app's support folder, readable only by your user."
+                                : "Not loaded while encryption is off."
+                      }
+                    >
+                      <span className={`chip ${keySource === "keychain" || keySource === "passphrase" ? "chip-accent" : ""}`}>
+                        {keySource === "keychain"
+                          ? "keychain"
+                          : keySource === "file"
+                            ? "0600 file"
+                            : keySource === "passphrase"
+                              ? t("privacy.keyPassphrase")
+                              : keySource === "locked"
+                                ? t("privacy.keyLocked")
+                                : "off"}
+                      </span>
                     </SettingRow>
                   </div>
                 </section>

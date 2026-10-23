@@ -1,12 +1,25 @@
 import Database from "better-sqlite3";
+import { app } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { config, dataRoot } from "./config";
+import logger from "./logger";
+import {
+  HistoryLocked,
+  clearPassphrase,
+  destroyKeys,
+  loadOrCreateKey,
+  passphraseConfigured,
+  setPassphrase,
+  unlockKey,
+  type KeySource,
+} from "./secret-key";
 import type { AuditEntry, Conversation, ConversationSearchHit, MemoryFact, Message, Task } from "./types";
 
 const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
+const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 interface MessageRow {
   id: string;
@@ -41,16 +54,45 @@ const clean = (text: string, length: number) =>
   text.replace(/\s+/g, " ").trim().slice(0, length);
 
 /**
- * Conversation and task history live in a local SQLite file. Content is encrypted
- * at rest with a random key that never leaves this machine; the key file is the
- * only thing that can read the rows, so deleting it makes the history unreadable.
+ * Conversation and task history lives in a local SQLite file. Content is encrypted
+ * at rest with a random key that never leaves this machine — the system keychain
+ * holds it where one exists. The key is the only thing that can read the rows, so
+ * losing it makes the history unreadable on purpose.
  */
 export class Storage {
   private db: Database.Database | null = null;
   private key: Buffer | null = null;
+  /** Where the history key came from, so Settings can state it truthfully. */
+  keySource: KeySource | "locked" | "off" = "off";
+  /** True when the database is closed and its contents unreadable until unlocked. */
+  locked = false;
+  private retentionTimer: NodeJS.Timeout | null = null;
 
   init(): void {
-    if (this.db) return;
+    if (this.db || this.locked) return;
+    if (!config.get("privacy").encryptData) {
+      this.keySource = "off";
+      this.openDatabase();
+      return;
+    }
+    let key: Buffer;
+    let source: KeySource;
+    try {
+      ({ key, source } = loadOrCreateKey());
+    } catch (error) {
+      if (!(error instanceof HistoryLocked)) throw error;
+      // A passphrase-protected database is not opened at all until it is unlocked.
+      this.locked = true;
+      this.keySource = "locked";
+      logger.info("history.locked.at.start");
+      return;
+    }
+    this.key = key;
+    this.keySource = source;
+    this.openDatabase();
+  }
+
+  private openDatabase(): void {
     const file = path.join(dataRoot(), "openmonkey.db");
     this.db = new Database(file);
     this.db.pragma("journal_mode = WAL");
@@ -133,20 +175,90 @@ export class Storage {
       CREATE INDEX IF NOT EXISTS idx_memory_facts_created ON memory_facts (created_at);
     `);
 
-    // The key has to exist before migration reads legacy content to name the thread.
-    if (config.get("privacy").encryptData) this.key = this.loadKey();
     this.migrateLegacyMessages();
+    this.runRetention();
+    // A laptop that stays asleep for a week must still honour its retention policy,
+    // so pruning is a timer as well as a launch step.
+    this.retentionTimer = setInterval(() => this.runRetention(), RETENTION_INTERVAL_MS);
+    this.retentionTimer.unref();
+  }
+
+  /** Delete rows older than the configured window. Safe to call any time. */
+  runRetention(): void {
+    if (!this.db) return;
     this.pruneOlderThan(config.get("privacy").autoDeleteAfter);
   }
 
-  private loadKey(): Buffer {
-    const keyFile = path.join(dataRoot(), "secret.key");
-    if (fs.existsSync(keyFile)) {
-      return Buffer.from(fs.readFileSync(keyFile, "utf8"), "base64");
+  /**
+   * Require the passphrase before the history is readable, and drop every copy of
+   * the key the vault could open on its own.
+   */
+  protect(passphrase: string): void {
+    if (!this.key) throw new Error("Turn on encrypted history first");
+    if (passphrase.length < 6) throw new Error("Use at least 6 characters");
+    setPassphrase(this.key, passphrase);
+    this.keySource = "passphrase";
+  }
+
+  /** Returns false when the passphrase does not match, leaving protection in place. */
+  unprotect(passphrase: string): boolean {
+    if (!clearPassphrase(passphrase)) return false;
+    const { key, source } = loadOrCreateKey();
+    this.key?.fill(0);
+    this.key = key;
+    this.keySource = source;
+    return true;
+  }
+
+  unlock(passphrase: string): boolean {
+    if (!this.locked) return true;
+    const key = unlockKey(passphrase);
+    if (!key) return false;
+    this.key = key;
+    this.keySource = "passphrase";
+    this.locked = false;
+    this.openDatabase();
+    return true;
+  }
+
+  /**
+   * Only a passphrase profile has something to lock: without one the key is the
+   * login session's, and pretending otherwise would be theatre.
+   */
+  get lockable(): boolean {
+    return passphraseConfigured();
+  }
+
+  lock(): void {
+    if (!this.lockable) return;
+    this.close();
+    this.key?.fill(0);
+    this.key = null;
+    this.keySource = "locked";
+    this.locked = true;
+    logger.info("history.locked");
+  }
+
+  /**
+   * Remove the database, the key in every form it exists in and the logs, then
+   * start again with an empty file and a fresh key. Settings are untouched because
+   * they never hold conversation text.
+   */
+  eraseAll(): void {
+    this.close();
+    destroyKeys();
+    const dir = dataRoot();
+    for (const name of ["openmonkey.db", "openmonkey.db-wal", "openmonkey.db-shm"]) {
+      fs.rmSync(path.join(dir, name), { force: true });
     }
-    const key = randomBytes(32);
-    fs.writeFileSync(keyFile, key.toString("base64"), { mode: 0o600 });
-    return key;
+    fs.rmSync(path.join(app.getPath("userData"), "logs"), { recursive: true, force: true });
+    // The log handle points at a deleted inode until it is reopened.
+    logger.reset();
+    this.key = null;
+    this.keySource = "off";
+    this.locked = false;
+    logger.info("history.erased");
+    this.init();
   }
 
   private seal(text: string): string {
@@ -365,7 +477,7 @@ export class Storage {
   /**
    * Titles are stored in plain text, message bodies are encrypted, so search decrypts
    * recent rows in memory. That is fast enough for a personal history and keeps the
-   * key file as the single thing that makes the database readable.
+   * key — which never leaves this machine — as the single thing that can read the rows.
    */
   searchConversations(query: string): ConversationSearchHit[] {
     if (!this.db) return [];
@@ -592,6 +704,17 @@ export class Storage {
   }
 
   close(): void {
+    if (this.retentionTimer) {
+      clearInterval(this.retentionTimer);
+      this.retentionTimer = null;
+    }
+    // Fold the write-ahead log back into the database so a quit leaves one file,
+    // not a half-replayed journal.
+    try {
+      this.db?.pragma("wal_checkpoint(TRUNCATE)");
+    } catch {
+      /* a damaged database should still close */
+    }
     this.db?.close();
     this.db = null;
   }

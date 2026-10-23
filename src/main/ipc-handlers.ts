@@ -3,7 +3,17 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { OpenMonkey } from "../agent/OpenMonkey";
 import config from "../utils/config";
-import { MOODS, MOOD_LOGOS, type Attachment, type MenuCommand, type Mood } from "../utils/types";
+import {
+  MOODS,
+  MOOD_LOGOS,
+  type Attachment,
+  type MenuCommand,
+  type Mood,
+  type PrivacyActionResult,
+  type PrivacyStatus,
+} from "../utils/types";
+import storage from "../utils/storage";
+import { keychainAvailable } from "../utils/secret-key";
 import { ModelDownloader } from "../models/model-downloader";
 import { openPermissionSettings, probeAutomation } from "./permissions";
 import logger from "../utils/logger";
@@ -17,7 +27,15 @@ export interface IpcDeps {
   showQuickAsk: () => void;
   hideQuickAsk: () => void;
   onConfigChanged: () => void;
+  /** Closes the history and drops every decrypted copy this process holds. */
+  lockHistory: () => void;
+  /** Rebuilds the windows after the history opened or disappeared. */
+  reloadHistoryViews: () => void;
 }
+
+/** The word the privacy page asks the user to type before history is destroyed. */
+const ERASE_CONFIRMATION = "ERASE";
+const AUTO_LOCK_CHOICES = [0, 1, 5, 15, 60];
 
 const MENU_COMMANDS = new Set<MenuCommand>([
   "new-chat",
@@ -75,6 +93,9 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("quick-ask", async (_event, message: unknown) => {
     if (typeof message !== "string" || !message.trim()) throw new Error("Empty message");
+    // The popover has no unlock field, so it stays inert rather than answering from
+    // an empty context and a history it cannot write to.
+    if (storage.locked) throw new Error("History is locked. Unlock OpenMonkey first.");
     const instance = agent();
     const id = instance.getActiveConversationId() ?? instance.createConversation().id;
     return await instance.processUserMessage(id, message, undefined, "quick");
@@ -271,8 +292,86 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("get-config", () => config.getAll());
 
+  // The privacy page states where the key actually lives, so it asks instead of guessing.
+  ipcMain.handle("get-privacy-status", (): PrivacyStatus => ({
+    keySource: storage.keySource,
+    keychainAvailable: keychainAvailable(),
+    locked: storage.locked,
+    passphraseConfigured: storage.lockable,
+    autoLockMinutes: config.get("privacy").autoLockMinutes,
+  }));
+
+  const passphraseFrom = (value: unknown): string | null => {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    // The length floor is checked here as well as in storage: this is untrusted input.
+    return trimmed.length >= 6 && trimmed.length <= 256 ? trimmed : null;
+  };
+
+  ipcMain.handle("unlock-history", (_event, passphrase: unknown) => {
+    const value = typeof passphrase === "string" ? passphrase : "";
+    // A wrong passphrase is simply false: nothing here can iterate the key file.
+    const unlocked = storage.unlock(value);
+    if (unlocked) deps.reloadHistoryViews();
+    return unlocked;
+  });
+
+  ipcMain.handle("set-history-passphrase", (_event, passphrase: unknown): PrivacyActionResult => {
+    const value = passphraseFrom(passphrase);
+    if (!value) return { ok: false, error: "Use at least 6 characters" };
+    try {
+      storage.protect(value);
+      logger.info("privacy.passphrase.enabled");
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle("clear-history-passphrase", (_event, passphrase: unknown): PrivacyActionResult => {
+    const value = passphraseFrom(passphrase);
+    if (!value) return { ok: false, error: "Wrong passphrase" };
+    if (!storage.unprotect(value)) return { ok: false, error: "Wrong passphrase" };
+    // Auto-lock has nothing to do without a passphrase, so the setting says so.
+    config.set("privacy", { ...config.get("privacy"), autoLockMinutes: 0 });
+    logger.info("privacy.passphrase.disabled");
+    return { ok: true };
+  });
+
+  ipcMain.handle("lock-history-now", () => {
+    deps.lockHistory();
+  });
+
+  ipcMain.handle("erase-all-history", (_event, confirmation: unknown): PrivacyActionResult => {
+    if (confirmation !== ERASE_CONFIRMATION) {
+      return { ok: false, error: `Type ${ERASE_CONFIRMATION} to confirm` };
+    }
+    storage.eraseAll();
+    logger.info("privacy.history.erased");
+    deps.reloadHistoryViews();
+    return { ok: true };
+  });
+
   ipcMain.handle("set-config", async (_event, patch: Parameters<typeof config.merge>[0]) => {
-    const updated = config.merge(patch);
+    // The idle timer is driven by this number, so only the picker's values count.
+    let next = patch;
+    if (patch?.privacy) {
+      const minutes = Number(patch.privacy.autoLockMinutes);
+      next = {
+        ...patch,
+        privacy: {
+          ...patch.privacy,
+          autoLockMinutes: AUTO_LOCK_CHOICES.includes(minutes) ? minutes : config.get("privacy").autoLockMinutes,
+        },
+      };
+    }
+    // With a passphrase set the only copy of the key is the wrapped one, so switching
+    // encryption off would strand every stored row. The toggle snaps back.
+    if (next?.privacy && next.privacy.encryptData === false && storage.lockable) {
+      logger.warn("privacy.encrypt.off.blocked", { reason: "passphrase set" });
+      next = { ...next, privacy: { ...next.privacy, encryptData: true } };
+    }
+    const updated = config.merge(next);
     logger.info("config.updated", { keys: Object.keys(patch) });
     if (patch && "mcp" in patch) await agent().refreshMcp();
     if (patch && "memory" in patch) agent().refreshMemory(true);

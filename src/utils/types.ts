@@ -287,6 +287,24 @@ export interface AgentStatus {
   message?: string;
 }
 
+/** Where the history key is kept right now. `locked` means the database is closed. */
+export type HistoryKeySource = "keychain" | "file" | "passphrase" | "locked" | "off";
+
+/** What the privacy page is allowed to claim about stored data. */
+export interface PrivacyStatus {
+  keySource: HistoryKeySource;
+  keychainAvailable: boolean;
+  locked: boolean;
+  passphraseConfigured: boolean;
+  autoLockMinutes: number;
+}
+
+/** Outcome of a passphrase or erase request, shaped for the settings page. */
+export interface PrivacyActionResult {
+  ok: boolean;
+  error?: string;
+}
+
 /**
  * Persisted app settings. Defined here (not in utils/config.ts) because the renderer
  * type-checks against this file and must not pull in Electron or Node types.
@@ -315,6 +333,8 @@ export interface Config {
     saveHistory: boolean;
     encryptData: boolean;
     autoDeleteAfter: number;
+    /** 0 keeps the history open; otherwise idle minutes before a passphrase lock. */
+    autoLockMinutes: number;
   };
   memory: {
     enabled: boolean;
@@ -419,6 +439,12 @@ export interface ElectronAPI {
   searchConversations: (query: string) => Promise<ConversationSearchHit[]>;
   attachFile: () => Promise<Attachment | null>;
   getConfig: () => Promise<Config>;
+  getPrivacyStatus: () => Promise<PrivacyStatus>;
+  unlockHistory: (passphrase: string) => Promise<boolean>;
+  setHistoryPassphrase: (passphrase: string) => Promise<PrivacyActionResult>;
+  clearHistoryPassphrase: (passphrase: string) => Promise<PrivacyActionResult>;
+  lockHistoryNow: () => Promise<void>;
+  eraseAllHistory: (confirmation: string) => Promise<PrivacyActionResult>;
   setConfig: (patch: ConfigPatch) => Promise<Config>;
   approveTask: (requestId: string, approved: boolean, remember?: boolean) => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;

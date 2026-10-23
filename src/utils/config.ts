@@ -27,6 +27,7 @@ const defaultConfig: Config = {
     saveHistory: true,
     encryptData: true,
     autoDeleteAfter: 30,
+    autoLockMinutes: 0,
   },
   memory: {
     enabled: true,

@@ -47,6 +47,12 @@ const api: ElectronAPI = {
   searchConversations: (query: string) => ipcRenderer.invoke("search-conversations", query),
   attachFile: () => ipcRenderer.invoke("attach-file"),
   getConfig: () => ipcRenderer.invoke("get-config"),
+  getPrivacyStatus: () => ipcRenderer.invoke("get-privacy-status"),
+  unlockHistory: (passphrase: string) => ipcRenderer.invoke("unlock-history", passphrase),
+  setHistoryPassphrase: (passphrase: string) => ipcRenderer.invoke("set-history-passphrase", passphrase),
+  clearHistoryPassphrase: (passphrase: string) => ipcRenderer.invoke("clear-history-passphrase", passphrase),
+  lockHistoryNow: () => ipcRenderer.invoke("lock-history-now"),
+  eraseAllHistory: (confirmation: string) => ipcRenderer.invoke("erase-all-history", confirmation),
   setConfig: (patch: ConfigPatch) => ipcRenderer.invoke("set-config", patch),
   approveTask: (requestId: string, approved: boolean, remember = false) =>
     ipcRenderer.invoke("approve-task", requestId, approved, remember),

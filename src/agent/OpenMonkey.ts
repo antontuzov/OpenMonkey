@@ -74,9 +74,12 @@ export class OpenMonkey extends EventEmitter {
     const savedMood = config.get("ui").currentMood;
     if ((MOODS as string[]).includes(savedMood)) this.setCurrentMood(savedMood as Mood);
 
-    const active = storage.latestConversation() ?? storage.createConversation();
-    this.activeConversationId = active.id;
-    this.conversationHistory = this.historyFor(active.id);
+    // A locked database has no conversation to open, and creating one would throw.
+    if (!storage.locked) {
+      const active = storage.latestConversation() ?? storage.createConversation();
+      this.activeConversationId = active.id;
+      this.conversationHistory = this.historyFor(active.id);
+    }
 
     try {
       await this.modelManager.initialize();
@@ -97,6 +100,17 @@ export class OpenMonkey extends EventEmitter {
 
   getActiveConversationId(): string | null {
     return this.activeConversationId;
+  }
+
+  /**
+   * Locking or erasing the history is only real if the decrypted turns go with it:
+   * they live in this array and in the model's chat context, not just on disk.
+   */
+  forgetConversation(): void {
+    this.stopGeneration();
+    this.conversationHistory = [];
+    this.activeConversationId = null;
+    this.modelManager.restoreConversation([], this.buildSystemPrompt());
   }
 
   getConversations(): Conversation[] {

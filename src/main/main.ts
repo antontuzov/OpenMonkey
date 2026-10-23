@@ -3,11 +3,13 @@ import * as path from "node:path";
 import { TrayManager } from "./tray-manager";
 import { registerIpcHandlers } from "./ipc-handlers";
 import { DesktopManager } from "./desktop-manager";
+import { startLockWatcher } from "./lock-watcher";
 import { installAppMenu } from "./menu";
 import { applyWindowState } from "./window-state";
 import { OpenMonkey } from "../agent/OpenMonkey";
 import config, { assetPath } from "../utils/config";
 import logger from "../utils/logger";
+import storage from "../utils/storage";
 import type { ApprovalRequest, MenuCommand, Mood } from "../utils/types";
 
 let mainWindow: BrowserWindow | null = null;
@@ -60,6 +62,24 @@ function applyZoom(window: BrowserWindow): void {
 function applyAppearance(): void {
   nativeTheme.themeSource = config.get("ui").theme;
   for (const window of BrowserWindow.getAllWindows()) applyZoom(window);
+}
+
+/**
+ * A locked or erased history must not survive in a renderer that already painted it,
+ * so both paths rebuild the windows instead of pushing an event into them.
+ */
+function refreshHistoryViews(): void {
+  openMonkey?.forgetConversation();
+  openMonkey?.refreshMemory(true);
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.reload();
+  }
+}
+
+function lockHistory(): void {
+  if (!storage.lockable) return;
+  storage.lock();
+  refreshHistoryViews();
 }
 
 function createWindow(): void {
@@ -195,6 +215,8 @@ registerIpcHandlers({
   showQuickAsk: () => desktopManager?.showQuickAsk(),
   hideQuickAsk: () => desktopManager?.hideQuickAsk(),
   onConfigChanged: applyDesktopSettings,
+  lockHistory,
+  reloadHistoryViews: refreshHistoryViews,
 });
 
 if (!app.requestSingleInstanceLock()) {
@@ -234,6 +256,7 @@ if (!app.requestSingleInstanceLock()) {
     });
 
     await initializeOpenMonkey();
+    startLockWatcher(lockHistory);
 
     app.on("activate", () => {
       showMainWindow();

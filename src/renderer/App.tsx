@@ -6,6 +6,7 @@ import { AppSidebar } from "./components/AppSidebar";
 import { SettingsView } from "./components/SettingsView";
 import { Onboarding } from "./components/Onboarding";
 import { ApprovalDialog } from "./components/ApprovalDialog";
+import { LockScreen } from "./components/LockScreen";
 import { useAppearance } from "./theme";
 import { moodLabel, setLanguage, t } from "./i18n";
 import {
@@ -17,6 +18,7 @@ import {
   type Conversation,
   type ConversationSearchHit,
   type Mood,
+  type PrivacyStatus,
 } from "../utils/types";
 
 type View = "chat" | "settings";
@@ -31,6 +33,7 @@ export default function App() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [busyConversationId, setBusyConversationId] = useState<string | null>(null);
+  const [privacyStatus, setPrivacyStatus] = useState<PrivacyStatus | null>(null);
 
   useEffect(() => {
     const api = window.electron;
@@ -49,6 +52,7 @@ export default function App() {
     void api.getCurrentMood().then(setMood).catch(() => undefined);
     void api.getAgentStatus().then(setStatus).catch(() => undefined);
     void api.getConfig().then(setConfig).catch(() => undefined);
+    void api.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
 
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
   }, []);
@@ -73,7 +77,7 @@ export default function App() {
   }, [refreshConversations]);
 
   useEffect(() => {
-    if (status.state !== "ready" || !config?.onboarding.completed) return;
+    if (status.state !== "ready" || !config?.onboarding.completed || privacyStatus?.locked) return;
 
     let cancelled = false;
     void (async () => {
@@ -100,7 +104,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [status.state, config?.onboarding.completed]);
+  }, [status.state, config?.onboarding.completed, privacyStatus?.locked]);
 
   useEffect(() => {
     const api = window.electron;
@@ -295,6 +299,15 @@ export default function App() {
         />
         <p className="text-[10px] uppercase tracking-[0.18em] text-faint">Waking up</p>
       </div>
+    );
+  }
+
+  if (privacyStatus?.locked) {
+    return (
+      <LockScreen
+        mood={mood}
+        onUnlocked={() => setPrivacyStatus((current) => (current ? { ...current, locked: false } : current))}
+      />
     );
   }
 
