@@ -12,23 +12,43 @@ import {
   SquareTerminal,
 } from "lucide-react";
 import type { McpServerStatus, Task } from "../../utils/types";
+import { t } from "../i18n";
 
-const STATUS_STYLE: Record<Task["status"], { dot: string; label: string }> = {
-  pending: { dot: "bg-faint", label: "queued" },
-  "awaiting-approval": { dot: "bg-warn", label: "needs you" },
-  running: { dot: "bg-accent", label: "running" },
-  completed: { dot: "bg-accent-ink", label: "done" },
-  failed: { dot: "bg-danger", label: "failed" },
-  denied: { dot: "bg-faint", label: "denied" },
-  cancelled: { dot: "bg-faint", label: "cancelled" },
+const STATUS_STYLE: Record<Task["status"], { dot: string }> = {
+  pending: { dot: "bg-faint" },
+  "awaiting-approval": { dot: "bg-warn" },
+  running: { dot: "bg-accent" },
+  completed: { dot: "bg-accent-ink" },
+  failed: { dot: "bg-danger" },
+  denied: { dot: "bg-faint" },
+  cancelled: { dot: "bg-faint" },
+};
+
+const statusLabel = (status: Task["status"]): string => {
+  switch (status) {
+    case "pending":
+      return t("tasks.queued");
+    case "awaiting-approval":
+      return t("tasks.needsYou");
+    case "running":
+      return t("tasks.running");
+    case "completed":
+      return t("tasks.done");
+    case "failed":
+      return t("tasks.failed");
+    case "denied":
+      return t("tasks.denied");
+    case "cancelled":
+      return t("tasks.cancelled");
+  }
 };
 
 const TOOLS = [
-  { icon: Files, name: "Files", copy: "Read, write and move files" },
-  { icon: Globe, name: "Web", copy: "Fetch pages and open links" },
-  { icon: SquareTerminal, name: "Shell", copy: "Run commands on this Mac" },
-  { icon: CalendarClock, name: "Calendar & mail", copy: "Draft events and emails" },
-];
+  { icon: Files, nameKey: "tools.files", copyKey: "tools.filesCopy" },
+  { icon: Globe, nameKey: "tools.web", copyKey: "tools.webCopy" },
+  { icon: SquareTerminal, nameKey: "tools.shell", copyKey: "tools.shellCopy" },
+  { icon: CalendarClock, nameKey: "tools.calendar", copyKey: "tools.calendarCopy" },
+] as const;
 
 export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute }) => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -68,7 +88,7 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
   return (
     <div className="p-3">
       <div className="flex items-center justify-between px-1 mb-2">
-        <p className="section-label !mb-0">Tasks</p>
+        <p className="section-label !mb-0">{t("tasks.title")}</p>
         <span className="text-[10px] text-faint">{tasks.length}</span>
       </div>
 
@@ -90,16 +110,16 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <span className="chip !h-5 !text-[10px]">
                         <span className={`w-1.5 h-1.5 rounded-full ${style.dot}`} />
-                        {style.label}
+                        {statusLabel(task.status)}
                       </span>
                       {canKill && (
                         <button
                           onClick={() => cancel(task.id)}
                           className="chip !h-5 !text-[10px] hover:!text-danger hover:!border-danger/40"
-                          aria-label={`Cancel ${task.description}`}
+                          aria-label={t("tasks.cancelAria", { task: task.description })}
                         >
                           <Square size={8} fill="currentColor" />
-                          Kill
+                          {t("tasks.kill")}
                         </button>
                       )}
                     </div>
@@ -118,7 +138,7 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
                       className="flex items-center gap-1 text-[10.5px] text-faint hover:text-muted mt-1.5 ml-9"
                     >
                       {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                      Output
+                      {t("tasks.output")}
                     </button>
                     {(isOpen || task.status === "running") && (
                       <pre className="mt-1.5 ml-9 bg-card-2 border border-line rounded-lg p-2 text-[10.5px] text-muted max-h-40 overflow-auto whitespace-pre-wrap">
@@ -133,18 +153,16 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
         </div>
       ) : (
         <div className="card px-3.5 py-4 text-center">
-          <p className="text-[11px] text-ink">Nothing running yet</p>
-          <p className="text-[10.5px] text-faint leading-relaxed mt-1">
-            Ask for a file, a page or a command and it shows up here.
-          </p>
+          <p className="text-[11px] text-ink">{t("tasks.empty")}</p>
+          <p className="text-[10.5px] text-faint leading-relaxed mt-1">{t("tasks.emptyCopy")}</p>
         </div>
       )}
 
       <div className="flex items-center justify-between px-1 mt-5 mb-2">
-        <p className="section-label !mb-0">Tools</p>
+        <p className="section-label !mb-0">{t("tasks.tools")}</p>
         <span className={`chip !h-5 !text-[10px] ${autoExecute ? "" : "chip-accent"}`}>
           {autoExecute ? <LockOpen size={10} /> : <Lock size={10} />}
-          {autoExecute ? "free" : "per tool"}
+          {autoExecute ? t("tasks.policyFree") : t("tasks.policyPerTool")}
         </span>
       </div>
 
@@ -152,12 +170,12 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
         {TOOLS.map((tool) => {
           const Icon = tool.icon;
           return (
-            <div key={tool.name} className="row !py-2.5 !gap-2.5">
+            <div key={tool.nameKey} className="row !py-2.5 !gap-2.5">
               <div className="flex items-center gap-2.5 min-w-0">
                 <Icon size={15} className="text-faint shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-[11.5px] font-semibold leading-tight">{tool.name}</p>
-                  <p className="text-[10px] text-faint leading-tight mt-0.5">{tool.copy}</p>
+                  <p className="text-[11.5px] font-semibold leading-tight">{t(tool.nameKey)}</p>
+                  <p className="text-[10px] text-faint leading-tight mt-0.5">{t(tool.copyKey)}</p>
                 </div>
               </div>
             </div>
@@ -170,7 +188,7 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
               <div className="min-w-0">
                 <p className="text-[11.5px] font-semibold leading-tight truncate">{server.name}</p>
                 <p className="text-[10px] text-faint leading-tight mt-0.5">
-                  MCP · {server.toolCount} {server.toolCount === 1 ? "tool" : "tools"}
+                  MCP · {t("tasks.mcpToolCount", { count: server.toolCount })}
                 </p>
               </div>
             </div>
@@ -183,9 +201,7 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
         ))}
       </div>
 
-      <p className="text-[10px] text-faint leading-relaxed px-1 mt-3">
-        Every call is recorded in Settings → Approvals → Audit log. Change per-tool policies there too.
-      </p>
+      <p className="text-[10px] text-faint leading-relaxed px-1 mt-3">{t("tasks.auditNote")}</p>
     </div>
   );
 };

@@ -22,6 +22,7 @@ import {
   type ConversationSearchHit,
   type Mood,
 } from "../../utils/types";
+import { locale, moodLabel, t } from "../i18n";
 
 interface AppSidebarProps {
   mood: Mood;
@@ -48,7 +49,7 @@ const relativeTime = (value: Date) => {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
   if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d`;
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+  return date.toLocaleDateString(locale(), { month: "short", day: "numeric" });
 };
 
 interface SessionRowProps {
@@ -190,7 +191,12 @@ const SessionRow: React.FC<SessionRowProps> = ({
             <span
               className={`block pl-[21px] text-[10px] truncate ${busy ? "text-accent-ink" : "text-faint"}`}
             >
-              {busy ? "Answering…" : snippet || (conversation.messageCount ? `${conversation.messageCount} messages` : "Empty chat")}
+              {busy
+                ? t("chat.placeholderBusy")
+                : snippet ||
+                  (conversation.messageCount
+                    ? t("nav.messages", { count: conversation.messageCount })
+                    : t("nav.emptyChat"))}
             </span>
           </button>
 
@@ -243,9 +249,27 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const confirmTimer = useRef<number | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
   const ready = status.state === "ready";
+  const statusLabel =
+    status.state === "ready"
+      ? t("status.ready")
+      : status.state === "error"
+        ? t("status.error")
+        : status.state === "loading-model"
+          ? t("status.loading-model")
+          : t("status.starting");
+
+  useEffect(() => {
+    const focus = () => {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    };
+    window.addEventListener("om:focus-search", focus);
+    return () => window.removeEventListener("om:focus-search", focus);
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -343,6 +367,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           title="OpenMonkey settings"
         >
           <img
+            key={mood}
             src={`/logos/${logo.file}`}
             alt=""
             className="w-7 h-7 rounded-full logo-mood-change"
@@ -356,25 +381,27 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       <nav className="px-2 mt-3 space-y-0.5 no-drag">
         <button onClick={clearSearch} className="nav-item nav-item-active">
           <House size={15} />
-          Home
+          {t("nav.home")}
         </button>
         <button onClick={onTogglePanel} className="nav-item">
           <Activity size={15} />
-          Activity
-          <span className="ml-auto text-[10px] text-faint">{panelOpen ? "on" : "off"}</span>
+          {t("nav.activity")}
+          <span className="ml-auto text-[10px] text-faint">
+            {panelOpen ? t("nav.panelOn") : t("nav.panelOff")}
+          </span>
         </button>
         <button onClick={onSettings} className="nav-item">
           <Settings2 size={15} />
-          Settings
+          {t("nav.settings")}
         </button>
       </nav>
 
       <div className="flex items-center justify-between px-4 mt-5 mb-2">
         <p className="section-label !mb-0">
-          Sessions
+          {t("nav.sessions")}
           {conversations.length > 0 && <span className="ml-1.5 text-faint/80">{conversations.length}</span>}
         </p>
-        <button onClick={onNewChat} className="icon-btn !w-6 !h-6" title="New conversation">
+        <button onClick={onNewChat} className="icon-btn !w-6 !h-6" title={t("nav.newChat")}>
           <Plus size={14} />
         </button>
       </div>
@@ -383,6 +410,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
         <div className="relative">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input
+            ref={searchRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -391,8 +419,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 clearSearch();
               }
             }}
-            placeholder="Search chats"
-            aria-label="Search conversations"
+            placeholder={t("nav.searchChats")}
+            aria-label={t("nav.searchChats")}
             className="field w-full !h-8 !pl-8 !pr-8 !text-[11.5px]"
           />
           {searching ? (
@@ -440,13 +468,13 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
         {!conversations.length && !hits && (
           <p className="px-2 py-3 text-[10.5px] text-faint leading-relaxed">
-            No chats yet. Start a new one and it will stay on this Mac.
+            {t("nav.noChats")}
           </p>
         )}
 
         {hits && !searching && hits.length === 0 && (
           <p className="px-2 py-3 text-[10.5px] text-faint leading-relaxed">
-            No chats match “{query.trim()}”. Titles and message text are both searched.
+            {t("nav.noMatch", { query: query.trim() })}
           </p>
         )}
       </div>
@@ -455,10 +483,10 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
         <div className="card px-3.5 py-3">
           <div className="flex items-center gap-2">
             <ShieldCheck size={14} className="text-accent-ink" />
-            <span className="text-[11.5px] font-semibold">Local only</span>
+            <span className="text-[11.5px] font-semibold">{t("nav.localOnly")}</span>
           </div>
           <p className="text-[10.5px] text-faint leading-relaxed mt-1.5">
-            The model, chat history and tools all run on this Mac.
+            {t("nav.localOnlyCopy")}
           </p>
           <div className="flex items-center gap-1.5 mt-2.5 text-[10.5px] text-muted">
             <span
@@ -466,9 +494,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 ready ? "bg-accent" : status.state === "error" ? "bg-danger" : "bg-warn pulse-dot"
               }`}
             />
-            <span className="capitalize">{status.state.replace("-", " ")}</span>
+            <span className="capitalize">{statusLabel}</span>
             <span className="text-faint">·</span>
-            <span>{logo.label}</span>
+            <span>{moodLabel(mood)}</span>
           </div>
         </div>
       </div>

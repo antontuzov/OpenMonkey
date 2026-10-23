@@ -162,7 +162,8 @@ export class TaskManager {
   async executeTask(
     request: TaskRequest,
     conversationId: string | null = null,
-    externalSignal?: AbortSignal
+    externalSignal?: AbortSignal,
+    origin: "main" | "quick" = "main"
   ): Promise<Task> {
     const task: Task = {
       id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
@@ -206,7 +207,7 @@ export class TaskManager {
 
     let decision: AuditDecision = request.mutating ? "approved" : "read-only";
     if (request.mutating) {
-      const authorization = await this.authorize(task, request, args);
+      const authorization = await this.authorize(task, request, args, origin);
       if (!authorization.approved) {
         const cancelled = Boolean(authorization.cancelled);
         const message = cancelled
@@ -339,7 +340,8 @@ export class TaskManager {
   private async authorize(
     task: Task,
     request: TaskRequest,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    origin: "main" | "quick"
   ): Promise<{ approved: boolean; decision: AuditDecision; cancelled?: boolean }> {
     if (config.get("agent").autoExecuteTasks) return { approved: true, decision: "auto" };
 
@@ -359,7 +361,7 @@ export class TaskManager {
     if (remembered !== undefined) return { approved: remembered, decision: "session" };
 
     const preview = await buildPreview(request, args);
-    const resolution = await this.requestApproval(task.id, request, preview, policy);
+    const resolution = await this.requestApproval(task.id, request, preview, policy, origin);
     if (resolution.remember) this.sessionDecisions.set(key, resolution.approved);
     return {
       approved: resolution.approved,
@@ -373,13 +375,14 @@ export class TaskManager {
     taskId: string,
     request: TaskRequest,
     preview: string,
-    policy: ApprovalPolicy
+    policy: ApprovalPolicy,
+    origin: "main" | "quick"
   ): Promise<ApprovalResolution> {
     this.patch(taskId, { status: "awaiting-approval" });
     return new Promise<ApprovalResolution>((resolve) => {
       const requestId = `approval_${taskId}`;
       this.pendingApprovals.set(requestId, resolve);
-      const payload: ApprovalRequest = { requestId, taskId, request, preview, policy };
+      const payload: ApprovalRequest = { requestId, taskId, request, preview, policy, origin };
       this.agent.emit("approval-request", payload);
     });
   }

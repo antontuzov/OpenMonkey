@@ -5,6 +5,7 @@ import type {
   ChatEvent,
   ConfigPatch,
   ElectronAPI,
+  MenuCommand,
   Mood,
   Task,
 } from "../utils/types";
@@ -22,6 +23,12 @@ const on = <T>(channel: string, callback: (payload: T) => void): (() => void) =>
 const api: ElectronAPI = {
   processMessage: (conversationId, message, attachment) =>
     ipcRenderer.invoke("process-message", conversationId, message, attachment),
+  quickAsk: (message: string) => ipcRenderer.invoke("quick-ask", message),
+  getActiveConversationId: () => ipcRenderer.invoke("get-active-conversation-id"),
+  showMainWindow: (command?: MenuCommand) => ipcRenderer.invoke("show-main-window", command),
+  openQuickAsk: () => ipcRenderer.invoke("open-quick-ask"),
+  hideQuickAsk: () => ipcRenderer.invoke("hide-quick-ask"),
+  platform: process.platform,
   regenerate: (conversationId) => ipcRenderer.invoke("regenerate", conversationId),
   getCurrentMood: () => ipcRenderer.invoke("get-current-mood"),
   setMood: (mood: Mood) => ipcRenderer.invoke("set-mood", mood),
@@ -77,6 +84,8 @@ const api: ElectronAPI = {
   onApprovalRequest: (callback: (request: ApprovalRequest) => void) =>
     on<ApprovalRequest>("approval-request", callback),
   onOpenSettings: (callback: () => void) => on<undefined>("open-settings", () => callback()),
+  onMenuCommand: (callback: (command: MenuCommand) => void) =>
+    on<MenuCommand>("menu-command", callback),
   onModelDownloadStatus: (callback) => on("model-download-status", callback),
   onChatEvent: (callback) => on<ChatEvent>("chat-event", callback),
 };

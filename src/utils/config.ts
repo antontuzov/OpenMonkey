@@ -2,7 +2,7 @@ import Store from "electron-store";
 import { app } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import type { Config } from "./types";
+import type { Config, ConfigPatch } from "./types";
 import { BONSAI_4B } from "../models/catalog";
 
 const defaultConfig: Config = {
@@ -18,6 +18,10 @@ const defaultConfig: Config = {
     theme: "system",
     accent: "#3ecf8e",
     currentMood: "neutral",
+    textScale: "m",
+    density: "comfortable",
+    reduceMotion: false,
+    language: "en",
   },
   privacy: {
     saveHistory: true,
@@ -27,6 +31,15 @@ const defaultConfig: Config = {
   memory: {
     enabled: true,
     workspaceSearch: false,
+  },
+  desktop: {
+    launchAtLogin: false,
+    // macOS keeps the app alive without its window; other platforms keep the
+    // loaded model warm in the tray when the window is closed.
+    closeToTray: process.platform !== "darwin",
+    notifications: true,
+    notifyOnComplete: true,
+    quickAsk: true,
   },
   agent: {
     name: "OpenMonkey",
@@ -54,23 +67,37 @@ const store = new Store<Config>({
   name: "openmonkey-config",
 });
 
+/** electron-store only fills whole missing keys; new sub-fields need this merge. */
+const withDefaults = <K extends keyof Config>(key: K): Config[K] => {
+  const base = defaultConfig[key];
+  const stored = store.get(key);
+  if (base && typeof base === "object" && !Array.isArray(base) && stored && typeof stored === "object") {
+    return { ...base, ...stored } as Config[K];
+  }
+  return (stored ?? base) as Config[K];
+};
+
 export const config = {
-  get: <K extends keyof Config>(key: K): Config[K] => store.get(key),
+  get: withDefaults,
 
   set: <K extends keyof Config>(key: K, value: Config[K]): void => {
     store.set(key, value);
   },
 
-  /** Shallow per-section merge so the UI can patch one group at a time. */
-  merge: (patch: Partial<Config>): Config => {
+  /** Shallow per-section merge so the UI can patch only the fields it changed. */
+  merge: (patch: ConfigPatch): Config => {
     for (const [key, value] of Object.entries(patch)) {
+      if (!value) continue;
       const section = key as keyof Config;
-      store.set(section, { ...store.get(section), ...value } as Config[typeof section]);
+      store.set(section, { ...withDefaults(section), ...value } as Config[typeof section]);
     }
-    return store.store;
+    return config.getAll();
   },
 
-  getAll: (): Config => store.store,
+  getAll: (): Config =>
+    Object.fromEntries(
+      (Object.keys(defaultConfig) as Array<keyof Config>).map((key) => [key, withDefaults(key)])
+    ) as unknown as Config,
 
   reset: (): void => {
     store.clear();

@@ -149,7 +149,8 @@ export class OpenMonkey extends EventEmitter {
   async processUserMessage(
     conversationId: string,
     message: string,
-    attachment?: Attachment
+    attachment?: Attachment,
+    origin: "main" | "quick" = "main"
   ): Promise<Message | null> {
     if (this.statusInfo.state !== "ready") {
       throw new Error(this.statusInfo.message ?? "OpenMonkey is still loading its model");
@@ -183,7 +184,7 @@ export class OpenMonkey extends EventEmitter {
 
     const retrieval = await this.taskManager.getMemoryManager().contextFor(message);
     const modelPrompt = retrieval ? `${retrieval}\n\n${prompt}` : prompt;
-    return await this.generateReply(conversationId, modelPrompt, display, retrieval);
+    return await this.generateReply(conversationId, modelPrompt, display, retrieval, origin);
   }
 
   /** Drop the previous answer and run the last user turn again. */
@@ -220,7 +221,8 @@ export class OpenMonkey extends EventEmitter {
     conversationId: string,
     prompt: string,
     titleCandidate: string,
-    retrieval?: string
+    retrieval?: string,
+    origin: "main" | "quick" = "main"
   ): Promise<Message | null> {
     if (retrieval) logger.info("memory.context.injected", { conversationId, chars: retrieval.length });
     const systemPrompt = this.buildSystemPrompt();
@@ -297,7 +299,7 @@ export class OpenMonkey extends EventEmitter {
       } else if (requests.length || errors.length) {
         const outcomes = [];
         for (const request of requests) {
-          outcomes.push(await this.taskManager.executeTask(request, conversationId, controller.signal));
+          outcomes.push(await this.taskManager.executeTask(request, conversationId, controller.signal, origin));
         }
         for (const error of errors) {
           outcomes.push(this.taskManager.recordInvalidRequest(error, conversationId));

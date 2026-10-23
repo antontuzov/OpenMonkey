@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { OpenMonkey } from "../agent/OpenMonkey";
 import config from "../utils/config";
-import { MOODS, MOOD_LOGOS, type Attachment, type Mood } from "../utils/types";
+import { MOODS, MOOD_LOGOS, type Attachment, type MenuCommand, type Mood } from "../utils/types";
 import { ModelDownloader } from "../models/model-downloader";
 import { openPermissionSettings, probeAutomation } from "./permissions";
 import logger from "../utils/logger";
@@ -13,7 +13,21 @@ export interface IpcDeps {
   getWindow: () => BrowserWindow | null;
   getAgent: () => OpenMonkey | null;
   getTray: () => TrayManager | null;
+  showMainWindow: (command?: MenuCommand) => void;
+  showQuickAsk: () => void;
+  hideQuickAsk: () => void;
+  onConfigChanged: () => void;
 }
+
+const MENU_COMMANDS = new Set<MenuCommand>([
+  "new-chat",
+  "settings",
+  "toggle-activity",
+  "stop",
+  "cycle-mood",
+  "search-chats",
+  "focus-composer",
+]);
 
 const MAX_ATTACHMENT_BYTES = 256 * 1024;
 const MAX_ATTACHMENT_TEXT = 400_000;
@@ -58,6 +72,25 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   });
 
   ipcMain.handle("regenerate", (_event, id: unknown) => agent().regenerate(conversationId(id)));
+
+  ipcMain.handle("quick-ask", async (_event, message: unknown) => {
+    if (typeof message !== "string" || !message.trim()) throw new Error("Empty message");
+    const instance = agent();
+    const id = instance.getActiveConversationId() ?? instance.createConversation().id;
+    return await instance.processUserMessage(id, message, undefined, "quick");
+  });
+
+  ipcMain.handle("get-active-conversation-id", () => deps.getAgent()?.getActiveConversationId() ?? null);
+
+  ipcMain.handle("show-main-window", (_event, command: unknown) => {
+    const next = typeof command === "string" && MENU_COMMANDS.has(command as MenuCommand)
+      ? (command as MenuCommand)
+      : undefined;
+    deps.showMainWindow(next);
+  });
+
+  ipcMain.handle("open-quick-ask", () => deps.showQuickAsk());
+  ipcMain.handle("hide-quick-ask", () => deps.hideQuickAsk());
 
   ipcMain.handle("get-conversations", () => agent().getConversations());
   ipcMain.handle("create-conversation", () => agent().createConversation());
@@ -244,6 +277,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     if (patch && "mcp" in patch) await agent().refreshMcp();
     if (patch && "memory" in patch) agent().refreshMemory(true);
     else if (patch && "agent" in patch) agent().refreshMemory(true);
+    if (patch && ("ui" in patch || "desktop" in patch)) deps.onConfigChanged();
     return updated;
   });
 

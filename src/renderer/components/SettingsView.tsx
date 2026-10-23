@@ -16,11 +16,13 @@ import {
   FolderSearch,
   Globe,
   Info,
+  Keyboard,
   Loader,
   Lock,
   LockOpen,
   Mail,
   MessageSquare,
+  Monitor,
   Palette,
   Pin,
   Plug,
@@ -36,6 +38,9 @@ import {
 } from "lucide-react";
 import { ModelDownloadCard } from "./ModelDownloadCard";
 import { ACCENTS } from "../constants";
+import { checkAccent } from "../theme";
+import { moodLabel, t } from "../i18n";
+import { toast } from "./Toast";
 import {
   MOODS,
   MOOD_LOGOS,
@@ -65,6 +70,7 @@ interface SettingsViewProps {
 type Section =
   | "profile"
   | "appearance"
+  | "desktop"
   | "approvals"
   | "memory"
   | "workspace"
@@ -139,72 +145,74 @@ function splitArgs(value: string): string[] {
   return result;
 }
 
-const NAV: Array<{
-  label: string | null;
-  items: Array<{ id: Section; label: string; icon: typeof UserRound }>;
-}> = [
+const NAV = [
   {
-    label: "Personal",
+    labelKey: "settings.personal",
     items: [
-      { id: "profile", label: "Profile", icon: UserRound },
-      { id: "appearance", label: "Appearance", icon: Palette },
+      { id: "profile", labelKey: "settings.profile", icon: UserRound },
+      { id: "appearance", labelKey: "settings.appearance", icon: Palette },
+      { id: "desktop", labelKey: "settings.desktop", icon: Monitor },
     ],
   },
   {
-    label: "Control",
+    labelKey: "settings.control",
     items: [
-      { id: "approvals", label: "Approvals", icon: ShieldCheck },
-      { id: "memory", label: "Memory", icon: Brain },
-      { id: "workspace", label: "Workspace", icon: FolderOpen },
-      { id: "permissions", label: "Permissions", icon: Fingerprint },
-      { id: "privacy", label: "Privacy", icon: Lock },
+      { id: "approvals", labelKey: "settings.approvals", icon: ShieldCheck },
+      { id: "memory", labelKey: "settings.memory", icon: Brain },
+      { id: "workspace", labelKey: "settings.workspace", icon: FolderOpen },
+      { id: "permissions", labelKey: "settings.permissions", icon: Fingerprint },
+      { id: "privacy", labelKey: "settings.privacy", icon: Lock },
     ],
   },
   {
-    label: "Extensions",
-    items: [{ id: "extensions", label: "MCP servers", icon: Plug }],
+    labelKey: "settings.extensionsGroup",
+    items: [{ id: "extensions", labelKey: "settings.extensions", icon: Plug }],
   },
   {
-    label: "Model",
-    items: [{ id: "model", label: "Model", icon: Cpu }],
+    labelKey: "settings.modelGroup",
+    items: [{ id: "model", labelKey: "settings.model", icon: Cpu }],
   },
-];
+] as const;
 
-const TITLES: Record<Section, { title: string; lede: string }> = {
+const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede: string }> = {
   profile: {
-    title: "Profile",
+    titleKey: "settings.profile",
     lede: "Who this assistant is on this Mac. These values shape its system prompt, not the model weights.",
   },
   appearance: {
-    title: "Appearance",
+    titleKey: "settings.appearance",
     lede: "Surface, accent and character. Everything here is stored locally and applied instantly.",
   },
+  desktop: {
+    titleKey: "settings.desktop",
+    lede: "How OpenMonkey fits into macOS: startup, the menu bar, Quick Ask and notifications.",
+  },
   approvals: {
-    title: "Approvals",
+    titleKey: "settings.approvals",
     lede: "Decide what runs on its own. Every call is previewed before it executes and recorded in the audit log.",
   },
   memory: {
-    title: "Memory",
+    titleKey: "settings.memory",
     lede: "What OpenMonkey recalls across chats. Facts and digests stay local, and workspace search is opt-in.",
   },
   workspace: {
-    title: "Workspace",
+    titleKey: "settings.workspace",
     lede: "The folders tools may touch. Mutating calls still stop for approval unless you change the policy.",
   },
   extensions: {
-    title: "Extensions",
+    titleKey: "settings.extensions",
     lede: "Local MCP servers add tools over stdio. They run as child processes with the same approval and audit rules.",
   },
   permissions: {
-    title: "Permissions",
+    titleKey: "settings.permissions",
     lede: "macOS controls access to Calendar, Mail and notifications. Nothing is requested until you ask for it.",
   },
   privacy: {
-    title: "Privacy",
+    titleKey: "settings.privacy",
     lede: "Chat history and tasks live in a local SQLite file. These controls decide how long it stays readable.",
   },
   model: {
-    title: "Model",
+    titleKey: "settings.model",
     lede: "OpenMonkey answers with weights that live on this machine. Pick the backend and how it generates.",
   },
 };
@@ -326,7 +334,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setAuditNotice("");
     try {
       const file = await window.electron?.exportAuditLog();
-      if (file) setAuditNotice(`Exported to ${file}`);
+      if (file) {
+        setAuditNotice(`Exported to ${file}`);
+        toast(t("toast.auditExported"));
+      }
     } catch (error) {
       setAuditNotice(error instanceof Error ? error.message : String(error));
     }
@@ -365,6 +376,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (snapshot) setMemory(snapshot);
       setFactDraft("");
       setMemoryNotice("Fact saved and injected into the next prompt.");
+      toast(t("toast.factSaved"));
     } catch (error) {
       setMemoryNotice(error instanceof Error ? error.message : String(error));
     } finally {
@@ -378,6 +390,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const snapshot = await window.electron?.deleteMemoryFact(id);
       if (snapshot) setMemory(snapshot);
       setMemoryNotice("Fact removed.");
+      toast(t("toast.factRemoved"));
     } catch (error) {
       setMemoryNotice(error instanceof Error ? error.message : String(error));
     }
@@ -414,6 +427,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       await window.electron?.rebuildWorkspaceIndex();
       await refreshMemory();
+      toast(t("toast.reindexed"));
     } finally {
       setMemoryBusy(false);
     }
@@ -423,6 +437,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setWorkspaceHits(null);
     await window.electron?.clearWorkspaceIndex();
     await refreshMemory();
+    toast(t("toast.workspaceCleared"));
   };
 
   const searchWorkspace = async () => {
@@ -477,6 +492,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       await onPatch({ mcp: { servers: [...servers, server] } });
       await refreshMcp();
+      toast(t("toast.serverAdded"));
       setAdding(false);
       setServerName("");
       setServerCommand("");
@@ -507,6 +523,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const folder = await window.electron?.chooseWorkspaceFolder().catch(() => null);
     if (!folder || workspaceRoots.includes(folder)) return;
     await onPatch({ agent: { ...agent, workspaceRoots: [...workspaceRoots, folder] } });
+    toast(t("toast.folderAdded"));
   };
 
   const removeWorkspace = (folder: string) => {
@@ -564,11 +581,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const needle = query.trim().toLowerCase();
     return NAV.map((group) => ({
       ...group,
-      items: group.items.filter((item) => !needle || item.label.toLowerCase().includes(needle)),
+      items: group.items.filter((item) => !needle || t(item.labelKey).toLowerCase().includes(needle)),
     })).filter((group) => group.items.length > 0);
-  }, [query]);
+  }, [query, config.ui.language]);
 
-  const patchUi = (changes: Partial<Config["ui"]>) => void onPatch({ ui: { ...config.ui, ...changes } });
+  const patchUi = (changes: Partial<Config["ui"]>) => void onPatch({ ui: changes });
+  const patchDesktop = (changes: Partial<Config["desktop"]>) => void onPatch({ desktop: changes });
 
   const switchProvider = async (provider: "mlx" | "bonsai") => {
     setBusy(true);
@@ -604,6 +622,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             : { label: "not indexed", tone: "" };
 
   const head = TITLES[section];
+  const accentCheck = checkAccent(accent);
 
   const statusCopy =
     status.state === "ready"
@@ -623,11 +642,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className="no-drag flex items-center gap-1.5 w-full px-2 py-1 rounded-lg text-[11.5px] text-muted hover:text-ink hover:bg-ink/5"
           >
             <ArrowLeft size={13} />
-            Back to app
+            {t("settings.back")}
             <span className="kbd ml-auto">ESC</span>
           </button>
 
-          <h1 className="text-[21px] font-semibold tracking-tight px-2 mt-4">Settings</h1>
+          <h1 className="text-[21px] font-semibold tracking-tight px-2 mt-4">{t("settings.title")}</h1>
 
           <button
             onClick={() => setSection("profile")}
@@ -648,7 +667,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search settings…"
+              placeholder={t("settings.search")}
+              aria-label={t("settings.search")}
               className="field w-full !h-8 !pl-8 !text-[11.5px]"
             />
           </div>
@@ -657,12 +677,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <nav className="px-2 mt-3 overflow-y-auto no-drag">
           <button onClick={onClose} className="nav-item">
             <MessageSquare size={15} />
-            Ask OpenMonkey
+            {t("settings.ask")}
           </button>
 
           {groups.map((group) => (
-            <div key={group.label ?? "main"} className="mt-4">
-              {group.label && <p className="section-label px-2">{group.label}</p>}
+            <div key={group.labelKey} className="mt-4">
+              <p className="section-label px-2">{t(group.labelKey)}</p>
               <div className="space-y-0.5">
                 {group.items.map((item) => {
                   const Icon = item.icon;
@@ -673,7 +693,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       className={`nav-item ${section === item.id ? "nav-item-active" : ""}`}
                     >
                       <Icon size={15} />
-                      {item.label}
+                      {t(item.labelKey)}
                     </button>
                   );
                 })}
@@ -683,7 +703,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {groups.length === 0 && (
             <p className="text-[11px] text-faint px-3 py-5 leading-relaxed">
-              No settings match “{query}”.
+              {t("settings.noMatch", { query })}
             </p>
           )}
         </nav>
@@ -691,7 +711,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="mt-auto px-4 py-3 flex items-center justify-between text-[10px] text-faint">
           <span className="flex items-center gap-1.5">
             <Lock size={10} />
-            Local only
+            {t("nav.localOnly")}
           </span>
           <span>OpenMonkey</span>
         </div>
@@ -702,7 +722,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="relative max-w-[780px] px-10 py-10">
           <div className="flex items-start justify-between gap-6 mb-8">
             <div>
-              <h1 className="page-title">{head.title}</h1>
+              <h1 className="page-title">{t(head.titleKey)}</h1>
               <p className="lede">{head.lede}</p>
             </div>
             {section === "model" && (
@@ -738,13 +758,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           style={{ boxShadow: `0 0 0 2px var(--color-card), 0 0 0 3px ${logo.color}55` }}
                         />
                         <div>
-                          <p className="row-title">Avatar</p>
-                          <p className="row-copy">One of 12 expressions. It follows the conversation and the mood picker.</p>
+                          <p className="row-title">{t("appearance.avatar")}</p>
+                          <p className="row-copy">{t("appearance.avatarCopy")}</p>
                         </div>
                       </div>
                       <span className="chip chip-accent">
                         <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-accent)" }} />
-                        {logo.label}
+                        {moodLabel(mood)}
                       </span>
                     </div>
 
@@ -805,27 +825,141 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </>
             )}
 
-            {section === "appearance" && (
+            {section === "desktop" && (
               <>
                 <section>
-                  <p className="section-label">Color mode</p>
+                  <p className="section-label">{t("desktop.startup")}</p>
                   <div className="card">
-                    <SettingRow title="Interface theme" copy="System follows macOS appearance. The choice is saved for this Mac.">
-                      <Segmented
-                        value={config.ui.theme}
-                        onChange={(value) => patchUi({ theme: value as Config["ui"]["theme"] })}
-                        options={[
-                          { value: "system", label: "System" },
-                          { value: "light", label: "Light" },
-                          { value: "dark", label: "Dark" },
-                        ]}
+                    <SettingRow title={t("desktop.launchAtLogin")} copy={t("desktop.launchAtLoginCopy")}>
+                      <Toggle
+                        on={config.desktop.launchAtLogin}
+                        label={t("desktop.launchAtLogin")}
+                        onChange={() => patchDesktop({ launchAtLogin: !config.desktop.launchAtLogin })}
+                      />
+                    </SettingRow>
+                    <SettingRow title={t("desktop.keepRunning")} copy={t("desktop.keepRunningCopy")}>
+                      <Toggle
+                        on={config.desktop.closeToTray}
+                        label={t("desktop.keepRunning")}
+                        onChange={() => patchDesktop({ closeToTray: !config.desktop.closeToTray })}
                       />
                     </SettingRow>
                   </div>
                 </section>
 
                 <section>
-                  <p className="section-label">Accent color</p>
+                  <p className="section-label">{t("desktop.notifications")}</p>
+                  <div className="card">
+                    <SettingRow title={t("desktop.notifyApprovals")} copy={t("desktop.notifyApprovalsCopy")}>
+                      <Toggle
+                        on={config.desktop.notifications}
+                        label={t("desktop.notifyApprovals")}
+                        onChange={() => patchDesktop({ notifications: !config.desktop.notifications })}
+                      />
+                    </SettingRow>
+                    <SettingRow title={t("desktop.notifyDone")} copy={t("desktop.notifyDoneCopy")}>
+                      <Toggle
+                        on={config.desktop.notifyOnComplete}
+                        label={t("desktop.notifyDone")}
+                        disabled={!config.desktop.notifications}
+                        onChange={() => patchDesktop({ notifyOnComplete: !config.desktop.notifyOnComplete })}
+                      />
+                    </SettingRow>
+                  </div>
+                  <p className="text-[10.5px] text-faint mt-2 px-1">{t("desktop.badge")}</p>
+                </section>
+
+                <section>
+                  <p className="section-label">{t("desktop.quickAsk")}</p>
+                  <div className="card">
+                    <SettingRow title={t("desktop.quickAskToggle")} copy={t("desktop.quickAskToggleCopy")}>
+                      <Toggle
+                        on={config.desktop.quickAsk}
+                        label={t("desktop.quickAskToggle")}
+                        onChange={() => patchDesktop({ quickAsk: !config.desktop.quickAsk })}
+                      />
+                    </SettingRow>
+                    <div className="row">
+                      <div>
+                        <p className="row-copy !mt-0 max-w-[52ch]">
+                          {t("desktop.quickAskHint", { keys: "⌥ Space" })}
+                        </p>
+                      </div>
+                      <button onClick={() => void window.electron?.openQuickAsk()} className="btn shrink-0">
+                        <Keyboard size={13} />
+                        {t("desktop.test")}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">{t("shortcuts.title")}</p>
+                  <div className="card">
+                    {[
+                      ["⌘ N", t("nav.newChat")],
+                      ["⌘ K", t("nav.searchChats")],
+                      ["⌘ ,", t("settings.title")],
+                      ["⌘ \\", t("shortcuts.activity")],
+                      ["⌘ L", t("shortcuts.focus")],
+                      ["⌘ .", t("shortcuts.stop")],
+                      ["⌥ Space", t("shortcuts.quick")],
+                    ].map(([combo, label]) => (
+                      <div className="row" key={combo}>
+                        <span className="row-title">{label}</span>
+                        <span className="kbd">{combo}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10.5px] text-faint mt-2 px-1">{t("shortcuts.copy")}</p>
+                </section>
+              </>
+            )}
+
+            {section === "appearance" && (
+              <>
+                <section>
+                  <p className="section-label">{t("appearance.colorMode")}</p>
+                  <div className="card p-5">
+                    <p className="row-title">{t("appearance.theme")}</p>
+                    <p className="row-copy mb-4">{t("appearance.themeCopy")}</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      {(["system", "light", "dark"] as const).map((theme) => {
+                        const selected = config.ui.theme === theme;
+                        const label =
+                          theme === "system"
+                            ? t("appearance.system")
+                            : theme === "light"
+                              ? t("appearance.light")
+                              : t("appearance.dark");
+                        return (
+                          <button
+                            key={theme}
+                            onClick={() => patchUi({ theme })}
+                            aria-pressed={selected}
+                            className={`theme-option ${selected ? "theme-option-active" : ""}`}
+                          >
+                            <span className={`theme-preview theme-preview-${theme}`} aria-hidden="true">
+                              <span className="theme-preview-side" />
+                              <span className="theme-preview-main">
+                                <span className="theme-preview-line w-3/4" />
+                                <span className="theme-preview-line w-full" />
+                                <span className="theme-preview-line w-1/2" />
+                              </span>
+                            </span>
+                            <span className="flex items-center justify-center gap-1 text-[11px]">
+                              {selected && <Check size={11} className="text-accent-ink" />}
+                              {label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">{t("appearance.accent")}</p>
                   <div className="card p-5">
                     <div className="flex items-center gap-2.5 flex-wrap">
                       {ACCENTS.map((item) => {
@@ -845,16 +979,81 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         );
                       })}
                     </div>
-                    <p className="text-[11px] text-muted mt-4">
-                      Using <span className="text-ink font-semibold">{accentName}</span> · saved to this Mac.
+                    <div className="flex items-center justify-between gap-3 flex-wrap mt-4">
+                      <p className="text-[11px] text-muted">
+                        {t("appearance.using", { name: accentName })}
+                      </p>
+                      <label className="flex items-center gap-2 text-[11px] text-muted cursor-pointer">
+                        <input
+                          type="color"
+                          value={accent}
+                          onChange={(event) => patchUi({ accent: event.target.value })}
+                          aria-label={t("appearance.customAccent")}
+                          className="w-7 h-7 rounded-lg border border-line bg-transparent cursor-pointer"
+                        />
+                        {t("appearance.customAccent")}
+                      </label>
+                    </div>
+                    <p className={`text-[10.5px] mt-2 ${accentCheck.passes ? "text-muted" : "text-warn"}`}>
+                      {accentCheck.passes
+                        ? t("appearance.contrast", {
+                            ratio: accentCheck.ratio.toFixed(1),
+                            label:
+                              accentCheck.level === "aa"
+                                ? t("appearance.contrastAA")
+                                : t("appearance.contrastLarge"),
+                          })
+                        : t("appearance.contrastLow")}
                     </p>
                   </div>
                 </section>
 
                 <section>
-                  <p className="section-label">Typography</p>
-                  <div className="card p-5">
-                    <p className="text-faint text-[10px] tracking-[0.08em] uppercase">OpenMonkey · A little clarity goes a long way</p>
+                  <p className="section-label">{t("appearance.typography")}</p>
+                  <div className="card">
+                    <SettingRow title={t("appearance.textSize")} copy={t("appearance.textSizeCopy")}>
+                      <Segmented
+                        value={config.ui.textScale}
+                        onChange={(value) => patchUi({ textScale: value as Config["ui"]["textScale"] })}
+                        options={[
+                          { value: "s", label: t("appearance.small") },
+                          { value: "m", label: t("appearance.medium") },
+                          { value: "l", label: t("appearance.large") },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow title={t("appearance.density")} copy={t("appearance.densityCopy")}>
+                      <Segmented
+                        value={config.ui.density}
+                        onChange={(value) => patchUi({ density: value as Config["ui"]["density"] })}
+                        options={[
+                          { value: "comfortable", label: t("appearance.comfortable") },
+                          { value: "compact", label: t("appearance.compact") },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow title={t("appearance.motion")} copy={t("appearance.reduceMotionCopy")}>
+                      <Toggle
+                        on={config.ui.reduceMotion}
+                        label={t("appearance.reduceMotion")}
+                        onChange={() => patchUi({ reduceMotion: !config.ui.reduceMotion })}
+                      />
+                    </SettingRow>
+                    <SettingRow title={t("appearance.language")} copy={t("appearance.languageCopy")}>
+                      <Segmented
+                        value={config.ui.language}
+                        onChange={(value) => patchUi({ language: value as Config["ui"]["language"] })}
+                        options={[
+                          { value: "en", label: "English" },
+                          { value: "ru", label: "Русский" },
+                        ]}
+                      />
+                    </SettingRow>
+                  </div>
+                  <div className="card p-5 mt-3">
+                    <p className="text-faint text-[10px] tracking-[0.08em] uppercase">
+                      OpenMonkey · A little clarity goes a long way
+                    </p>
                     <p className="text-[13.5px] mt-2.5 leading-relaxed">
                       Good typography makes room for the conversation. One monospace face keeps the interface and the
                       chat in the same voice.
@@ -866,7 +1065,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </section>
 
                 <section>
-                  <p className="section-label">Mood</p>
+                  <p className="section-label">{t("appearance.mood")}</p>
                   <div className="card p-4">
                     <div className="grid grid-cols-6 gap-1.5">
                       {MOODS.map((name) => (
@@ -881,14 +1080,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         >
                           <img src={`/logos/${MOOD_LOGOS[name].file}`} alt="" className="w-11 h-11 rounded-full" />
                           <span className={`text-[9.5px] ${name === mood ? "text-accent-ink" : "text-muted"}`}>
-                            {MOOD_LOGOS[name].label}
+                            {moodLabel(name)}
                           </span>
                         </button>
                       ))}
                     </div>
                     <p className="text-[11px] text-muted mt-3.5">
-                      Current: <span className="text-ink font-semibold">{logo.label}</span>. The same artwork drives the
-                      Dock tile and the menu bar icon.
+                      {t("appearance.currentMood", { mood: moodLabel(mood) })}
                     </p>
                   </div>
                 </section>

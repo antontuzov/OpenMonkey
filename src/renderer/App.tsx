@@ -6,6 +6,8 @@ import { AppSidebar } from "./components/AppSidebar";
 import { SettingsView } from "./components/SettingsView";
 import { Onboarding } from "./components/Onboarding";
 import { ApprovalDialog } from "./components/ApprovalDialog";
+import { useAppearance } from "./theme";
+import { moodLabel, setLanguage, t } from "./i18n";
 import {
   MOOD_LOGOS,
   type AgentStatus,
@@ -38,7 +40,9 @@ export default function App() {
       api.onAgentStatus(setStatus),
       api.onAgentReady(() => void api.getAgentStatus().then(setStatus)),
       api.onMoodChange((next) => setMood(next as Mood)),
-      api.onApprovalRequest(setApproval),
+      api.onApprovalRequest((request) => {
+        if ((request.origin ?? "main") === "main") setApproval(request);
+      }),
       api.onOpenSettings(() => setView("settings")),
     ];
 
@@ -49,20 +53,8 @@ export default function App() {
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
   }, []);
 
-  const theme = config?.ui.theme ?? "system";
-  const accent = config?.ui.accent ?? "#3ecf8e";
-
-  useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty("--color-accent", accent);
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const apply = () => {
-      root.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
-    };
-    apply();
-    media.addEventListener("change", apply);
-    return () => media.removeEventListener("change", apply);
-  }, [accent, theme]);
+  useAppearance(config);
+  if (config) setLanguage(config.ui.language);
 
   const refreshConversations = useCallback(async () => {
     const api = window.electron;
@@ -219,18 +211,10 @@ export default function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (config && !config.onboarding.completed) return;
       if (event.key === "Escape") setView("chat");
-      if (event.key === "," && event.metaKey) {
-        event.preventDefault();
-        setView("settings");
-      }
-      if (event.key.toLowerCase() === "n" && event.metaKey && view === "chat") {
-        event.preventDefault();
-        void newChat();
-      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [config, newChat, view]);
+  }, [config]);
 
   const respond = useCallback(
     async (approved: boolean, remember = false) => {
@@ -259,6 +243,40 @@ export default function App() {
       })
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    const api = window.electron;
+    if (!api) return;
+
+    return api.onMenuCommand((command) => {
+      if (config && !config.onboarding.completed) return;
+      switch (command) {
+        case "new-chat":
+          void newChat();
+          break;
+        case "settings":
+          setView("settings");
+          break;
+        case "toggle-activity":
+          setPanelOpen((open) => !open);
+          break;
+        case "stop":
+          void api.stopGeneration();
+          break;
+        case "cycle-mood":
+          cycleMood();
+          break;
+        case "search-chats":
+          setView("chat");
+          window.requestAnimationFrame(() => window.dispatchEvent(new Event("om:focus-search")));
+          break;
+        case "focus-composer":
+          setView("chat");
+          window.requestAnimationFrame(() => window.dispatchEvent(new Event("om:focus-composer")));
+          break;
+      }
+    });
+  }, [config, cycleMood, newChat]);
 
   const agentName = config?.agent.name ?? "OpenMonkey";
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
@@ -332,7 +350,7 @@ export default function App() {
         <header className="drag-region h-12 shrink-0 flex items-center justify-between gap-4 px-5 border-b border-line">
           <div className="flex items-center gap-2 text-[11.5px] min-w-0">
             <FolderOpen size={14} className="text-faint shrink-0" />
-            <span className="text-faint">workspace</span>
+            <span className="text-faint">{t("nav.workspace")}</span>
             <span className="text-faint">/</span>
             <span className="flex items-center gap-1.5 text-ink min-w-0">
               {activeBusy ? (
@@ -341,22 +359,22 @@ export default function App() {
                 <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
               )}
               <span className="truncate">{activeTitle}</span>
-              {activeBusy && <span className="chip chip-accent !h-5 shrink-0">Answering</span>}
+              {activeBusy && <span className="chip chip-accent !h-5 shrink-0">{t("chat.answering")}</span>}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <button onClick={cycleMood} className="chip no-drag hover:border-ink/25" title="Cycle mood">
+            <button onClick={cycleMood} className="chip no-drag hover:border-ink/25" title={t("nav.cycleMood")}>
               <img src={`/logos/${logo.file}`} alt="" className="w-4 h-4 rounded-full" />
-              {logo.label}
+              {moodLabel(mood)}
             </button>
             <button
               onClick={() => setPanelOpen((open) => !open)}
               className={`icon-btn ${panelOpen ? "bg-card-2 text-ink" : ""}`}
-              title={panelOpen ? "Hide activity" : "Show activity"}
+              title={panelOpen ? t("nav.hideActivity") : t("nav.showActivity")}
             >
               <PanelRight size={16} />
             </button>
-            <button onClick={() => setView("settings")} className="icon-btn" title="Settings">
+            <button onClick={() => setView("settings")} className="icon-btn" title={t("nav.settings")}>
               <Settings2 size={16} />
             </button>
           </div>

@@ -25,6 +25,8 @@ import {
   type Mood,
 } from "../../utils/types";
 import { MessageContent } from "./MessageContent";
+import { moodLabel, t } from "../i18n";
+import { toast } from "./Toast";
 
 interface ChatInterfaceProps {
   status: AgentStatus;
@@ -126,6 +128,7 @@ const ChatMessage: React.FC<{
     try {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
+      toast(t("chat.copied"));
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
       /* clipboard unavailable */
@@ -154,7 +157,7 @@ const ChatMessage: React.FC<{
               <span>·</span>
               <span className="inline-flex items-center gap-1 text-warn">
                 <Square size={8} />
-                Stopped
+                {t("chat.stopped")}
               </span>
             </>
           )}
@@ -163,7 +166,7 @@ const ChatMessage: React.FC<{
               copied ? "opacity-100" : "opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100"
             }`}
           >
-            <button onClick={() => void copy()} className="icon-btn !w-5 !h-5" title="Copy message">
+            <button onClick={() => void copy()} className="icon-btn !w-5 !h-5" title={t("chat.copy")} aria-label={t("chat.copy")}>
               {copied ? <Check size={11} className="text-accent-ink" /> : <Copy size={11} />}
             </button>
             {!isUser && canRegenerate && (
@@ -171,7 +174,8 @@ const ChatMessage: React.FC<{
                 onClick={onRegenerate}
                 disabled={regenerating}
                 className="icon-btn !w-5 !h-5"
-                title="Regenerate this reply"
+                title={t("chat.regenerate")}
+                aria-label={t("chat.regenerate")}
               >
                 {regenerating ? <Loader size={11} className="animate-spin" /> : <RotateCcw size={11} />}
               </button>
@@ -195,7 +199,7 @@ const StreamingMessage: React.FC<{ content: string; logoFile: string }> = ({ con
           <span className="inline-block w-[6px] h-[13px] ml-0.5 align-[-2px] rounded-[1px] bg-accent animate-pulse" />
         )}
       </div>
-      <p className="text-[10px] text-faint mt-1.5 px-0.5">writing…</p>
+      <p className="text-[10px] text-faint mt-1.5 px-0.5">{t("chat.writing")}</p>
     </div>
   </div>
 );
@@ -279,6 +283,25 @@ const ModelErrorCard: React.FC<{
   </div>
 );
 
+const MessageSkeleton: React.FC = () => (
+  <div className="pt-4 space-y-6" aria-hidden="true">
+    <div className="flex justify-end">
+      <div className="h-11 w-[42%] rounded-2xl bg-card-2 animate-pulse" />
+    </div>
+    <div className="flex gap-2.5">
+      <div className="w-[26px] h-[26px] rounded-full bg-card-2 animate-pulse shrink-0" />
+      <div className="card flex-1 max-w-[78%] p-4 space-y-2.5">
+        <div className="h-3 w-[88%] rounded bg-card-2 animate-pulse" />
+        <div className="h-3 w-[72%] rounded bg-card-2 animate-pulse" />
+        <div className="h-3 w-[48%] rounded bg-card-2 animate-pulse" />
+      </div>
+    </div>
+    <div className="flex justify-end">
+      <div className="h-9 w-[30%] rounded-2xl bg-card-2 animate-pulse" />
+    </div>
+  </div>
+);
+
 const LoadingCard: React.FC<{ title: string; copy: string }> = ({ title, copy }) => (
   <div className="min-h-[46vh] flex items-center justify-center">
     <div className="card px-7 py-6 text-center max-w-sm">
@@ -315,6 +338,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const stickRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragDepth = useRef(0);
+
+  useEffect(() => {
+    const focus = () => textareaRef.current?.focus();
+    window.addEventListener("om:focus-composer", focus);
+    return () => window.removeEventListener("om:focus-composer", focus);
+  }, []);
 
   const ready = status.state === "ready";
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
@@ -580,16 +609,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       {dragging && (
         <div className="pointer-events-none absolute inset-3 z-20 rounded-2xl border-2 border-dashed border-accent bg-accent-soft/95 flex flex-col items-center justify-center gap-2">
           <Paperclip size={26} className="text-accent-ink" />
-          <p className="text-[13px] font-semibold text-accent-ink">Drop a text file to attach</p>
-          <p className="text-[11px] text-muted">Plain text or code, up to {MAX_ATTACHMENT_LABEL}</p>
+          <p className="text-[13px] font-semibold text-accent-ink">{t("chat.dropTitle")}</p>
+          <p className="text-[11px] text-muted">{t("chat.dropCopy", { size: MAX_ATTACHMENT_LABEL })}</p>
         </div>
       )}
 
-      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-8">
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        aria-busy={loadingMessages}
+        className="flex-1 overflow-y-auto px-8"
+      >
+        <span className="sr-only" role="status">
+          {loadingMessages ? t("chat.loadingHistory") : ""}
+        </span>
         <div className="max-w-[760px] mx-auto py-7">
-          {loadingMessages && (
-            <LoadingCard title="Opening this chat" copy="Reading the local, encrypted history for this session." />
-          )}
+          {loadingMessages && <MessageSkeleton />}
 
           {!loadingMessages && !ready && status.state !== "error" && messages.length === 0 && (
             <LoadingCard
@@ -609,15 +644,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           {!loadingMessages && ready && empty && (
             <div className="max-w-[560px] mx-auto pt-8 text-center">
               <img
+                key={mood}
                 src={`/logos/${logo.file}`}
                 alt=""
                 className="w-[72px] h-[72px] rounded-full mx-auto logo-mood-change"
                 style={{ boxShadow: `0 0 0 3px var(--color-paper), 0 0 0 4px ${logo.color}55` }}
               />
-              <h1 className="text-[25px] font-semibold tracking-tight mt-5">Welcome to {agentName}</h1>
+              <h1 className="text-[25px] font-semibold tracking-tight mt-5">
+                {t("chat.welcome", { name: agentName })}
+              </h1>
               <p className="text-muted text-[12px] mt-2 max-w-[46ch] mx-auto leading-relaxed">
-                Your personal AI assistant, running on this Mac. It answers questions and works with your files and
-                apps — asking before it touches anything.
+                {t("chat.intro")}
               </p>
 
               <div className="card text-left mt-8">
@@ -639,8 +676,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </div>
 
               <p className="text-faint text-[10.5px] mt-6 leading-relaxed">
-                {agentName} can take actions using the permissions you enable. Review every prompt and only allow
-                tools you trust.
+                {t("chat.warning", { name: agentName })}
               </p>
             </div>
           )}
@@ -684,7 +720,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <TriangleAlert size={15} className="text-warn shrink-0" />
               <p className="text-[11.5px] flex-1 leading-snug text-muted">{notice}</p>
               <button onClick={() => setNotice(null)} className="text-[11px] text-muted hover:text-ink">
-                Dismiss
+                {t("chat.dismiss")}
               </button>
             </div>
           )}
@@ -698,7 +734,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <button
                   onClick={() => setAttachment(null)}
                   className="ml-auto icon-btn !w-5 !h-5"
-                  title="Remove attachment"
+                  title={t("chat.removeAttachment")}
+                  aria-label={t("chat.removeAttachment")}
                 >
                   <X size={11} />
                 </button>
@@ -719,12 +756,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               placeholder={
                 ready
                   ? busy
-                    ? "Answering…"
-                    : `Message ${agentName}`
+                    ? t("chat.placeholderBusy")
+                    : t("chat.placeholder", { name: agentName })
                   : status.state === "error"
-                    ? "The model is unavailable"
-                    : "Waiting for the model"
+                    ? t("chat.placeholderUnavailable")
+                    : t("chat.placeholderWaiting")
               }
+              aria-label={t("chat.placeholder", { name: agentName })}
               disabled={!ready || loadingMessages}
               className="w-full resize-none bg-transparent px-2.5 pt-2.5 pb-1 text-[12.5px] outline-none placeholder:text-faint disabled:opacity-50 min-h-[44px] max-h-[180px]"
             />
@@ -733,7 +771,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <button
                 onClick={beginNewChat}
                 disabled={!conversationId}
-                title="New conversation"
+                title={t("nav.newChat")}
+                aria-label={t("nav.newChat")}
                 className="icon-btn"
               >
                 <Plus size={16} />
@@ -741,21 +780,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <button
                 onClick={() => void pickAttachment()}
                 disabled={!ready || attaching || loadingMessages}
-                title={`Attach or drop a text file (up to ${MAX_ATTACHMENT_LABEL})`}
+                title={t("chat.attach", { size: MAX_ATTACHMENT_LABEL })}
+                aria-label={t("chat.attach", { size: MAX_ATTACHMENT_LABEL })}
                 className="icon-btn"
               >
                 {attaching ? <Loader size={16} className="animate-spin" /> : <Paperclip size={16} />}
               </button>
               <span className={`chip ml-1 ${autoExecute ? "" : "chip-accent"}`}>
                 <ShieldCheck size={12} />
-                {autoExecute ? "Runs freely" : "Approvals on"}
+                {autoExecute ? t("chat.runsFreely") : t("chat.approvalsOn")}
               </span>
 
               <div className="ml-auto flex items-center gap-2.5">
                 <span className="hidden lg:flex items-center gap-1 text-[10px] text-faint">
                   <span className="kbd">⇧</span>
                   <span className="kbd">↵</span>
-                  newline
+                  {t("chat.newline")}
                 </span>
                 <span className="flex items-center gap-1.5 text-[10.5px] text-faint">
                   <span
@@ -769,7 +809,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   <button
                     onClick={() => void stop()}
                     className="btn !w-8 !px-0 rounded-full"
-                    title="Stop generating"
+                    title={t("chat.stop")}
+                    aria-label={t("chat.stop")}
                   >
                     <Square size={11} />
                   </button>
@@ -778,7 +819,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     onClick={() => void send()}
                     disabled={!ready || (!input.trim() && !attachment) || loadingMessages}
                     className="btn btn-primary !w-8 !px-0 rounded-full"
-                    title="Send"
+                    title={t("chat.send")}
+                    aria-label={t("chat.send")}
                   >
                     <ArrowUp size={15} />
                   </button>
@@ -788,7 +830,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
 
           <p className="text-center text-[10px] text-faint mt-2.5">
-            {agentName} runs entirely on this Mac · <span className="text-muted">{logo.label.toLowerCase()}</span>
+            {t("chat.footer", { name: agentName })} ·{" "}
+            <span className="text-muted">{moodLabel(mood).toLowerCase()}</span>
           </p>
         </div>
       </div>

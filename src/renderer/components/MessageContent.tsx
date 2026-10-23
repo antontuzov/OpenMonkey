@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, Copy, FileText } from "lucide-react";
 import type { Message } from "../../utils/types";
+import { t } from "../i18n";
 
 interface Segment {
   type: "text" | "code";
@@ -97,9 +98,13 @@ const CodeBlock: React.FC<{ language?: string; code: string }> = ({ language, co
     <div className="my-2.5 rounded-xl border border-line overflow-hidden bg-card-2">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-line">
         <span className="text-[9.5px] uppercase tracking-[0.14em] text-faint">{language || "code"}</span>
-        <button onClick={() => void copy()} className="flex items-center gap-1 text-[10px] text-muted hover:text-ink">
+        <button
+          onClick={() => void copy()}
+          className="flex items-center gap-1 text-[10px] text-muted hover:text-ink"
+          aria-label={t("chat.copy")}
+        >
           {copied ? <Check size={11} className="text-accent-ink" /> : <Copy size={11} />}
-          {copied ? "Copied" : "Copy"}
+          <span aria-live="polite">{copied ? t("chat.copyCodeDone") : t("chat.copyCode")}</span>
         </button>
       </div>
       <pre className="p-3 overflow-x-auto text-[11.5px] leading-[1.65]">

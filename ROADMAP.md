@@ -215,18 +215,61 @@ default config is memory on, workspace search off.
 
 ---
 
-## Phase 5 — Desktop premium (P1, ~2 weeks)
+## Phase 5 — Desktop premium (P1, ~2 weeks) — ✅ core complete 2026-10-23
 
-22. **Quick Ask**: menu-bar popover + global shortcut (⌥Space), runs the same agent, approvals
-    appear without opening the main window. *(M)*
-23. **Desktop citizenship**: launch at login, window state restore, native menu with real
-    commands, notifications for approvals/done, Dock badging, close-to-tray preference. *(M)*
-24. **Appearance v2**: theme preview cards (from the reference), text size S/M/L, density,
-    custom accent with WCAG contrast check, animated mood transitions honoring Reduce Motion. *(M)*
-25. **Accessibility & i18n**: full keyboard map, focus traps, ARIA labels, VoiceOver pass,
-    EN/RU strings with locale dates. *(L)*
-26. **Micro-interactions**: streaming caret, skeleton loaders, toasts instead of modals for
-    success, inline task progress, no sound by default. *(S)*
+22. ✅ **Quick Ask**: borderless 560×440 popover registered on ⌥Space through
+    `globalShortcut`, opened from the tray, the menu or the shortcut without activating the
+    main window. It streams into the same conversation the main window is on, hides on blur
+    and on Escape, and carries `origin: "quick"` through `TaskManager` → `ApprovalRequest` so
+    each surface renders only its own approvals. "Open chat" hands focus to the composer. *(M)*
+23. ✅ **Desktop citizenship**: window bounds/maximization restored through a separate
+    `openmonkey-window` store, with a saved position reused only while it still overlaps a
+    connected display; native menu whose items send real `menu-command`s (new chat ⌘N, search
+    ⌘K, Quick Ask, activity ⌘\, composer ⌘L, stop ⌘., settings ⌘,, mood, GitHub, data folder)
+    and re-installs on language change; macOS notifications for awaiting-approval and for an
+    approved action finishing, skipped while the owning surface is visible and focused; Dock
+    badging from the count of awaiting approvals; close-to-tray and launch-at-login toggles
+    (`login-item` only applies to packaged builds); tray menu, tooltip and mood submenu, and a
+    tray click that recreates the window if it was destroyed. *(M)*
+24. ✅ **Appearance v2**: theme cards (Light / Dark / System, where System tracks
+    `prefers-color-scheme` live), text scale S/M/L applied as `setZoomFactor` (0.9 / 1 / 1.12)
+    so chat scales too, comfortable/compact density through `data-density`, a free-form accent
+    picker with a WCAG report (`checkAccent` mixes the accent the same way the CSS tokens do
+    and grades AA / large-text / low), and a Reduce Motion switch that also honours the system
+    setting. Settings patches are partial per section, so changing one field cannot revive a
+    stale sibling. *(M)*
+25. ✅ **Accessibility & i18n**: EN/RU dictionary with `t()`/`locale()`, `documentElement.lang`,
+    locale-formatted times (12-hour en-US, 24-hour ru-RU) and RU mood names shared with the
+    native tray through `MOOD_LOGOS.labelRu`; the keyboard map is shown in Settings and echoed
+    by the native menu accelerators; the approval dialog is a real `role="dialog"` with
+    `aria-modal`, labelled and described headings, autofocus, Tab/Shift+Tab wrap, Escape to
+    deny and focus restore; icon-only controls carry `aria-label`s and toasts/streaming text
+    use live regions (53 labelled controls and 11 live regions on the chat surface). Long
+    explanatory copy, the onboarding flow and the welcome/failure cards stay English. *(L)*
+26. ✅ **Micro-interactions**: streaming caret and held-back fence tail while answering, message
+    skeletons on history load, inline task progress in the rail, and toasts instead of modals
+    for success (copy, fact saved/removed, folder added, audit exported, reindex) with no sound
+    anywhere and no audio element in the app. *(S)*
+
+**Phase 5 verification:** driven through the running Electron app over CDP. Quick Ask opened
+programmatically, streamed, hid on Escape, kept its own approval inline (a `shell.run_command`
+approved there executed with output `quick-approval` while the main window showed nothing), and
+"Open chat" left focus in the composer. Window state restored 1360×794 at (40, 30) from the
+store; menu commands settings / focus-composer / search / activity / cycle-mood all observed
+their effect; appearance changes (Dark → L → compact → Reduce Motion → accent `#f6e7a1` flagged
+low-contrast → RU) persisted to disk and survived a reload; the RU chat surface, task rail and
+copy toast were screenshot-checked, which is what surfaced the hardcoded `Copy`, `on/off`,
+mood-name and rail labels fixed in this pass. **Not exercised natively** (they need real OS
+input or a second instance): the traffic-light/⌘W close path behind close-to-tray — renderer
+`window.close()` bypasses the preventable `close` event, so it is not a valid test — the ⌥Space
+global key itself, notification banners, the Dock badge pixel, launch-at-login (dev-gated), and
+the tray context menu, whose RU labels and language-change rebuild are wired but were never
+opened on screen.
+The approval dialog rendered and resolved in the main window through "Allow for session", but
+Tab-cycling and focus restore were not instrumented; both belong in the Phase 7 e2e pass. The
+streaming caret and the history skeleton were confirmed in the render paths, not captured on
+screen (local history loads faster than the debounce).
+`npm run typecheck` and `npm run build` are clean.
 
 ---
 
@@ -248,6 +291,10 @@ default config is memory on, workspace search off.
 31. **Tests**: unit (path confinement, approval gating, crypto, mood mapping), integration
     (IPC contract), e2e (Playwright + Electron), visual snapshots of chat/settings, a11y
     checks. *(L)*
+    Known gap to cover: task-fence parsing tolerance — Bonsai sometimes echoes the block with a
+    doubled closing brace, which currently fails as `Tool request is not valid JSON` instead of
+    being repaired or reported clearly; e2e should also drive the approval dialog's Tab cycle
+    and the native close-to-tray path.
 32. **CI/CD**: GitHub Actions on macOS arm64 + x64; typecheck, tests, build, package; signing
     with Developer ID, hardened runtime, notarization and stapling; Windows signing. *(L)*
 33. **Auto-update**: `electron-updater` with GitHub Releases, staged rollout, rollback,

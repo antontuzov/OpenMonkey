@@ -164,6 +164,8 @@ export interface ApprovalRequest {
   preview: string;
   /** Policy that produced this prompt, shown in the dialog. */
   policy: ApprovalPolicy;
+  /** Which window asked, so only that surface shows the approval dialog. */
+  origin?: "main" | "quick";
 }
 
 /** One tool call, its authorization decision and its outcome. Persisted for export. */
@@ -241,20 +243,24 @@ export const MOODS: Mood[] = [
 /**
  * Shared by the main process (tray + dock icon files) and the renderer (avatar +
  * accent colour). Lives here because neither side may import the other's runtime.
+ * `labelRu` lets both native menus and the UI translate the same mood name.
  */
-export const MOOD_LOGOS: Record<Mood, { file: string; color: string; label: string }> = {
-  happy: { file: "monkey-happy-yellow.png", color: "#facc15", label: "Happy" },
-  neutral: { file: "monkey-neutral-blue.png", color: "#3b82f6", label: "Neutral" },
-  angry: { file: "monkey-angry-red.png", color: "#dc2626", label: "Angry" },
-  shocked: { file: "monkey-shocked-orange.png", color: "#f97316", label: "Shocked" },
-  silly: { file: "monkey-silly-green.png", color: "#22c55e", label: "Silly" },
-  cool: { file: "monkey-cool-purple.png", color: "#9333ea", label: "Cool" },
-  love: { file: "monkey-love-pink.png", color: "#ec4899", label: "Loving" },
-  tired: { file: "monkey-tired-lavender.png", color: "#a5b4fc", label: "Tired" },
-  thinking: { file: "monkey-thinking-cyan.png", color: "#06b6d4", label: "Thinking" },
-  excited: { file: "monkey-excited-gold.png", color: "#eab308", label: "Excited" },
-  calm: { file: "monkey-calm-mint.png", color: "#34d399", label: "Calm" },
-  smile: { file: "monkey-smile-coral.png", color: "#fb7185", label: "Smiling" },
+export const MOOD_LOGOS: Record<
+  Mood,
+  { file: string; color: string; label: string; labelRu: string }
+> = {
+  happy: { file: "monkey-happy-yellow.png", color: "#facc15", label: "Happy", labelRu: "Радость" },
+  neutral: { file: "monkey-neutral-blue.png", color: "#3b82f6", label: "Neutral", labelRu: "Спокойный" },
+  angry: { file: "monkey-angry-red.png", color: "#dc2626", label: "Angry", labelRu: "Злой" },
+  shocked: { file: "monkey-shocked-orange.png", color: "#f97316", label: "Shocked", labelRu: "Шок" },
+  silly: { file: "monkey-silly-green.png", color: "#22c55e", label: "Silly", labelRu: "Шутник" },
+  cool: { file: "monkey-cool-purple.png", color: "#9333ea", label: "Cool", labelRu: "Крутой" },
+  love: { file: "monkey-love-pink.png", color: "#ec4899", label: "Loving", labelRu: "Любовь" },
+  tired: { file: "monkey-tired-lavender.png", color: "#a5b4fc", label: "Tired", labelRu: "Усталый" },
+  thinking: { file: "monkey-thinking-cyan.png", color: "#06b6d4", label: "Thinking", labelRu: "Думает" },
+  excited: { file: "monkey-excited-gold.png", color: "#eab308", label: "Excited", labelRu: "Восторг" },
+  calm: { file: "monkey-calm-mint.png", color: "#34d399", label: "Calm", labelRu: "Спокойствие" },
+  smile: { file: "monkey-smile-coral.png", color: "#fb7185", label: "Smiling", labelRu: "Улыбается" },
 };
 
 export interface ModelConfig {
@@ -298,6 +304,12 @@ export interface Config {
     theme: "system" | "light" | "dark";
     accent: string;
     currentMood: string;
+    /** Display scale; implemented as a native webContents zoom factor. */
+    textScale: UiTextScale;
+    density: UiDensity;
+    /** Extra override on top of the OS Reduce Motion setting. */
+    reduceMotion: boolean;
+    language: AppLanguage;
   };
   privacy: {
     saveHistory: boolean;
@@ -308,6 +320,13 @@ export interface Config {
     enabled: boolean;
     /** Opt-in: scan workspaces into a memory-only lexical index. */
     workspaceSearch: boolean;
+  };
+  desktop: {
+    launchAtLogin: boolean;
+    closeToTray: boolean;
+    notifications: boolean;
+    notifyOnComplete: boolean;
+    quickAsk: boolean;
   };
   agent: {
     name: string;
@@ -323,6 +342,10 @@ export interface Config {
     servers: McpServerConfig[];
   };
 }
+
+export type UiTextScale = "s" | "m" | "l";
+export type UiDensity = "comfortable" | "compact";
+export type AppLanguage = "en" | "ru";
 
 export interface ModelStatus {
   provider: ModelProvider | null;
@@ -350,12 +373,35 @@ export interface ModelDownloadStatus {
 export type ModelProvider = "mlx" | "bonsai";
 
 /** Sections of Config the renderer may change, one at a time. */
-export type ConfigPatch = Partial<
-  Pick<Config, "onboarding" | "model" | "ui" | "privacy" | "memory" | "agent" | "mcp">
->;
+export type ConfigPatch = Partial<{
+  onboarding: Partial<Config["onboarding"]>;
+  model: Partial<Config["model"]>;
+  ui: Partial<Config["ui"]>;
+  privacy: Partial<Config["privacy"]>;
+  memory: Partial<Config["memory"]>;
+  desktop: Partial<Config["desktop"]>;
+  agent: Partial<Config["agent"]>;
+  mcp: Partial<Config["mcp"]>;
+}>;
+
+export type MenuCommand =
+  | "new-chat"
+  | "settings"
+  | "toggle-activity"
+  | "stop"
+  | "cycle-mood"
+  | "search-chats"
+  | "focus-composer";
 
 export interface ElectronAPI {
   processMessage: (conversationId: string, message: string, attachment?: Attachment) => Promise<Message | null>;
+  /** Compact-window turn: uses the active conversation and tags approvals as quick. */
+  quickAsk: (message: string) => Promise<Message | null>;
+  getActiveConversationId: () => Promise<string | null>;
+  showMainWindow: (command?: MenuCommand) => Promise<void>;
+  openQuickAsk: () => Promise<void>;
+  hideQuickAsk: () => Promise<void>;
+  platform: string;
   regenerate: (conversationId: string) => Promise<Message | null>;
   getCurrentMood: () => Promise<Mood>;
   setMood: (mood: Mood) => Promise<void>;
@@ -408,6 +454,7 @@ export interface ElectronAPI {
   onTaskUpdate: (callback: (task: Task) => void) => () => void;
   onApprovalRequest: (callback: (request: ApprovalRequest) => void) => () => void;
   onOpenSettings: (callback: () => void) => () => void;
+  onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
   onModelDownloadStatus: (callback: (status: ModelDownloadStatus) => void) => () => void;
   onChatEvent: (callback: (event: ChatEvent) => void) => () => void;
 }
