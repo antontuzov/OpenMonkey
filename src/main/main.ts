@@ -1,3 +1,4 @@
+import "./bootstrap";
 import { app, BrowserWindow, nativeTheme, session } from "electron";
 import * as path from "node:path";
 import { TrayManager } from "./tray-manager";

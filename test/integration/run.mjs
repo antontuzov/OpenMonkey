@@ -14,6 +14,9 @@ const outdir = path.join(root, "test/.build");
 const home = mkdtempSync(path.join(os.tmpdir(), "openmonkey-test-"));
 
 mkdirSync(path.join(home, "home"), { recursive: true });
+for (const folder of ["Documents", "Downloads", "Desktop"]) {
+  mkdirSync(path.join(home, "home", folder), { recursive: true });
+}
 
 try {
   await build({
@@ -41,8 +44,11 @@ try {
   const run = spawnSync(process.execPath, ["--test", ...files], {
     cwd: root,
     stdio: "inherit",
+    timeout: 120_000,
+    killSignal: "SIGKILL",
     env: { ...process.env, OM_STUB_HOME: home, HOME: path.join(home, "home"), NODE_NO_WARNINGS: "1" },
   });
+  if (run.error) throw run.error;
   process.exitCode = run.status ?? 1;
 } finally {
   rmSync(home, { recursive: true, force: true });

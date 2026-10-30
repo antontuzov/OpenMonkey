@@ -412,13 +412,20 @@ flight, which removes that window.
 
 ## Phase 7 — Release engineering (P0 before public launch, ~2–3 weeks)
 
-31. **Tests**: unit (path confinement, approval gating, crypto, mood mapping), integration
-    (IPC contract), e2e (Playwright + Electron), visual snapshots of chat/settings, a11y
-    checks. *(L)*
-    Known gap to cover: task-fence parsing tolerance — Bonsai sometimes echoes the block with a
-    doubled closing brace, which currently fails as `Tool request is not valid JSON` instead of
-    being repaired or reported clearly; e2e should also drive the approval dialog's Tab cycle
-    and the native close-to-tray path.
+31. ✅ **Tests**: unit suites on `node:test` (no test-runner dependency) for the task-fence parser,
+    tool-argument validation and its JSON Schema subset, the backup envelope, and the mood logo
+    map; integration suites that bundle the real modules with a stubbed `electron` and drive a
+    real SQLite file — encryption flipping and `VACUUM`, retention pruning, save-history off,
+    export contents, approval gating (block, deny, remember, allow), path confinement including a
+    symlink escape, and logger redaction/rotation/tail/clear. Playwright launches the built
+    Electron app on a throwaway profile for e2e: onboarding, the chat surface with a button/
+    image/field/landmark a11y audit, Settings → Privacy rows and switch names, the history switch,
+    RU/EN round trip, close-to-tray, and a committed visual snapshot of the Privacy page.
+    `npm test` runs unit + integration; `npm run test:e2e` builds and runs Playwright.
+    The Bonsai gap is closed: a doubled closing brace in a task fence is repaired (and logged as
+    `tasks.fence.repaired`) instead of failing as invalid JSON. *(L)*
+    Still owed in a later pass: the approval dialog's Tab cycle and Escape path, which need a real
+    model turn or an injected approval to open the dialog.
 32. **CI/CD**: GitHub Actions on macOS arm64 + x64; typecheck, tests, build, package; signing
     with Developer ID, hardened runtime, notarization and stapling; Windows signing. *(L)*
 33. **Auto-update**: `electron-updater` with GitHub Releases, staged rollout, rollback,
@@ -427,6 +434,29 @@ flight, which removes that window.
     lazy-loaded, memory ceiling documented, model load progress always visible. *(M)*
 35. **Docs & launch**: README screenshots, privacy page, model compatibility table,
     troubleshooting, release notes, support channel. *(M)*
+
+**Phase 7 verification (31):** `npm test` runs 34 unit and 20 integration assertions in under a
+second; `npm run test:e2e` builds and runs 6 Playwright tests against the real Electron app in
+about three seconds. The unit suites cover the fence parser (valid, doubled/tripled braces, braces
+inside strings, unclosed fence with and without trailing prose), tool validation and the JSON
+Schema subset, the backup envelope (round trip, wrong passphrase, tamper, newer version/layout,
+field normalization, 64 MB cap) and the twelve moods. The integration suites run against a real
+SQLite file under a throwaway `HOME`: encryption off leaves no `enc:v1:` anywhere in the file
+after the `VACUUM`, back on re-seals, retention prunes a 100-day-old row, save-history off writes
+nothing, an export carries plaintext bodies, path confinement rejects `/etc/hosts` and a symlink
+that leaves `~/Documents`, approvals block/deny/remember/allow, and the logger redacts three
+fields, rotates at 2 MB keeping `.1`/`.2`, tails five lines and clears its rotations. E2E launches
+the built app with `OPENMONKEY_USER_DATA` pointed at a temporary profile (the only automation hook
+in the main process, gated to unpackaged builds): onboarding renders, Skip setup reaches the
+composer, the a11y audit finds no unnamed button/field/image or missing landmark, Privacy shows
+three named switches, history flips off and on, RU renders with `lang="ru"` and back, and
+`BrowserWindow.close()` with `closeToTray` on hides instead of destroying the window. The Privacy
+snapshot is committed at `test/e2e/app.spec.mjs-snapshots/`. **Fixed while writing the suites:** the
+approval tests were flaky because the fake `HOME` had no `Documents` folder and the shell tool
+defaulted its cwd there — the runner now creates the three allowed folders up front. **Not
+covered:** the approval dialog's Tab/Escape cycle (no model turn opens it), idle auto-lock, and
+snapshot portability across machines (the baseline is this Mac's rendering).
+`npm run typecheck` and `npm run build` are clean.
 
 ---
 

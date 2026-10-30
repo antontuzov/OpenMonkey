@@ -21,8 +21,11 @@ secret.key
 *.db-wal
 *.db-shm
 
-# Test bundles
+# Test output
 test/.build/
+test-results/
+playwright-report/
+blob-report/
 
 # Logs
 *.log
