@@ -7,6 +7,7 @@ import { Onboarding } from "./components/Onboarding";
 import { ApprovalDialog } from "./components/ApprovalDialog";
 import { LockScreen } from "./components/LockScreen";
 import { useAppearance } from "./theme";
+import { logoUrl } from "./assets";
 import { moodLabel, setLanguage, t } from "./i18n";
 
 // Settings carries the model manager, extensions and diagnostics; loading it on
@@ -303,7 +304,7 @@ export default function App() {
     return (
       <div className="h-screen bg-paper flex flex-col items-center justify-center gap-4">
         <img
-          src={`/logos/${logo.file}`}
+          src={logoUrl(logo.file)}
           alt=""
           className="w-16 h-16 rounded-full logo-mood-change"
           style={{ boxShadow: "0 0 0 2px var(--color-accent-soft), 0 18px 40px -22px var(--color-accent)" }}
@@ -390,7 +391,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-1.5">
             <button onClick={cycleMood} className="chip no-drag hover:border-ink/25" title={t("nav.cycleMood")}>
-              <img src={`/logos/${logo.file}`} alt="" className="w-4 h-4 rounded-full" />
+              <img src={logoUrl(logo.file)} alt="" className="w-4 h-4 rounded-full" />
               {moodLabel(mood)}
             </button>
             <button

@@ -43,6 +43,7 @@ test("skipping setup lands on the chat surface with a named composer", async () 
   await page.getByRole("button", { name: "Skip setup" }).click();
   await expect(page.getByRole("textbox", { name: "Message OpenMonkey" })).toBeVisible();
   await expect(page.getByRole("button", { name: "New conversation" }).first()).toBeVisible();
+  await page.waitForFunction(() => [...document.images].every((image) => image.complete));
 
   const violations = await page.evaluate(() => {
     const problems = [];
@@ -57,6 +58,9 @@ test("skipping setup lands on the chat surface with a named composer", async () 
     for (const element of document.querySelectorAll("img")) {
       if (element.getAttribute("alt") === null && element.getAttribute("role") !== "presentation") {
         problems.push(`image without alt: ${element.getAttribute("src")}`);
+      }
+      if (element.complete && element.naturalWidth === 0) {
+        problems.push(`image did not load: ${element.currentSrc || element.getAttribute("src")}`);
       }
     }
     for (const element of document.querySelectorAll("input, textarea, select")) {

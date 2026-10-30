@@ -40,6 +40,7 @@ import {
 import { ModelDownloadCard } from "./ModelDownloadCard";
 import { ACCENTS } from "../constants";
 import { checkAccent } from "../theme";
+import { logoUrl } from "../assets";
 import { moodLabel, t } from "../i18n";
 import { toast } from "./Toast";
 import {
@@ -844,7 +845,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             className="no-drag flex items-center gap-2 w-full px-2 py-1.5 mt-3 rounded-lg hover:bg-ink/5"
           >
             <img
-              src={`/logos/${logo.file}`}
+              src={logoUrl(logo.file)}
               alt=""
               className="w-[22px] h-[22px] rounded-full"
               style={{ boxShadow: `0 0 0 1.5px var(--color-card), 0 0 0 2.5px ${logo.color}55` }}
@@ -943,7 +944,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="row">
                       <div className="flex items-center gap-3.5">
                         <img
-                          src={`/logos/${logo.file}`}
+                          src={logoUrl(logo.file)}
                           alt=""
                           className="w-10 h-10 rounded-full logo-mood-change"
                           style={{ boxShadow: `0 0 0 2px var(--color-card), 0 0 0 3px ${logo.color}55` }}
@@ -1288,7 +1289,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                               : "border-transparent hover:bg-card-2"
                           }`}
                         >
-                          <img src={`/logos/${MOOD_LOGOS[name].file}`} alt="" className="w-11 h-11 rounded-full" />
+                          <img src={logoUrl(MOOD_LOGOS[name].file)} alt="" className="w-11 h-11 rounded-full" />
                           <span className={`text-[9.5px] ${name === mood ? "text-accent-ink" : "text-muted"}`}>
                             {moodLabel(name)}
                           </span>

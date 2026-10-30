@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, Cpu, Lock, Palette, ShieldCheck, Sparkles, WifiOff } from "lucide-react";
 import { ModelDownloadCard } from "./ModelDownloadCard";
 import { ACCENTS } from "../constants";
+import { logoUrl } from "../assets";
 import {
   MOOD_LOGOS,
   type AgentStatus,
@@ -106,13 +107,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ status, mood, config, on
         <div className="deco-lines" />
         <div className="relative flex flex-col w-full px-8 pt-16 pb-8">
           <div className="flex items-center gap-2.5">
-            <img src={`/logos/${logo.file}`} alt="" className="w-8 h-8 rounded-full" />
+            <img src={logoUrl(logo.file)} alt="" className="w-8 h-8 rounded-full" />
             <span className="text-[13px] font-semibold tracking-tight">OpenMonkey</span>
           </div>
 
           <div className="mt-14 flex justify-center">
             <img
-              src={`/logos/${logo.file}`}
+              src={logoUrl(logo.file)}
               alt=""
               className="w-[170px] h-[170px] rounded-full logo-mood-change"
               style={{ boxShadow: `0 0 0 2px ${accent}33, 0 24px 60px -24px ${accent}aa` }}
@@ -205,7 +206,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ status, mood, config, on
                   <div className="row">
                     <div className="flex items-center gap-3">
                       <img
-                        src={`/logos/${logo.file}`}
+                        src={logoUrl(logo.file)}
                         alt=""
                         className="w-11 h-11 rounded-full logo-mood-change"
                         style={{ boxShadow: `0 0 0 2px var(--color-card), 0 0 0 3px ${accent}55` }}

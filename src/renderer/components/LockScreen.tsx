@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Lock, Loader } from "lucide-react";
 import { MOOD_LOGOS, type Mood } from "../../utils/types";
 import { t } from "../i18n";
+import { logoUrl } from "../assets";
 
 interface LockScreenProps {
   mood: Mood;
@@ -48,7 +49,7 @@ export const LockScreen: React.FC<LockScreenProps> = ({ mood, onUnlocked }) => {
       <div className="card w-full max-w-sm p-6" style={{ boxShadow: "var(--shadow-pop)" }}>
         <div className="flex items-center gap-3 mb-4">
           <img
-            src={`/logos/${logo.file}`}
+            src={logoUrl(logo.file)}
             alt=""
             className="w-11 h-11 rounded-full"
             style={{ boxShadow: "0 0 0 2px var(--color-accent-soft)" }}

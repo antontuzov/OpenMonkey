@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowUp, Check, ExternalLink, Loader, ShieldAlert, X } from "lucide-react";
 import { useAppearance } from "./theme";
+import { logoUrl } from "./assets";
 import { setLanguage, t } from "./i18n";
 import {
   MOOD_LOGOS,
@@ -166,7 +167,7 @@ export const QuickAsk: React.FC = () => {
     <div className="h-screen w-screen p-2.5">
       <div className="quick-shell h-full flex flex-col overflow-hidden">
         <header className="drag-region flex items-center gap-2.5 px-5 pt-4 pb-3 border-b border-line shrink-0">
-          <img src={`/logos/${logo.file}`} alt="" className="w-6 h-6 rounded-full" />
+          <img src={logoUrl(logo.file)} alt="" className="w-6 h-6 rounded-full" />
           <span className="text-[12px] font-semibold tracking-tight">{t("quick.title")}</span>
           <span
             className={`w-1.5 h-1.5 rounded-full ${
@@ -192,7 +193,7 @@ export const QuickAsk: React.FC = () => {
         <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
           {idle && (
             <div className="h-full flex flex-col items-center justify-center text-center px-6">
-              <img src={`/logos/${logo.file}`} alt="" className="w-10 h-10 rounded-full opacity-90" />
+              <img src={logoUrl(logo.file)} alt="" className="w-10 h-10 rounded-full opacity-90" />
               <p className="text-[11.5px] text-muted leading-relaxed mt-3 max-w-[34ch]">
                 {ready ? t("quick.empty") : t("quick.offline")}
               </p>

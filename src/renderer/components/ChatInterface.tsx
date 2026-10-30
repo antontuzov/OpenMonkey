@@ -26,6 +26,7 @@ import {
 } from "../../utils/types";
 import { MessageContent } from "./MessageContent";
 import { moodLabel, t } from "../i18n";
+import { logoUrl } from "../assets";
 import { toast } from "./Toast";
 
 interface ChatInterfaceProps {
@@ -138,7 +139,7 @@ const ChatMessage: React.FC<{
   return (
     <div className={`message-enter flex items-end gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
       {!isUser && (
-        <img src={`/logos/${logoFile}`} alt="" className="w-[26px] h-[26px] rounded-full mb-5 shrink-0" />
+        <img src={logoUrl(logoFile)} alt="" className="w-[26px] h-[26px] rounded-full mb-5 shrink-0" />
       )}
       <div className={`group/message flex flex-col ${isUser ? "items-end" : "items-start"} max-w-[78%]`}>
         <div className={`${isUser ? "message-user" : "message-assistant"} px-4 py-2.5 w-full`}>
@@ -189,7 +190,7 @@ const ChatMessage: React.FC<{
 
 const StreamingMessage: React.FC<{ content: string; logoFile: string }> = ({ content, logoFile }) => (
   <div className="message-enter flex items-end gap-2.5 justify-start">
-    <img src={`/logos/${logoFile}`} alt="" className="w-[26px] h-[26px] rounded-full mb-5 shrink-0" />
+    <img src={logoUrl(logoFile)} alt="" className="w-[26px] h-[26px] rounded-full mb-5 shrink-0" />
     <div className="flex flex-col items-start max-w-[78%]">
       <div className="message-assistant px-4 py-2.5">
         <MessageContent
@@ -693,7 +694,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <div className="max-w-[560px] mx-auto pt-8 text-center">
               <img
                 key={mood}
-                src={`/logos/${logo.file}`}
+                src={logoUrl(logo.file)}
                 alt=""
                 className="w-[72px] h-[72px] rounded-full mx-auto logo-mood-change"
                 style={{ boxShadow: `0 0 0 3px var(--color-paper), 0 0 0 4px ${logo.color}55` }}

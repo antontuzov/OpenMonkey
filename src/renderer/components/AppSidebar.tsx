@@ -23,6 +23,7 @@ import {
   type Mood,
 } from "../../utils/types";
 import { locale, moodLabel, t } from "../i18n";
+import { logoUrl } from "../assets";
 
 interface AppSidebarProps {
   mood: Mood;
@@ -368,7 +369,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
         >
           <img
             key={mood}
-            src={`/logos/${logo.file}`}
+            src={logoUrl(logo.file)}
             alt=""
             className="w-7 h-7 rounded-full logo-mood-change"
             style={{ boxShadow: `0 0 0 2px var(--color-card), 0 0 0 3px ${logo.color}66` }}
