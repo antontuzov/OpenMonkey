@@ -41,7 +41,9 @@ try {
   const files = ["storage.test.cjs", "paths.test.cjs", "approval.test.cjs", "logger.test.cjs"].map((name) =>
     path.join(outdir, name)
   );
-  const run = spawnSync(process.execPath, ["--test", ...files], {
+  // The files share one throwaway home (and SQLite file), so run them one at a
+  // time: parallel processes can lock each other's writes and drop assertions.
+  const run = spawnSync(process.execPath, ["--test", "--test-concurrency=1", ...files], {
     cwd: root,
     stdio: "inherit",
     timeout: 120_000,
