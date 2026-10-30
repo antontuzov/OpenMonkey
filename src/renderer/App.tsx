@@ -47,6 +47,12 @@ export default function App() {
         if ((request.origin ?? "main") === "main") setApproval(request);
       }),
       api.onOpenSettings(() => setView("settings")),
+      // An imported backup can add chats and change settings while this window is open.
+      api.onLocalDataChanged(() => {
+        void api.getConfig().then(setConfig).catch(() => undefined);
+        void api.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
+        void api.getConversations().then(setConversations).catch(() => undefined);
+      }),
     ];
 
     void api.getCurrentMood().then(setMood).catch(() => undefined);

@@ -15,11 +15,23 @@ import {
   unlockKey,
   type KeySource,
 } from "./secret-key";
-import type { AuditEntry, Conversation, ConversationSearchHit, MemoryFact, Message, Task } from "./types";
+import type {
+  AuditEntry,
+  Config,
+  ConfigPatch,
+  Conversation,
+  ConversationSearchHit,
+  MemoryFact,
+  Message,
+  Task,
+} from "./types";
+import type { ExportBundle, ExportedMessage } from "./portability";
 
 const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** Bumped when the table layout changes; an export carries it so a newer file is refused. */
+export const SCHEMA_VERSION = 1;
 
 interface MessageRow {
   id: string;
@@ -176,6 +188,9 @@ export class Storage {
     `);
 
     this.migrateLegacyMessages();
+    // Builds before this stamped nothing, so an old file arrives at 0 and is brought
+    // up to the layout it now actually has. Never lower it: a newer file stays newer.
+    if (this.schemaVersion() < SCHEMA_VERSION) this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
     this.runRetention();
     // A laptop that stays asleep for a week must still honour its retention policy,
     // so pruning is a timer as well as a launch step.
@@ -187,6 +202,159 @@ export class Storage {
   runRetention(): void {
     if (!this.db) return;
     this.pruneOlderThan(config.get("privacy").autoDeleteAfter);
+  }
+
+  /** The layout on disk; 0 while the history is locked or not yet opened. */
+  schemaVersion(): number {
+    if (!this.db) return 0;
+    return Number(this.db.pragma("user_version", { simple: true }) ?? 0);
+  }
+
+  /**
+   * Everything worth moving to another machine: decrypted chat bodies, memory and
+   * settings. The history key is deliberately absent — the caller seals this with a
+   * passphrase the user chooses, and the receiving install re-encrypts with its own.
+   */
+  exportBundle(): ExportBundle {
+    if (!this.db) throw new Error("History is locked");
+    const chats = this.db
+      .prepare("SELECT id, title, created_at, updated_at, pinned, archived FROM conversations ORDER BY updated_at DESC")
+      .all() as Array<Pick<ConversationRow, "id" | "title" | "created_at" | "updated_at" | "pinned" | "archived">>;
+    const messages = this.db
+      .prepare("SELECT * FROM messages ORDER BY created_at ASC, rowid ASC")
+      .all() as MessageRow[];
+    const byChat = new Map<string, ExportedMessage[]>();
+    for (const row of messages) {
+      if (!row.conversation_id) continue;
+      const list = byChat.get(row.conversation_id) ?? [];
+      list.push({
+        id: row.id,
+        role: row.role,
+        content: this.open(row.content),
+        timestamp: new Date(row.created_at).toISOString(),
+        prompt: row.prompt ? this.open(row.prompt) : undefined,
+        metadata: this.metadataOf(row),
+      });
+      byChat.set(row.conversation_id, list);
+    }
+    return {
+      format: "openmonkey-export",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      schemaVersion: this.schemaVersion(),
+      settings: config.getAll(),
+      conversations: chats.map((row) => ({
+        id: row.id,
+        title: row.title,
+        createdAt: new Date(row.created_at).toISOString(),
+        updatedAt: new Date(row.updated_at).toISOString(),
+        pinned: row.pinned === 1,
+        archived: row.archived === 1,
+        messages: byChat.get(row.id) ?? [],
+      })),
+      facts: this.getMemoryFacts(2_000).map((fact) => ({
+        id: fact.id,
+        content: fact.content,
+        createdAt: fact.createdAt.toISOString(),
+      })),
+    };
+  }
+
+  /**
+   * Merge a backup into this database instead of replacing it, and re-seal every body
+   * with this install's key. A chat whose id is already here is left alone, so
+   * importing the same file twice cannot double the history.
+   */
+  importBundle(
+    bundle: ExportBundle,
+    restoreSettings: boolean
+  ): { conversations: number; messages: number; facts: number } {
+    if (!this.db) throw new Error("History is locked");
+    const stamp = (iso: string, fallback: number) => {
+      const parsed = Date.parse(iso);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    let conversations = 0;
+    let messages = 0;
+    let facts = 0;
+
+    const merge = this.db.transaction(() => {
+      for (const exported of bundle.conversations) {
+        if (!exported.id) continue;
+        if (this.db!.prepare("SELECT 1 FROM conversations WHERE id = ?").get(exported.id)) continue;
+        const createdAt = stamp(exported.createdAt, Date.now());
+        this.db!
+          .prepare("INSERT INTO conversations (id, title, created_at, updated_at, pinned, archived) VALUES (?, ?, ?, ?, ?, ?)")
+          .run(
+            exported.id,
+            clean(exported.title, 80) || DEFAULT_TITLE,
+            createdAt,
+            Math.max(createdAt, stamp(exported.updatedAt, createdAt)),
+            exported.pinned ? 1 : 0,
+            exported.archived ? 1 : 0
+          );
+        conversations += 1;
+        for (const message of exported.messages) {
+          // An empty body means the row was unreadable where it was written; restoring
+          // it would only add blank bubbles.
+          if (!message.content.trim() && !message.prompt?.trim()) continue;
+          const at = stamp(message.timestamp, Date.now());
+          this.db!
+            .prepare(
+              `INSERT OR IGNORE INTO messages
+                (id, conversation_id, role, content, prompt, mood, task_type, attachment_name,
+                 attachment_bytes, duration_ms, stopped, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .run(
+              message.id || idFor("msg"),
+              exported.id,
+              message.role,
+              this.seal(message.content),
+              message.prompt ? this.seal(message.prompt) : null,
+              message.metadata?.mood ?? null,
+              message.metadata?.taskType ?? null,
+              message.metadata?.attachment?.name ?? null,
+              message.metadata?.attachment?.bytes ?? null,
+              message.metadata?.durationMs ?? null,
+              message.metadata?.stopped ? 1 : null,
+              at
+            );
+          messages += 1;
+        }
+      }
+
+      const known = new Set(this.getMemoryFacts(2_000).map((fact) => fact.content.trim()));
+      for (const fact of bundle.facts) {
+        const content = fact.content.trim();
+        if (!content || known.has(content)) continue;
+        this.db!
+          .prepare("INSERT INTO memory_facts (id, content, created_at) VALUES (?, ?, ?)")
+          .run(fact.id || idFor("fact"), this.seal(content), stamp(fact.createdAt, Date.now()));
+        known.add(content);
+        facts += 1;
+      }
+    });
+    merge();
+
+    if (restoreSettings) this.importSettings(bundle.settings);
+    return { conversations, messages, facts };
+  }
+
+  /**
+   * Only sections this build knows about are applied, and a backup cannot turn local
+   * encryption off — that switch belongs to the machine it lands on.
+   */
+  private importSettings(settings: Config): void {
+    if (!settings) return;
+    const local = config.getAll();
+    const known = new Set(Object.keys(local));
+    const patch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(settings)) {
+      if (!known.has(key) || value == null) continue;
+      patch[key] = key === "privacy" ? { ...value, encryptData: local.privacy.encryptData } : value;
+    }
+    if (Object.keys(patch).length) config.merge(patch as unknown as ConfigPatch);
   }
 
   /**
@@ -339,16 +507,20 @@ export class Storage {
       role: row.role,
       content: this.open(row.content),
       timestamp: new Date(row.created_at),
-      metadata: {
-        mood: row.mood ?? undefined,
-        taskType: row.task_type ?? undefined,
-        durationMs: row.duration_ms ?? undefined,
-        stopped: row.stopped === 1 ? true : undefined,
-        attachment:
-          row.attachment_name != null
-            ? { name: row.attachment_name, bytes: row.attachment_bytes ?? 0 }
-            : undefined,
-      },
+      metadata: this.metadataOf(row) as Message["metadata"],
+    };
+  }
+
+  /** Side columns that do not belong to the message body itself, for both reads and backups. */
+  private metadataOf(row: MessageRow): Record<string, unknown> {
+    const attachment =
+      row.attachment_name != null ? { name: row.attachment_name, bytes: row.attachment_bytes ?? 0 } : undefined;
+    return {
+      mood: row.mood ?? undefined,
+      taskType: row.task_type ?? undefined,
+      durationMs: row.duration_ms ?? undefined,
+      stopped: row.stopped === 1 ? true : undefined,
+      attachment,
     };
   }
 

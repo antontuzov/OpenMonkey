@@ -33,6 +33,7 @@ import {
   ShieldCheck,
   SquareTerminal,
   Trash2,
+  Upload,
   UserRound,
   X,
 } from "lucide-react";
@@ -306,6 +307,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [passNotice, setPassNotice] = useState("");
   const [eraseDraft, setEraseDraft] = useState("");
   const [eraseNotice, setEraseNotice] = useState("");
+  const [backupDraft, setBackupDraft] = useState("");
+  const [backupNotice, setBackupNotice] = useState("");
+  const [restoreSettings, setRestoreSettings] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const { model, agent, privacy } = config;
   const memoryConfig = config.memory ?? { enabled: true, workspaceSearch: false };
@@ -322,6 +327,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const keySource = privacyStatus?.keySource ?? "off";
   const passphraseOn = privacyStatus?.passphraseConfigured ?? false;
   const autoLockMinutes = privacyStatus?.autoLockMinutes ?? 0;
+  const schemaVersion = privacyStatus?.schemaVersion ?? 0;
   const keyCopy = !privacy.encryptData
     ? "Off: messages, tasks and facts are written to the database in plain text."
     : passphraseOn
@@ -398,6 +404,58 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (!result?.ok) setEraseNotice(result?.error ?? "Could not erase the history.");
     } catch (error) {
       setEraseNotice(failureText(error));
+    }
+  };
+
+  /**
+   * The passphrase here belongs to the file, not to this machine's history key, so a
+   * backup found by someone else cannot be opened with what they already have.
+   */
+  const runBackup = async (direction: "export" | "import") => {
+    if (backupDraft.length < 8) {
+      setBackupNotice(t("privacy.backupShort"));
+      return;
+    }
+    setBackupBusy(true);
+    setBackupNotice("");
+    try {
+      const api = window.electron;
+      const result =
+        direction === "export"
+          ? await api?.exportHistoryBackup(backupDraft)
+          : await api?.importHistoryBackup(backupDraft, restoreSettings);
+      if (!result) return;
+      // Closing the file panel is not a failure, so it says nothing at all.
+      if (result.cancelled) return;
+      if (!result.ok) {
+        setBackupNotice(result.error ?? "The backup did not go through.");
+        return;
+      }
+      setBackupDraft("");
+      setBackupNotice(
+        direction === "export"
+          ? t("privacy.exported", {
+              file: result.fileName ?? "",
+              chats: result.conversations ?? 0,
+              facts: result.facts ?? 0,
+            })
+          : t("privacy.imported", {
+              file: result.fileName ?? "",
+              chats: result.conversations ?? 0,
+              messages: result.messages ?? 0,
+              facts: result.facts ?? 0,
+            })
+      );
+      toast(direction === "export" ? t("toast.backupExported") : t("toast.backupImported"));
+      if (direction === "import") {
+        // Settings may have come from the file, so the page shows the live values.
+        await onRefreshStatus();
+        await refreshPrivacy();
+      }
+    } catch (error) {
+      setBackupNotice(failureText(error));
+    } finally {
+      setBackupBusy(false);
     }
   };
 
@@ -2125,6 +2183,81 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {eraseNotice && (
                     <p role="status" className="text-[10.5px] text-danger mt-2 px-1 leading-relaxed">
                       {eraseNotice}
+                    </p>
+                  )}
+                </section>
+
+                <section>
+                  <p className="section-label">Portability</p>
+                  <div className="card">
+                    <SettingRow
+                      title={t("privacy.backup")}
+                      copy={t("privacy.backupCopy")}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="password"
+                          value={backupDraft}
+                          onChange={(event) => setBackupDraft(event.target.value)}
+                          placeholder={t("privacy.backupPassphrase")}
+                          aria-label={t("privacy.backupPassphrase")}
+                          autoComplete="new-password"
+                          spellCheck={false}
+                          maxLength={256}
+                          className="field w-[168px]"
+                        />
+                        <button
+                          onClick={() => void runBackup("export")}
+                          disabled={backupBusy || backupDraft.length < 8}
+                          className="btn btn-primary"
+                        >
+                          <Download size={11} />
+                          {t("privacy.exportButton")}
+                        </button>
+                        <button
+                          onClick={() => void runBackup("import")}
+                          disabled={backupBusy || backupDraft.length < 8}
+                          className="btn"
+                        >
+                          <Upload size={11} />
+                          {t("privacy.importButton")}
+                        </button>
+                      </div>
+                    </SettingRow>
+                    <SettingRow
+                      title={t("privacy.restoreSettings")}
+                      copy={t("privacy.restoreSettingsCopy")}
+                    >
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={restoreSettings}
+                          onChange={(event) => setRestoreSettings(event.target.checked)}
+                          aria-label={t("privacy.restoreSettings")}
+                          className="accent-accent"
+                        />
+                        <span className="chip">{restoreSettings ? "on" : "off"}</span>
+                      </label>
+                    </SettingRow>
+                    <SettingRow
+                      title="Backup format"
+                      copy={
+                        schemaVersion
+                          ? t("privacy.backupFormat", { version: schemaVersion })
+                          : t("privacy.backupLayoutUnknown")
+                      }
+                    >
+                      <span className="chip">v1</span>
+                    </SettingRow>
+                  </div>
+                  {backupDraft.length > 0 && backupDraft.length < 8 && (
+                    <p role="status" className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                      {t("privacy.backupShort")}
+                    </p>
+                  )}
+                  {backupNotice && (
+                    <p role="status" className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                      {backupNotice}
                     </p>
                   )}
                 </section>

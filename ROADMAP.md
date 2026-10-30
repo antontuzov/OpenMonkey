@@ -293,8 +293,19 @@ screen (local history loads faster than the debounce).
     strand every stored row. Quick Ask refuses to answer while locked rather than replying from
     an empty context it cannot write to. Retention now runs on a six-hour timer as well as at
     launch, and `close()` folds the WAL back into the database. *(M)*
-28. **Portability**: encrypted export/import of sessions, memory and settings; DB schema
-    versioning and migrations; WAL checkpoint on quit. *(M)*
+28. ✅ **Portability**: "Export backup" seals every chat, message, memory fact and the settings
+    into one file with AES-256-GCM under scrypt(N=2^15, r=8, p=1) keyed by a passphrase typed for
+    that file, so a backup is independent of the history key and can never reopen the database it
+    came from. The file leaves as `openmonkey-export.1:salt:iv:tag:body`, written 0600 with a
+    dated `.openmonkey-export` default name. "Import backup" merges instead of replacing: a chat
+    whose id is already here is skipped, facts are deduped by their text, every body is re-sealed
+    with the receiving install's key, and a blank row (unreadable where it was written) is dropped
+    rather than restored as an empty bubble. Restoring settings is a separate opt-in that applies
+    only the sections this build knows and cannot switch this machine's encryption off. The
+    database stamps `PRAGMA user_version = 1` when it opens an unstamped file and refuses a backup
+    written for a newer layout; open windows hear `local-data-changed` after an import. A short or
+    wrong passphrase, a foreign JSON file and a file over 64 MB are refused with readable errors
+    before anything is touched. *(M)*
 29. **Diagnostics**: rotating local logs with redaction, view/clear UI, offline indicator and
     a deny-all-network switch. No telemetry by default. *(S)*
 30. **Privacy page truthfulness**: every toggle enforces its claim (save history, encryption,
@@ -320,6 +331,30 @@ arrived; the code paths are wired but unproven on a real sleep. A genuine ⌘Q q
 (the menu accelerator is unreachable from CDP), so the WAL fold is proven through `close()` on the
 lock path rather than through shutdown. Log rotation itself is not yet exercised either — the 2 MB
 threshold needs a long run.
+`npm run typecheck` and `npm run build` are clean.
+
+**Phase 6 verification (28):** the macOS save/open panels cannot be clicked from a debugger
+without seizing the screen, so both IPC handlers were driven end to end — real SQLite database,
+real config, real crypto — with only the dialog answer scripted. All ~30 assertions passed.
+Export refused a 7-character passphrase *before* opening any panel; a cancelled panel came back
+`cancelled: true` and wrote no file; the export wrote 0600, opened with the envelope header and
+held no plaintext body. The receiving side then ran erase-all, which rotates the key; importing
+into that empty database brought back the chat title, both bodies, timestamps, the attachment
+name, the duration and the memory fact under the *new* key, told exactly one open window
+`local-data-changed`, re-sealed the rows on disk with this machine's `enc:v1:` envelope and no
+plaintext, and applied the file's 90-minute retention window while leaving the local
+`encryptData` alone. A wrong passphrase, a plain-JSON file and a second import of the same file
+each changed nothing. **The harness caught a real bug**: the writer emitted
+`openmonkey-export.1.` with a trailing dot while the reader compared `openmonkey-export.1`, so
+every backup would have been rejected as damaged — fixed with one shared header constant. In the
+app, Settings → Privacy → Portability shows the passphrase field, both buttons disabled and "Use
+at least 8 characters" until the eighth character, then enabled, with `backup format v1 ·
+database layout v1` read from the live schema. **Not exercised:** a real click in the native
+save/open panel (scripted instead), and the `user_version` stamp reaching the database *header* —
+a freshly written pragma lives in the `-wal` until a checkpoint, so a clean ⌘Q quit is still the
+proof owed. Localization note for item 30: the Portability controls are translated
+(`Фраза для копии`, `Сохранить копию`, `Загрузить копию`) but the Privacy page's older rows and
+its lede are hardcoded English.
 `npm run typecheck` and `npm run build` are clean.
 
 ---

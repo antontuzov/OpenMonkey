@@ -12,8 +12,10 @@ import {
   type PrivacyActionResult,
   type PrivacyStatus,
 } from "../utils/types";
-import storage from "../utils/storage";
+import storage, { SCHEMA_VERSION } from "../utils/storage";
 import { keychainAvailable } from "../utils/secret-key";
+import { EXPORT_FILE_SUFFIX, encryptBundle, readBundleFile } from "../utils/portability";
+import type { PortabilityResult } from "../utils/types";
 import { ModelDownloader } from "../models/model-downloader";
 import { openPermissionSettings, probeAutomation } from "./permissions";
 import logger from "../utils/logger";
@@ -36,6 +38,11 @@ export interface IpcDeps {
 /** The word the privacy page asks the user to type before history is destroyed. */
 const ERASE_CONFIRMATION = "ERASE";
 const AUTO_LOCK_CHOICES = [0, 1, 5, 15, 60];
+/** A backup leaves the machine, so its passphrase is held to a higher bar than the lock's. */
+const BACKUP_PASSPHRASE_MIN = 8;
+
+const errorText = (error: unknown): string =>
+  (error instanceof Error ? error.message : String(error)).slice(0, 200);
 
 const MENU_COMMANDS = new Set<MenuCommand>([
   "new-chat",
@@ -299,6 +306,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     locked: storage.locked,
     passphraseConfigured: storage.lockable,
     autoLockMinutes: config.get("privacy").autoLockMinutes,
+    schemaVersion: storage.schemaVersion(),
   }));
 
   const passphraseFrom = (value: unknown): string | null => {
@@ -324,7 +332,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       logger.info("privacy.passphrase.enabled");
       return { ok: true };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      return { ok: false, error: errorText(error) };
     }
   });
 
@@ -351,6 +359,80 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     deps.reloadHistoryViews();
     return { ok: true };
   });
+
+  /**
+   * A backup is opened by a passphrase the user types for the occasion, never by the
+   * history key, so it stays unreadable to whoever finds the file.
+   */
+  ipcMain.handle("export-history-backup", async (_event, passphrase: unknown): Promise<PortabilityResult> => {
+    if (storage.locked) return { ok: false, error: "History is locked. Unlock OpenMonkey first." };
+    const value = typeof passphrase === "string" ? passphrase.trim() : "";
+    if (value.length < BACKUP_PASSPHRASE_MIN) {
+      return { ok: false, error: `Use at least ${BACKUP_PASSPHRASE_MIN} characters` };
+    }
+    const window = deps.getWindow();
+    const options: Electron.SaveDialogOptions = {
+      title: "Save an encrypted backup",
+      defaultPath: `${new Date().toISOString().slice(0, 10)}${EXPORT_FILE_SUFFIX}`,
+      filters: [{ name: "OpenMonkey backup", extensions: ["openmonkey-export", "txt"] }],
+    };
+    const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { ok: false, cancelled: true };
+    try {
+      const bundle = storage.exportBundle();
+      fs.writeFileSync(result.filePath, encryptBundle(bundle, value), { mode: 0o600 });
+      logger.info("history.exported", {
+        chats: bundle.conversations.length,
+        facts: bundle.facts.length,
+        schemaVersion: bundle.schemaVersion,
+      });
+      return {
+        ok: true,
+        fileName: path.basename(result.filePath),
+        conversations: bundle.conversations.length,
+        facts: bundle.facts.length,
+      };
+    } catch (error) {
+      logger.error("history.export.failed");
+      return { ok: false, error: errorText(error) };
+    }
+  });
+
+  ipcMain.handle(
+    "import-history-backup",
+    async (_event, passphrase: unknown, restoreSettings: unknown): Promise<PortabilityResult> => {
+      if (storage.locked) return { ok: false, error: "History is locked. Unlock OpenMonkey first." };
+      const value = typeof passphrase === "string" ? passphrase.trim() : "";
+      if (!value) return { ok: false, error: "Enter the passphrase this backup was written with" };
+      const window = deps.getWindow();
+      const options: Electron.OpenDialogOptions = {
+        title: "Choose an OpenMonkey backup",
+        properties: ["openFile"],
+        filters: [{ name: "OpenMonkey backup", extensions: ["openmonkey-export", "txt"] }],
+      };
+      const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+      if (picked.canceled || !picked.filePaths[0]) return { ok: false, cancelled: true };
+      try {
+        // This build's layout version is the ceiling: a file stamped newer is refused.
+        const bundle = readBundleFile(
+          fs.readFileSync(picked.filePaths[0]),
+          value,
+          storage.schemaVersion() || SCHEMA_VERSION
+        );
+        const counts = storage.importBundle(bundle, restoreSettings === true);
+        logger.info("history.imported", { file: path.basename(picked.filePaths[0]), ...counts });
+        // Chats and maybe settings just appeared underneath the open windows, so each
+        // one re-fetches instead of keeping a list it knows is stale.
+        for (const target of BrowserWindow.getAllWindows()) {
+          if (!target.isDestroyed()) target.webContents.send("local-data-changed");
+        }
+        return { ok: true, fileName: path.basename(picked.filePaths[0]), ...counts };
+      } catch (error) {
+        logger.error("history.import.failed");
+        return { ok: false, error: errorText(error) };
+      }
+    }
+  );
 
   ipcMain.handle("set-config", async (_event, patch: Parameters<typeof config.merge>[0]) => {
     // The idle timer is driven by this number, so only the picker's values count.

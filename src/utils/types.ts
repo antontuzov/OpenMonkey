@@ -1,15 +1,17 @@
+export interface MessageMetadata {
+  mood?: string;
+  taskType?: string;
+  durationMs?: number;
+  stopped?: boolean;
+  attachment?: { name: string; bytes: number };
+}
+
 export interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: Date;
-  metadata?: {
-    mood?: string;
-    taskType?: string;
-    durationMs?: number;
-    stopped?: boolean;
-    attachment?: { name: string; bytes: number };
-  };
+  metadata?: MessageMetadata;
 }
 
 export interface Conversation {
@@ -297,12 +299,28 @@ export interface PrivacyStatus {
   locked: boolean;
   passphraseConfigured: boolean;
   autoLockMinutes: number;
+  /** The database layout on disk; 0 while the history is locked. */
+  schemaVersion: number;
 }
 
 /** Outcome of a passphrase or erase request, shaped for the settings page. */
 export interface PrivacyActionResult {
   ok: boolean;
   error?: string;
+}
+
+/**
+ * Outcome of an encrypted backup round trip. `cancelled` is not an error: the user
+ * closed the file dialog, and nothing was written or read.
+ */
+export interface PortabilityResult {
+  ok: boolean;
+  cancelled?: boolean;
+  error?: string;
+  fileName?: string;
+  conversations?: number;
+  messages?: number;
+  facts?: number;
 }
 
 /**
@@ -445,6 +463,8 @@ export interface ElectronAPI {
   clearHistoryPassphrase: (passphrase: string) => Promise<PrivacyActionResult>;
   lockHistoryNow: () => Promise<void>;
   eraseAllHistory: (confirmation: string) => Promise<PrivacyActionResult>;
+  exportHistoryBackup: (passphrase: string) => Promise<PortabilityResult>;
+  importHistoryBackup: (passphrase: string, restoreSettings: boolean) => Promise<PortabilityResult>;
   setConfig: (patch: ConfigPatch) => Promise<Config>;
   approveTask: (requestId: string, approved: boolean, remember?: boolean) => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
@@ -483,6 +503,8 @@ export interface ElectronAPI {
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
   onModelDownloadStatus: (callback: (status: ModelDownloadStatus) => void) => () => void;
   onChatEvent: (callback: (event: ChatEvent) => void) => () => void;
+  /** A backup import merged chats or settings underneath the open windows. */
+  onLocalDataChanged: (callback: () => void) => () => void;
 }
 
 declare global {

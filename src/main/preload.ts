@@ -53,6 +53,9 @@ const api: ElectronAPI = {
   clearHistoryPassphrase: (passphrase: string) => ipcRenderer.invoke("clear-history-passphrase", passphrase),
   lockHistoryNow: () => ipcRenderer.invoke("lock-history-now"),
   eraseAllHistory: (confirmation: string) => ipcRenderer.invoke("erase-all-history", confirmation),
+  exportHistoryBackup: (passphrase: string) => ipcRenderer.invoke("export-history-backup", passphrase),
+  importHistoryBackup: (passphrase: string, restoreSettings: boolean) =>
+    ipcRenderer.invoke("import-history-backup", passphrase, restoreSettings),
   setConfig: (patch: ConfigPatch) => ipcRenderer.invoke("set-config", patch),
   approveTask: (requestId: string, approved: boolean, remember = false) =>
     ipcRenderer.invoke("approve-task", requestId, approved, remember),
@@ -94,6 +97,7 @@ const api: ElectronAPI = {
     on<MenuCommand>("menu-command", callback),
   onModelDownloadStatus: (callback) => on("model-download-status", callback),
   onChatEvent: (callback) => on<ChatEvent>("chat-event", callback),
+  onLocalDataChanged: (callback: () => void) => on<undefined>("local-data-changed", () => callback()),
 };
 
 contextBridge.exposeInMainWorld("electron", api);
