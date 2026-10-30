@@ -429,25 +429,80 @@ export class Storage {
     this.init();
   }
 
-  private seal(text: string): string {
-    if (!this.key) return text;
+  private seal(text: string, key: Buffer | null = this.key): string {
+    if (!key) return text;
     const iv = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", this.key, iv);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
     const encrypted = Buffer.concat([cipher.update(text, "utf8"), cipher.final()]);
     return `${PREFIX}${iv.toString("base64")}.${cipher.getAuthTag().toString("base64")}.${encrypted.toString("base64")}`;
   }
 
-  private open(stored: string): string {
-    if (!stored.startsWith(PREFIX) || !this.key) return stored;
+  private open(stored: string, key: Buffer | null = this.key): string {
+    if (!stored.startsWith(PREFIX) || !key) return stored;
     try {
       const [encodedIv, encodedTag, encodedBody] = stored.slice(PREFIX.length).split(".");
-      const decipher = createDecipheriv("aes-256-gcm", this.key, Buffer.from(encodedIv, "base64"));
+      const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(encodedIv, "base64"));
       decipher.setAuthTag(Buffer.from(encodedTag, "base64"));
       return Buffer.concat([decipher.update(Buffer.from(encodedBody, "base64")), decipher.final()]).toString("utf8");
     } catch {
       // Key was rotated or deleted: the row stays on disk but is unreadable by design.
       return "";
     }
+  }
+
+  /**
+   * Flip at-rest encryption without waiting for a restart: every sealed column is
+   * re-encoded in one transaction, then the file is reopened under the new scheme.
+   * A failure rolls the whole rewrite back, so no row is left half-converted.
+   */
+  setEncryption(enabled: boolean): void {
+    if (!this.db) throw new Error("History is locked");
+    if (enabled === (this.key !== null)) return;
+
+    const from = this.key;
+    let to: Buffer | null = null;
+    let source: KeySource | "off" = "off";
+    if (enabled) ({ key: to, source } = loadOrCreateKey());
+
+    const columns: Array<[string, string[]]> = [
+      ["messages", ["content", "prompt"]],
+      ["tasks", ["result", "error", "cwd"]],
+      ["audit", ["arguments", "result", "error"]],
+      ["memory_facts", ["content"]],
+    ];
+    const recode = this.db.transaction(() => {
+      for (const [table, names] of columns) {
+        const rows = this.db!.prepare(`SELECT id, ${names.join(", ")} FROM ${table}`).all() as Array<
+          Record<string, unknown>
+        >;
+        const update = this.db!.prepare(
+          `UPDATE ${table} SET ${names.map((name) => `${name} = ?`).join(", ")} WHERE id = ?`
+        );
+        for (const row of rows) {
+          update.run(
+            ...names.map((name) => {
+              const value = row[name];
+              return typeof value === "string" ? this.seal(this.open(value, from), to) : value;
+            }),
+            row.id
+          );
+        }
+      }
+    });
+    recode();
+    // Rewritten rows can leave the old ciphertext in free pages; VACUUM drops them so
+    // the file is honestly in the new scheme, not just indexed as such.
+    try {
+      this.db.exec("VACUUM");
+    } catch {
+      /* a locked page costs stale bytes, never correctness */
+    }
+
+    this.closeDatabase();
+    this.key = to;
+    this.keySource = source;
+    this.openDatabase();
+    this.runRetention();
   }
 
   /** Older builds had a single thread. Give those rows a real conversation instead of losing them. */
@@ -875,11 +930,8 @@ export class Storage {
       .run(cutoff);
   }
 
-  close(): void {
-    if (this.retentionTimer) {
-      clearInterval(this.retentionTimer);
-      this.retentionTimer = null;
-    }
+  /** Checkpoint and close the file without touching the retention timer. */
+  private closeDatabase(): void {
     // Fold the write-ahead log back into the database so a quit leaves one file,
     // not a half-replayed journal.
     try {
@@ -889,6 +941,14 @@ export class Storage {
     }
     this.db?.close();
     this.db = null;
+  }
+
+  close(): void {
+    if (this.retentionTimer) {
+      clearInterval(this.retentionTimer);
+      this.retentionTimer = null;
+    }
+    this.closeDatabase();
   }
 }
 

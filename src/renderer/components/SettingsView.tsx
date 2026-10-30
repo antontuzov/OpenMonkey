@@ -176,7 +176,7 @@ const NAV = [
   },
 ] as const;
 
-const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede: string }> = {
+const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede?: string; ledeKey?: Parameters<typeof t>[0] }> = {
   profile: {
     titleKey: "settings.profile",
     lede: "Who this assistant is on this Mac. These values shape its system prompt, not the model weights.",
@@ -211,7 +211,7 @@ const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede: string 
   },
   privacy: {
     titleKey: "settings.privacy",
-    lede: "Chat history and tasks live in a local SQLite file. These controls decide how long it stays readable.",
+    ledeKey: "privacy.lede",
   },
   model: {
     titleKey: "settings.model",
@@ -311,6 +311,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [backupNotice, setBackupNotice] = useState("");
   const [restoreSettings, setRestoreSettings] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [encryptBusy, setEncryptBusy] = useState(false);
   const [logText, setLogText] = useState<string | null>(null);
   const [logNotice, setLogNotice] = useState("");
   const [online, setOnline] = useState(() => navigator.onLine);
@@ -344,14 +345,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const autoLockMinutes = privacyStatus?.autoLockMinutes ?? 0;
   const schemaVersion = privacyStatus?.schemaVersion ?? 0;
   const keyCopy = !privacy.encryptData
-    ? "Off: messages, tasks and facts are written to the database in plain text."
+    ? t("privacy.encryptOff")
     : passphraseOn
-      ? "AES-256-GCM. The key only exists wrapped by your passphrase, so nothing opens the history until you type it. Remove the passphrase before turning encryption off."
+      ? t("privacy.encryptPassphrase")
       : keySource === "keychain"
-        ? "AES-256-GCM. The key sits in this Mac's system keychain, not in a file."
+        ? t("privacy.encryptKeychain")
         : keySource === "file"
-          ? "AES-256-GCM. No system vault was available, so the key is a 0600 file in this app's support folder."
-          : "AES-256-GCM with a key this app generates on first run.";
+          ? t("privacy.encryptFile")
+          : t("privacy.encryptDefault");
   const providerLabel = status.provider === "mlx" ? "MLX" : "Bonsai 4B";
 
   useEffect(() => {
@@ -471,6 +472,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setBackupNotice(failureText(error));
     } finally {
       setBackupBusy(false);
+    }
+  };
+
+  /**
+   * The main process rewrites the whole history in the new scheme before it answers,
+   * so the key chip and the copy below it are re-read instead of guessed.
+   */
+  const toggleEncryption = async () => {
+    // A rewrite can take a moment on a large history; a second click must not
+    // queue another flip against the same stale `privacy` snapshot.
+    if (encryptBusy) return;
+    setEncryptBusy(true);
+    try {
+      await onPatch({ privacy: { ...privacy, encryptData: !privacy.encryptData } });
+      await refreshPrivacy();
+    } finally {
+      setEncryptBusy(false);
     }
   };
 
@@ -896,7 +914,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="flex items-start justify-between gap-6 mb-8">
             <div>
               <h1 className="page-title">{t(head.titleKey)}</h1>
-              <p className="lede">{head.lede}</p>
+              <p className="lede">{head.ledeKey ? t(head.ledeKey) : head.lede}</p>
             </div>
             {section === "model" && (
               <button onClick={() => void checkAgain()} disabled={busy} className="btn shrink-0 mt-1">
@@ -2093,27 +2111,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <section>
                   <p className="section-label">History</p>
                   <div className="card">
-                    <SettingRow
-                      title="Save conversation history"
-                      copy="When off, messages stay in memory for the current run only."
-                    >
+                    <SettingRow title={t("privacy.saveHistory")} copy={t("privacy.saveHistoryCopy")}>
                       <Toggle
                         on={privacy.saveHistory}
-                        label="Save conversation history"
+                        label={t("privacy.saveHistory")}
                         onChange={() => void onPatch({ privacy: { ...privacy, saveHistory: !privacy.saveHistory } })}
                       />
                     </SettingRow>
-                    <SettingRow title="Encrypt stored data" copy={keyCopy}>
+                    <SettingRow title={t("privacy.encrypt")} copy={keyCopy}>
                       <Toggle
                         on={privacy.encryptData}
-                        label="Encrypt stored data"
-                        disabled={passphraseOn}
-                        onChange={() => void onPatch({ privacy: { ...privacy, encryptData: !privacy.encryptData } })}
+                        label={t("privacy.encrypt")}
+                        disabled={passphraseOn || encryptBusy}
+                        onChange={() => void toggleEncryption()}
                       />
                     </SettingRow>
                     <SettingRow
-                      title="Auto-delete after"
-                      copy="Older messages, tasks and audit rows are pruned on launch and every six hours while the app runs."
+                      title={t("privacy.autoDelete")}
+                      copy={t("privacy.autoDeleteCopy")}
                     >
                       <Segmented
                         value={String(privacy.autoDeleteAfter)}
@@ -2279,7 +2294,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </label>
                     </SettingRow>
                     <SettingRow
-                      title="Backup format"
+                      title={t("privacy.backupFormatTitle")}
                       copy={
                         schemaVersion
                           ? t("privacy.backupFormat", { version: schemaVersion })
@@ -2304,27 +2319,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <section>
                   <p className="section-label">Storage</p>
                   <div className="card">
-                    <SettingRow
-                      title="Database"
-                      copy="data/openmonkey.db inside this app's support folder. Tasks share the same file."
-                    >
+                    <SettingRow title={t("privacy.database")} copy={t("privacy.databaseCopy")}>
                       <span className="chip">{privacy.encryptData ? "sealed" : "plain text"}</span>
                     </SettingRow>
-                    <SettingRow title="Logs" copy="logs/openmonkey.log in the same folder, rotated by the app.">
+                    <SettingRow title={t("privacy.logs")} copy={t("privacy.logsCopy")}>
                       <span className="chip">local</span>
                     </SettingRow>
                     <SettingRow
-                      title="History key"
+                      title={t("privacy.historyKey")}
                       copy={
                         keySource === "locked"
-                          ? "The database is closed and the key is not in memory. Unlock it to read anything."
+                          ? t("privacy.keyCopyLocked")
                           : keySource === "passphrase"
-                            ? "Held in memory for this session only, unwrapped from the passphrase file."
+                            ? t("privacy.keyCopyPassphrase")
                             : keySource === "keychain"
-                              ? "Unwrapped by macOS when the app starts. Deleting it makes stored history unreadable on purpose."
+                              ? t("privacy.keyCopyKeychain")
                               : keySource === "file"
-                                ? "secret.key in this app's support folder, readable only by your user."
-                                : "Not loaded while encryption is off."
+                                ? t("privacy.keyCopyFile")
+                                : t("privacy.keyCopyOff")
                       }
                     >
                       <span className={`chip ${keySource === "keychain" || keySource === "passphrase" ? "chip-accent" : ""}`}>

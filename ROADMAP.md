@@ -314,8 +314,15 @@ screen (local history loads faster than the debounce).
     refuse with the page's wording and log `network.blocked`, while the local model and links
     handed to the user's browser keep working. An online/offline chip reads the renderer's
     connection state. No telemetry anywhere. *(S)*
-30. **Privacy page truthfulness**: every toggle enforces its claim (save history, encryption,
-    retention run daily, not only at launch). *(S)*
+30. ✅ **Privacy page truthfulness**: every switch enforces its claim while the app runs, not at
+    the next launch. Turning encryption on or off re-encodes every sealed column — `messages`,
+    `tasks`, `audit`, `memory_facts` — in one transaction, `VACUUM`s the file so no freed page
+    still holds the old ciphertext, and reopens it under the new key; a failure rolls the rewrite
+    back and restores the previous setting, and the switch is disabled while the rewrite is in
+    flight. Save-history off writes nothing at all. Retention prunes at launch **and every six
+    hours** on a timer, and the page says exactly that instead of "daily". The whole page — lede,
+    history rows, key wording, lock picker, portability, diagnostics — is translated in EN and
+    RU. *(S)*
 
 **Phase 6 verification (27):** every step below ran against the real Electron app, on the real
 profile, with `data/` and the config copied to `/tmp` first and restored afterwards. Cold boot
@@ -381,6 +388,24 @@ in Settings → Privacy → Diagnostics" and the log gained `network.blocked
 {"reason":"model-download"}`; switched back on afterwards. **Not exercised:** the offline chip
 under a genuine disconnection (it reads `navigator.onLine`; faking it would prove nothing about
 the OS), and rotation under real app load — the burst test above is the proof.
+`npm run typecheck` and `npm run build` are clean.
+
+**Phase 6 verification (30):** a node harness drove the real `Storage` against a real SQLite file
+and a real 0600 key file on disk; all 18 assertions passed. Encryption on → every body carries
+`enc:v1:` and no plaintext body remains; off → every body is plaintext again and, after the
+`VACUUM`, a byte scan of the file finds zero `enc:v1:` remnants (the first run found 142, which is
+what put the `VACUUM` in); on again → sealed under a fresh key; a second process opening the same
+file cold read the bodies back. Retention pruned a 100-day-old message and task and kept a fresh
+one; with save-history off a new turn wrote no row. In the running app the switch flipped
+mid-session: ON → keychain key, 175 sealed rows, no plaintext body on disk, 43 messages still in
+the chat; OFF → 0 sealed rows, the body readable as plaintext, the same 43 messages still there;
+ON again → keychain key and sealed rows back. No restart between any of them. The Privacy page
+rendered fully in RU (0 leftover English row strings — `Фраза для копии`, the history rows, the
+lock picker, the lede) and back in EN. **Not exercised:** the six-hour timer itself was not
+waited for — pruning is proven through the launch path and an explicit `runRetention()`, and the
+timer calls the same method. One double-click on the encryption switch raced the stale privacy
+snapshot and landed as a single flip; the switch now disables itself while the rewrite is in
+flight, which removes that window.
 `npm run typecheck` and `npm run build` are clean.
 
 ---

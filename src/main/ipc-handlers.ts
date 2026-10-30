@@ -447,6 +447,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   );
 
   ipcMain.handle("set-config", async (_event, patch: Parameters<typeof config.merge>[0]) => {
+    const wasEncrypted = config.get("privacy").encryptData;
     // The idle timer is driven by this number, so only the picker's values count.
     let next = patch;
     if (patch?.privacy) {
@@ -466,6 +467,18 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       next = { ...next, privacy: { ...next.privacy, encryptData: true } };
     }
     const updated = config.merge(next);
+    // Encryption is normally decided when the file opens; a mid-session flip rewrites
+    // the history now so the page never claims a scheme the file is not written in.
+    if (updated.privacy.encryptData !== wasEncrypted) {
+      try {
+        storage.setEncryption(updated.privacy.encryptData);
+        logger.info("privacy.encrypt.reencoded", { enabled: updated.privacy.encryptData });
+      } catch (error) {
+        config.merge({ privacy: { ...updated.privacy, encryptData: wasEncrypted } });
+        logger.error("privacy.encrypt.reencode.failed", { error: errorText(error) });
+        return config.getAll();
+      }
+    }
     logger.info("config.updated", { keys: Object.keys(patch) });
     if (patch && "mcp" in patch) await agent().refreshMcp();
     if (patch && "memory" in patch) agent().refreshMemory(true);
