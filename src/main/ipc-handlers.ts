@@ -242,6 +242,17 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     agent().clearAuditLog();
   });
 
+  ipcMain.handle("get-log-tail", (_event, lines: unknown) => {
+    const count = typeof lines === "number" && Number.isFinite(lines) ? lines : 200;
+    return logger.tail(count);
+  });
+
+  ipcMain.handle("clear-logs", (): PrivacyActionResult => {
+    logger.clear();
+    logger.info("logs.cleared");
+    return { ok: true };
+  });
+
   ipcMain.handle("export-audit-log", async () => {
     const window = deps.getWindow();
     const options: Electron.SaveDialogOptions = {
@@ -307,6 +318,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     passphraseConfigured: storage.lockable,
     autoLockMinutes: config.get("privacy").autoLockMinutes,
     schemaVersion: storage.schemaVersion(),
+    networkAllowed: config.get("privacy").networkAllowed !== false,
   }));
 
   const passphraseFrom = (value: unknown): string | null => {

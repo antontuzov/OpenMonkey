@@ -301,6 +301,8 @@ export interface PrivacyStatus {
   autoLockMinutes: number;
   /** The database layout on disk; 0 while the history is locked. */
   schemaVersion: number;
+  /** False when the deny-all-network switch is on. */
+  networkAllowed: boolean;
 }
 
 /** Outcome of a passphrase or erase request, shaped for the settings page. */
@@ -353,6 +355,8 @@ export interface Config {
     autoDeleteAfter: number;
     /** 0 keeps the history open; otherwise idle minutes before a passphrase lock. */
     autoLockMinutes: number;
+    /** When false the app makes no requests of its own: no downloads, no page fetches. */
+    networkAllowed: boolean;
   };
   memory: {
     enabled: boolean;
@@ -471,6 +475,9 @@ export interface ElectronAPI {
   getAuditLog: (limit?: number) => Promise<AuditEntry[]>;
   exportAuditLog: () => Promise<string | null>;
   clearAuditLog: () => Promise<void>;
+  /** The tail of the live log file, already redacted at write time. */
+  getLogTail: (lines?: number) => Promise<string>;
+  clearLogs: () => Promise<PrivacyActionResult>;
   chooseWorkspaceFolder: () => Promise<string | null>;
   getMcpStatus: () => Promise<McpServerStatus[]>;
   restartMcpServer: (id: string) => Promise<McpServerStatus[]>;

@@ -311,6 +311,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [backupNotice, setBackupNotice] = useState("");
   const [restoreSettings, setRestoreSettings] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
+  const [logText, setLogText] = useState<string | null>(null);
+  const [logNotice, setLogNotice] = useState("");
+  const [online, setOnline] = useState(() => navigator.onLine);
+
+  useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
+  }, []);
 
   const { model, agent, privacy } = config;
   const memoryConfig = config.memory ?? { enabled: true, workspaceSearch: false };
@@ -326,6 +340,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const ready = status.state === "ready";
   const keySource = privacyStatus?.keySource ?? "off";
   const passphraseOn = privacyStatus?.passphraseConfigured ?? false;
+  const networkAllowed = privacy.networkAllowed !== false;
   const autoLockMinutes = privacyStatus?.autoLockMinutes ?? 0;
   const schemaVersion = privacyStatus?.schemaVersion ?? 0;
   const keyCopy = !privacy.encryptData
@@ -456,6 +471,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setBackupNotice(failureText(error));
     } finally {
       setBackupBusy(false);
+    }
+  };
+
+  const showLog = async () => {
+    setLogNotice("");
+    try {
+      setLogText((await window.electron?.getLogTail(200)) ?? "");
+    } catch (error) {
+      setLogNotice(failureText(error));
+    }
+  };
+
+  const wipeLog = async () => {
+    setLogNotice("");
+    try {
+      const result = await window.electron?.clearLogs();
+      if (!result?.ok) {
+        setLogNotice(result?.error ?? "Could not clear the log.");
+        return;
+      }
+      setLogText((await window.electron?.getLogTail(200)) ?? "");
+      setLogNotice(t("diagnostics.cleared"));
+    } catch (error) {
+      setLogNotice(failureText(error));
     }
   };
 
@@ -2301,6 +2340,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </span>
                     </SettingRow>
                   </div>
+                </section>
+
+                <section>
+                  <p className="section-label">Diagnostics</p>
+                  <div className="card">
+                    <SettingRow title={t("diagnostics.logs")} copy={t("diagnostics.logsCopy")}>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => void showLog()} className="btn">
+                          {t("diagnostics.view")}
+                        </button>
+                        <button onClick={() => void wipeLog()} className="btn">
+                          {t("diagnostics.clear")}
+                        </button>
+                      </div>
+                    </SettingRow>
+                    {logText !== null && (
+                      <div className="px-4 pb-3">
+                        <pre
+                          aria-label={t("diagnostics.logs")}
+                          className="max-h-[220px] overflow-auto rounded-lg border border-line bg-card-2 p-3 text-[10px] text-muted whitespace-pre-wrap break-words font-mono"
+                        >
+                          {logText || t("diagnostics.empty")}
+                        </pre>
+                      </div>
+                    )}
+                    <SettingRow
+                      title={t("diagnostics.network")}
+                      copy={networkAllowed ? t("diagnostics.networkCopy") : t("diagnostics.networkOffCopy")}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`chip ${online ? "" : "chip-accent"}`}>
+                          {online ? t("diagnostics.online") : t("diagnostics.offline")}
+                        </span>
+                        <Toggle
+                          on={networkAllowed}
+                          label={t("diagnostics.network")}
+                          onChange={() =>
+                            void onPatch({ privacy: { ...privacy, networkAllowed: !networkAllowed } })
+                          }
+                        />
+                      </div>
+                    </SettingRow>
+                  </div>
+                  {logNotice && (
+                    <p role="status" className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                      {logNotice}
+                    </p>
+                  )}
                 </section>
               </>
             )}

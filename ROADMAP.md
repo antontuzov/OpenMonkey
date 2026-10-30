@@ -306,8 +306,14 @@ screen (local history loads faster than the debounce).
     written for a newer layout; open windows hear `local-data-changed` after an import. A short or
     wrong passphrase, a foreign JSON file and a file over 64 MB are refused with readable errors
     before anything is touched. *(M)*
-29. **Diagnostics**: rotating local logs with redaction, view/clear UI, offline indicator and
-    a deny-all-network switch. No telemetry by default. *(S)*
+29. ✅ **Diagnostics**: lines are appended synchronously and the log rotates at 2 MB keeping two
+    older copies; message text never reaches it — `content`, `prompt` and `response` become their
+    lengths at write time. Settings → Privacy → Diagnostics shows the tail in place and clears
+    the file plus its rotations, so the clear itself is the first new line. One **network
+    switch** covers every request the app makes on its own: off, model downloads and web fetches
+    refuse with the page's wording and log `network.blocked`, while the local model and links
+    handed to the user's browser keep working. An online/offline chip reads the renderer's
+    connection state. No telemetry anywhere. *(S)*
 30. **Privacy page truthfulness**: every toggle enforces its claim (save history, encryption,
     retention run daily, not only at launch). *(S)*
 
@@ -355,6 +361,26 @@ a freshly written pragma lives in the `-wal` until a checkpoint, so a clean ⌘Q
 proof owed. Localization note for item 30: the Portability controls are translated
 (`Фраза для копии`, `Сохранить копию`, `Загрузить копию`) but the Privacy page's older rows and
 its lede are hardcoded English.
+`npm run typecheck` and `npm run build` are clean.
+
+**Phase 6 verification (29):** a node harness drove the real logger, the web tool and the model
+downloader, then the app was checked live. Redaction: a line carrying a 19/17/17-character
+content, prompt and response wrote only `contentLength`, `promptLength`, `responseLength` — no
+secret reached the file. Rotation: 6 000 lines (~5.8 MB) left the live file at 1.59 MB with
+`openmonkey.log.1` and `.2` at 2.09 MB each and no `.3`. **The harness caught a second real
+bug**: the first run ended with a 3.7 MB live file and *no* `.1` — a buffered `WriteStream` was
+being renamed while its queued chunks were still flushing, so the byte counter and the file size
+drifted apart. The logger now appends synchronously, and the same run lands on the numbers above.
+`tail(5)` returned the five newest lines ending at `index: 5999`; `clear` emptied the file,
+removed both rotations and the next line was `logs.cleared`. With the switch off the gate threw,
+`fetch_page` was refused, and `download()` returned `phase: "error"` carrying the same sentence
+without writing a `.part` file. In the app: the Diagnostics section renders, View log showed 29
+lines, Clear left exactly `logs.cleared` with its notice, and the switch flipped the copy to the
+"Off:" sentence; with it off the Model page's **Download** button reported "Network access is off
+in Settings → Privacy → Diagnostics" and the log gained `network.blocked
+{"reason":"model-download"}`; switched back on afterwards. **Not exercised:** the offline chip
+under a genuine disconnection (it reads `navigator.onLine`; faking it would prove nothing about
+the OS), and rotation under real app load — the burst test above is the proof.
 `npm run typecheck` and `npm run build` are clean.
 
 ---

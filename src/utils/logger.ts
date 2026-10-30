@@ -8,31 +8,26 @@ const LOG_FILE = () => path.join(app.getPath("userData"), "logs", "openmonkey.lo
 const MAX_BYTES = 2 * 1024 * 1024;
 const KEEP = 2;
 
-let stream: fs.WriteStream | null = null;
 let written = 0;
+let measured = false;
 
-/**
- * Local-only logging: no network, and prompt/response text is never written out,
- * only its size, so the log cannot leak conversation content.
- */
-function openStream(): fs.WriteStream | null {
-  if (stream) return stream;
+function sizeOf(file: string): number {
   try {
-    const file = LOG_FILE();
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    stream = fs.createWriteStream(file, { flags: "a" });
-    written = fs.existsSync(file) ? fs.statSync(file).size : 0;
-    return stream;
+    return fs.statSync(file).size;
   } catch {
-    return null;
+    return 0;
   }
 }
 
+function ensureDir(file: string): void {
+  if (measured) return;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  written = sizeOf(file);
+  measured = true;
+}
+
 /** openmonkey.log.2 is dropped, .1 becomes .2, and the live file becomes .1. */
-function rotate(): void {
-  stream?.end();
-  stream = null;
-  const file = LOG_FILE();
+function rotate(file: string): void {
   for (let index = KEEP; index >= 1; index -= 1) {
     const from = index === 1 ? file : `${file}.${index - 1}`;
     if (fs.existsSync(from)) fs.renameSync(from, `${file}.${index}`);
@@ -57,11 +52,16 @@ function redact(meta?: Record<string, unknown>): string {
 
 function write(level: Level, event: string, meta?: Record<string, unknown>): void {
   const line = `${new Date().toISOString()} ${level.toUpperCase()} ${event}${redact(meta)}\n`;
-  if (written > MAX_BYTES) rotate();
-  const file = openStream();
-  if (file) {
-    file.write(line);
+  // Appended synchronously: a queued WriteStream can still be flushing into a file
+  // that rotation has already renamed, which made the cap and the file size disagree.
+  try {
+    const file = LOG_FILE();
+    ensureDir(file);
+    if (written > MAX_BYTES) rotate(file);
+    fs.appendFileSync(file, line);
     written += Buffer.byteLength(line);
+  } catch {
+    /* a log that cannot be written must not take the app down */
   }
   if (level === "error") console.error(line.trim());
   else if (process.env.OPENMONKEY_VERBOSE) console.log(line.trim());
@@ -72,15 +72,39 @@ export const logger = {
   info: (event: string, meta?: Record<string, unknown>) => write("info", event, meta),
   warn: (event: string, meta?: Record<string, unknown>) => write("warn", event, meta),
   error: (event: string, meta?: Record<string, unknown>) => write("error", event, meta),
-  /** Drop the file handle so the next line lands in a fresh file after the folder is deleted. */
+  /** The newest lines of the live file, oldest first; rotations are history, not the tail. */
+  tail: (lines = 200): string => {
+    try {
+      const file = LOG_FILE();
+      if (!fs.existsSync(file)) return "";
+      const all = fs.readFileSync(file, "utf8").split("\n");
+      if (all[all.length - 1] === "") all.pop();
+      return all.slice(-Math.max(1, Math.min(lines, 500))).join("\n");
+    } catch {
+      return "";
+    }
+  },
+  /** Empties the live file and drops the rotations, so a shared log starts clean. */
+  clear: (): void => {
+    try {
+      const file = LOG_FILE();
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, "");
+      written = 0;
+      measured = true;
+      for (let index = 1; index <= KEEP; index += 1) fs.rmSync(`${file}.${index}`, { force: true });
+    } catch {
+      /* nothing written yet */
+    }
+  },
+  /** Forget the measured size so the next line re-reads the file after it is deleted. */
   reset: () => {
-    stream?.end();
-    stream = null;
+    measured = false;
     written = 0;
   },
   close: () => {
-    stream?.end();
-    stream = null;
+    measured = false;
+    written = 0;
   },
 };
 

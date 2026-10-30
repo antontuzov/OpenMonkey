@@ -6,7 +6,7 @@ release/
 *.tsbuildinfo
 
 # Model weights are downloaded per machine, never committed
-models/
+/models/
 *.gguf
 *.safetensors
 *.part

@@ -28,6 +28,9 @@ const defaultConfig: Config = {
     encryptData: true,
     autoDeleteAfter: 30,
     autoLockMinutes: 0,
+    // One switch for every request the app makes itself: model downloads and page
+    // fetches. Loopback to the local MLX server stays open either way.
+    networkAllowed: true,
   },
   memory: {
     enabled: true,

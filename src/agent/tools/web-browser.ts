@@ -1,5 +1,6 @@
 import { shell } from "electron";
 import type { TaskType } from "../../utils/types";
+import { assertNetworkAllowed } from "../../utils/network";
 
 const MAX_TEXT = 12_000;
 const USER_AGENT = "OpenMonkey/1.0 (local agent)";
@@ -29,6 +30,9 @@ export class WebBrowserTools {
   private lastRequest = new Map<string, number>();
 
   async execute(action: string, args: Record<string, unknown>): Promise<string> {
+    // open_in_browser hands the URL to the user's own browser, so it is their request,
+    // not the app's; only the fetches this class performs are behind the switch.
+    if (action === "fetch_page" || action === "search") assertNetworkAllowed(`web.${action}`);
     switch (action) {
       case "fetch_page":
         return this.fetchPage(String(args.url ?? ""));
