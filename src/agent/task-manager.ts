@@ -12,7 +12,8 @@ import {
   validateToolArguments,
   type ToolDefinition,
 } from "./tool-registry";
-import { emojiFor, detectTaskType } from "../ui/task-emojis";
+import { emojiFor } from "../ui/task-emojis";
+import { parseTaskBlocks as parseFences } from "./task-fence";
 import type { ToolContext } from "./tools/context";
 import config from "../utils/config";
 import storage from "../utils/storage";
@@ -28,8 +29,6 @@ import type {
   TaskType,
 } from "../utils/types";
 
-const TASK_BLOCK = /```task\s*([\s\S]*?)```/g;
-const UNCLOSED_BLOCK = /```task\s*([\s\S]*)$/;
 const TOOL_TYPES = new Set<TaskType>(["file", "web", "shell", "calendar", "email", "mcp", "memory"]);
 
 interface ExecutableTool {
@@ -93,47 +92,9 @@ export class TaskManager {
 
   /** Pull the ```task blocks out of a model reply; the rest is what the user sees. */
   parseTaskBlocks(response: string): { visibleText: string; requests: TaskRequest[]; errors: string[] } {
-    const requests: TaskRequest[] = [];
-    const errors: string[] = [];
-    let visibleText = response.replace(TASK_BLOCK, (_match, body: string) => {
-      const parsed = this.parseOne(String(body).trim());
-      if (parsed.request) requests.push(parsed.request);
-      if (parsed.error) errors.push(parsed.error);
-      return "";
-    });
-
-    const unclosed = UNCLOSED_BLOCK.exec(visibleText);
-    if (unclosed) {
-      const parsed = this.parseOne(String(unclosed[1]).trim());
-      if (parsed.request) requests.push(parsed.request);
-      errors.push(parsed.error ?? "Tool block was not closed with ```; nothing was run");
-      visibleText = visibleText.replace(UNCLOSED_BLOCK, "");
-    }
-
-    return { visibleText: visibleText.trim(), requests, errors };
-  }
-
-  private parseOne(body: string): { request?: TaskRequest; error?: string } {
-    if (!body) return { error: "Empty tool block; nothing was run" };
-    try {
-      const parsed = JSON.parse(body) as Partial<TaskRequest>;
-      if (!parsed || typeof parsed.action !== "string" || !parsed.action.trim()) {
-        return { error: `Tool request needs an "action" string: ${body.slice(0, 200)}` };
-      }
-      const type = (parsed.type ?? detectTaskType(parsed.summary ?? "")) as TaskType;
-      return {
-        request: {
-          type,
-          action: parsed.action,
-          arguments: (parsed.arguments ?? {}) as Record<string, unknown>,
-          summary: parsed.summary ?? `${type}.${parsed.action}`,
-          mutating: false,
-        },
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { error: `Tool request is not valid JSON (${message}): ${body.slice(0, 200)}` };
-    }
+    const parsed = parseFences(response);
+    if (parsed.repaired) logger.warn("tasks.fence.repaired", { blocks: parsed.repaired });
+    return parsed;
   }
 
   private toolFor(type: TaskType): ExecutableTool | null {

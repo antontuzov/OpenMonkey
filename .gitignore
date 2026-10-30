@@ -21,6 +21,9 @@ secret.key
 *.db-wal
 *.db-shm
 
+# Test bundles
+test/.build/
+
 # Logs
 *.log
 logs/

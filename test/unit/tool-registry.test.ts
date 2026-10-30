@@ -1,0 +1,116 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  TOOL_DEFINITIONS,
+  describeBuiltInTools,
+  getToolDefinition,
+  toolKey,
+  validateJsonSchema,
+  validateToolArguments,
+  type ToolDefinition,
+} from "../../src/agent/tool-registry";
+
+const sample: ToolDefinition = {
+  type: "file",
+  action: "sample",
+  description: "A sample tool.",
+  mutating: false,
+  timeoutMs: 1_000,
+  args: {
+    path: { type: "string", required: true, maxLength: 10 },
+    mode: { type: "string", enum: ["read", "write"] },
+    count: { type: "number", min: 1, max: 10 },
+    force: { type: "boolean" },
+    tags: { type: "string[]" },
+    folder: { type: "string", default: "" },
+  },
+};
+
+test("tool definitions are unique and complete", () => {
+  const keys = TOOL_DEFINITIONS.map((definition) => toolKey(definition.type, definition.action));
+  assert.equal(new Set(keys).size, keys.length);
+  for (const definition of TOOL_DEFINITIONS) {
+    assert.ok(definition.action.trim(), `${definition.type} has an action`);
+    assert.ok(definition.description.trim(), `${toolKey(definition.type, definition.action)} has a description`);
+  }
+  assert.equal(getToolDefinition("file", "read_file")?.action, "read_file");
+  assert.equal(getToolDefinition("file", "missing"), undefined);
+});
+
+test("the protocol text names every tool and hides memory on request", () => {
+  const all = describeBuiltInTools();
+  for (const definition of TOOL_DEFINITIONS) {
+    assert.ok(all.includes(toolKey(definition.type, definition.action)));
+  }
+  const withoutMemory = describeBuiltInTools(false);
+  assert.equal(withoutMemory.includes("memory."), false);
+});
+
+test("valid arguments are normalized", () => {
+  const result = validateToolArguments(sample, {
+    path: "/tmp/a",
+    mode: "read",
+    count: "3",
+    force: "true",
+    tags: ["one", "two"],
+  });
+  assert.deepEqual(result, {
+    arguments: { path: "/tmp/a", mode: "read", count: 3, force: true, tags: ["one", "two"], folder: "" },
+  });
+});
+
+test("a default fills an omitted optional argument", () => {
+  const result = validateToolArguments(sample, { path: "/tmp/a" });
+  assert.ok(!("error" in result));
+  assert.equal(result.arguments.folder, "");
+});
+
+test("unknown arguments are rejected by name", () => {
+  const result = validateToolArguments(sample, { path: "/tmp/a", surprise: 1 });
+  assert.deepEqual(result, { error: "unknown argument: surprise" });
+});
+
+test("a missing required argument is named", () => {
+  const result = validateToolArguments(sample, {});
+  assert.deepEqual(result, { error: 'missing required argument "path" (string)' });
+});
+
+test("an empty required string is refused", () => {
+  const result = validateToolArguments(sample, { path: "   " });
+  assert.deepEqual(result, { error: '"path" cannot be empty' });
+});
+
+test("string length, enums, number bounds and array shapes are enforced", () => {
+  assert.match((validateToolArguments(sample, { path: "x".repeat(11) }) as { error: string }).error, /too long/);
+  assert.match((validateToolArguments(sample, { path: "a", mode: "append" }) as { error: string }).error, /must be one of/);
+  assert.match((validateToolArguments(sample, { path: "a", count: 0 }) as { error: string }).error, /at least 1/);
+  assert.match((validateToolArguments(sample, { path: "a", count: 11 }) as { error: string }).error, /at most 10/);
+  assert.match((validateToolArguments(sample, { path: "a", count: "many" }) as { error: string }).error, /must be a number/);
+  assert.match((validateToolArguments(sample, { path: "a", force: "yes" }) as { error: string }).error, /must be a boolean/);
+  assert.match((validateToolArguments(sample, { path: "a", tags: ["ok", 2] }) as { error: string }).error, /array of strings/);
+});
+
+test("a non-object argument payload is refused", () => {
+  assert.deepEqual(validateToolArguments(sample, ["path"]), { error: "arguments must be a JSON object" });
+  assert.deepEqual(validateToolArguments(sample, null), { error: "arguments must be a JSON object" });
+});
+
+test("JSON Schema validation covers the MCP subset", () => {
+  const schema = {
+    type: "object",
+    properties: {
+      url: { type: "string", minLength: 5 },
+      depth: { type: "integer" },
+      link: { $ref: "#/$defs/link" },
+    },
+    required: ["url"],
+    additionalProperties: false,
+    $defs: { link: { type: "object", properties: { href: { type: "string" } }, required: ["href"] } },
+  };
+  assert.equal(validateJsonSchema(schema, { url: "https://example.com", depth: 2, link: { href: "x" } }), null);
+  assert.equal(validateJsonSchema(schema, {}), 'missing required field "url"');
+  assert.equal(validateJsonSchema(schema, { url: "https://example.com", extra: 1 }), "unknown field: extra");
+  assert.equal(validateJsonSchema(schema, { url: "https://example.com", link: {} }), "link: missing required field \"href\"");
+  assert.equal(validateJsonSchema(schema, { url: "https://example.com", depth: 1.5 }), "depth: must be an integer");
+  assert.equal(validateJsonSchema({ anyOf: [{ type: "string" }, { type: "number" }] }, "x"), null);
+});
