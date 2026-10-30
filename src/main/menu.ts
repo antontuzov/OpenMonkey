@@ -15,6 +15,7 @@ interface MenuCopy {
   help: string;
   repo: string;
   dataFolder: string;
+  checkUpdates: string;
 }
 
 const COPY: Record<AppLanguage, MenuCopy> = {
@@ -32,6 +33,7 @@ const COPY: Record<AppLanguage, MenuCopy> = {
     help: "Help",
     repo: "OpenMonkey on GitHub",
     dataFolder: "Show Data Folder",
+    checkUpdates: "Check for Updates…",
   },
   ru: {
     file: "Файл",
@@ -47,13 +49,15 @@ const COPY: Record<AppLanguage, MenuCopy> = {
     help: "Помощь",
     repo: "OpenMonkey на GitHub",
     dataFolder: "Показать папку данных",
+    checkUpdates: "Проверить обновления…",
   },
 };
 
 export function installAppMenu(
   language: AppLanguage,
   send: (command: MenuCommand) => void,
-  quickAsk: () => void
+  quickAsk: () => void,
+  checkUpdates: () => void
 ): void {
   const copy = COPY[language] ?? COPY.en;
   const isMac = process.platform === "darwin";
@@ -101,6 +105,9 @@ export function installAppMenu(
       role: "help",
       label: copy.help,
       submenu: [
+        ...(app.isPackaged
+          ? ([{ label: copy.checkUpdates, click: checkUpdates }] as Electron.MenuItemConstructorOptions[])
+          : []),
         {
           label: copy.repo,
           click: () => void shell.openExternal("https://github.com/antontuzov/OpenMonkey"),

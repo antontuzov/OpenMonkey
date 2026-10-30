@@ -6,6 +6,7 @@ import { registerIpcHandlers } from "./ipc-handlers";
 import { DesktopManager } from "./desktop-manager";
 import { startLockWatcher } from "./lock-watcher";
 import { installAppMenu } from "./menu";
+import { checkForUpdates, startUpdates } from "./updater";
 import { applyWindowState } from "./window-state";
 import { OpenMonkey } from "../agent/OpenMonkey";
 import config, { assetPath } from "../utils/config";
@@ -168,7 +169,8 @@ function installMenu(): void {
   installAppMenu(
     config.get("ui").language,
     (command) => showMainWindow(command),
-    () => desktopManager?.showQuickAsk()
+    () => desktopManager?.showQuickAsk(),
+    () => void checkForUpdates()
   );
   trayManager?.refreshMenu();
 }
@@ -251,6 +253,7 @@ if (!app.requestSingleInstanceLock()) {
 
     installMenu();
     applyDesktopSettings();
+    startUpdates();
 
     app.on("browser-window-created", (_event, window) => {
       window.webContents.on("did-finish-load", () => applyZoom(window));

@@ -369,6 +369,8 @@ export interface Config {
     notifications: boolean;
     notifyOnComplete: boolean;
     quickAsk: boolean;
+    /** Stable follows published releases; beta opts in to GitHub prereleases. */
+    updateChannel: "stable" | "beta";
   };
   agent: {
     name: string;

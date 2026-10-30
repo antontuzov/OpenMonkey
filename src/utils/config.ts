@@ -44,6 +44,7 @@ const defaultConfig: Config = {
     notifications: true,
     notifyOnComplete: true,
     quickAsk: true,
+    updateChannel: "stable",
   },
   agent: {
     name: "OpenMonkey",

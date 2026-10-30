@@ -120,6 +120,22 @@ test("switching to Russian translates the page and the html lang", async () => {
   await expect(page.getByRole("switch", { name: "Save conversation history" })).toBeVisible();
 });
 
+test("Settings → Desktop shows the update channel and stores the choice", async () => {
+  await page.getByRole("button", { name: "Desktop", exact: true }).click();
+  await expect(page.getByText("Update channel", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Checks at launch and every six hours/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Beta", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.electron.getConfig().then((value) => value.desktop.updateChannel)))
+    .toBe("beta");
+
+  await page.getByRole("button", { name: "Stable", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.electron.getConfig().then((value) => value.desktop.updateChannel)))
+    .toBe("stable");
+});
+
 test("closing the window honours close-to-tray and keeps it hidden and alive", async () => {
   await page.evaluate(() => window.electron.setConfig({ desktop: { closeToTray: true } }));
   const before = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);

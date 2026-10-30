@@ -1061,6 +1061,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </section>
 
                 <section>
+                  <p className="section-label">{t("desktop.updates")}</p>
+                  <div className="card">
+                    <SettingRow title={t("desktop.updateChannel")} copy={t("desktop.updateChannelCopy")}>
+                      <Segmented
+                        value={config.desktop.updateChannel ?? "stable"}
+                        onChange={(value) => patchDesktop({ updateChannel: value as "stable" | "beta" })}
+                        options={[
+                          { value: "stable", label: t("desktop.channelStable") },
+                          { value: "beta", label: t("desktop.channelBeta") },
+                        ]}
+                      />
+                    </SettingRow>
+                    <div className="row">
+                      <p className="row-copy !mt-0 max-w-[52ch]">{t("desktop.updateHint")}</p>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
                   <p className="section-label">{t("desktop.quickAsk")}</p>
                   <div className="card">
                     <SettingRow title={t("desktop.quickAskToggle")} copy={t("desktop.quickAskToggleCopy")}>

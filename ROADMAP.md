@@ -426,9 +426,9 @@ flight, which removes that window.
     `tasks.fence.repaired`) instead of failing as invalid JSON. *(L)*
     Still owed in a later pass: the approval dialog's Tab cycle and Escape path, which need a real
     model turn or an injected approval to open the dialog.
-32. **CI/CD**: GitHub Actions on macOS arm64 + x64; typecheck, tests, build, package; signing
+32. ✅ **CI/CD**: GitHub Actions on macOS arm64 + x64; typecheck, tests, build, package; signing
     with Developer ID, hardened runtime, notarization and stapling; Windows signing. *(L)*
-33. **Auto-update**: `electron-updater` with GitHub Releases, staged rollout, rollback,
+33. ✅ **Auto-update**: `electron-updater` with GitHub Releases, staged rollout, rollback,
     migration-safe startup. *(M)*
 34. **Performance budgets**: UI interactive < 2.5 s cold, no jank when streaming, settings
     lazy-loaded, memory ceiling documented, model load progress always visible. *(M)*
@@ -457,6 +457,38 @@ defaulted its cwd there — the runner now creates the three allowed folders up 
 covered:** the approval dialog's Tab/Escape cycle (no model turn opens it), idle auto-lock, and
 snapshot portability across machines (the baseline is this Mac's rendering).
 `npm run typecheck` and `npm run build` are clean.
+
+**Phase 7 verification (32):** `.github/workflows/ci.yml` has three jobs. `verify` runs on a
+`macos-14` (arm64) and a `macos-13` (x64) runner with Node 24 and npm cache: `npm ci`,
+`npm run typecheck`, `npm test`, `npm run build`. `e2e` runs `npm run test:e2e` on `macos-14` and
+uploads `test-results/` and `playwright-report/` only on failure. `package` runs only for `v*` tags,
+after `verify`, on both runners: it builds and calls
+`electron-builder --mac --arm64|x64 --publish never`, reading `CSC_LINK`, `CSC_KEY_PASSWORD`,
+`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` from repository secrets, and uploads
+`release/*.dmg` and `release/*.zip` for 14 days. Packaging config: output `release/`, resources
+`build/`, `OpenMonkey-${version}-${arch}.${ext}`, GitHub `draft` publish, hardened runtime with
+`build/entitlements.mac.plist` (JIT, unsigned executable memory, dyld env) for the app and its
+helpers. The YAML and the plist parse; the workflow is syntactically valid. **Not exercised:** no
+GitHub remote receives this repository yet, so no runner has executed the workflow; signing and
+notarization cannot run without a Developer ID certificate, and the package job produces an
+unsigned build when the secrets are absent. Windows signing is intentionally out of scope — the
+product ships macOS builds.
+
+**Phase 7 verification (33):** `src/main/updater.ts` wires `electron-updater` behind the same
+`app.isPackaged` and `networkAllowed()` gates as every other outbound call. At launch (packaged
+only) it sets `autoDownload`, `autoInstallOnAppQuit` and `allowDowngrade = false`, checks
+immediately and then every six hours on an `unref`'d timer; `update-downloaded` shows a native
+dialog with **Restart now** / **Later**. The channel comes from Settings → Desktop → Updates
+(`desktop.updateChannel`, default `stable`): `stable` maps to the `latest` feed, `beta` to `beta`,
+so prereleases are opt-in; the same choice can be made from the app menu (**Help → Check for
+Updates…**, packaged builds only, which also triggers a manual check). Rollback is reinstalling an
+older signed build — the updater never downgrades by itself — and startup stays migration-safe
+because the database carries its schema stamp and encryption state before any feed is consulted.
+E2E test 6 clicks **Desktop**, reads the channel row and hint, selects **Beta**, polls the config
+through IPC for `"beta"`, selects **Stable** and polls for `"stable"`. All 7 e2e tests pass.
+**Not exercised:** an actual download and install — the app under test is unpackaged, where the
+updater intentionally does nothing, and no release feed exists yet; the beta feed likewise awaits
+a published prerelease. `npm run typecheck` and `npm run build` are clean.
 
 ---
 
