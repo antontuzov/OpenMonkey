@@ -1,0 +1,138 @@
+import { test, expect } from "@playwright/test";
+import { _electron as electron } from "playwright-core";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const COLD_START_BUDGET_MS = 2500;
+const IDLE_MEMORY_CEILING_MB = 900;
+
+test.describe.configure({ mode: "serial" });
+
+let app;
+let page;
+let profile;
+let launchedAt = 0;
+let firstSurfaceMs = 0;
+
+test.beforeAll(async () => {
+  profile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-perf-"));
+  launchedAt = performance.now();
+  app = await electron.launch({
+    args: [root],
+    env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
+  });
+  page = await app.firstWindow();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByRole("button", { name: "Skip setup" })).toBeVisible();
+  firstSurfaceMs = Math.round(performance.now() - launchedAt);
+});
+
+test.afterAll(async () => {
+  try {
+    await app?.evaluate(({ app }) => app.quit());
+  } catch {
+    /* the app may already be gone */
+  }
+  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+});
+
+test("cold start reaches its first surface inside the budget", async () => {
+  console.log(`launch → first surface: ${firstSurfaceMs} ms`);
+  expect(firstSurfaceMs).toBeLessThan(COLD_START_BUDGET_MS);
+});
+
+test("shell memory stays under the ceiling before a model is loaded", async () => {
+  const processes = await app.evaluate(({ app }) =>
+    app.getAppMetrics().map((metric) => ({
+      type: metric.type,
+      workingSetMB: Math.round(metric.memory.workingSetSize / 1024),
+      peakWorkingSetMB: Math.round(metric.memory.peakWorkingSetSize / 1024),
+    }))
+  );
+  const total = processes.reduce((sum, metric) => sum + metric.workingSetMB, 0);
+  test.info().annotations.push({ type: "memory", description: JSON.stringify(processes) });
+  console.log(`idle working set: ${total} MB`, processes);
+  expect(total).toBeLessThan(IDLE_MEMORY_CEILING_MB);
+});
+
+test("a long synthetic stream keeps frames inside the jank budget", async () => {
+  await page.getByRole("button", { name: "Skip setup" }).click();
+  await expect(page.getByRole("textbox", { name: "Message OpenMonkey" })).toBeVisible();
+  await page.getByRole("button", { name: "New conversation" }).first().click();
+
+  const conversationId = await page.evaluate(() =>
+    window.electron.getConversations().then((list) => list[0]?.id ?? null)
+  );
+  expect(conversationId).toBeTruthy();
+
+  await page.evaluate(() => {
+    window.__omPerf = { longTasks: 0, maxLongTask: 0, frames: 0, maxFrameGap: 0 };
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        window.__omPerf.longTasks += 1;
+        window.__omPerf.maxLongTask = Math.max(window.__omPerf.maxLongTask, entry.duration);
+      }
+    }).observe({ entryTypes: ["longtask"] });
+    let last = performance.now();
+    const tick = (time) => {
+      window.__omPerf.frames += 1;
+      window.__omPerf.maxFrameGap = Math.max(window.__omPerf.maxFrameGap, time - last);
+      last = time;
+      window.__omPerf.handle = requestAnimationFrame(tick);
+    };
+    window.__omPerf.handle = requestAnimationFrame(tick);
+  });
+
+  const tokens = Array.from({ length: 320 }, (_, index) => `word${index} `);
+  await app.evaluate(
+    async ({ BrowserWindow }, { conversationId, tokens }) => {
+      const send = (payload) => BrowserWindow.getAllWindows()[0].webContents.send("chat-event", payload);
+      const id = `stream_${Date.now()}`;
+      send({
+        type: "start",
+        conversationId,
+        message: { id, role: "assistant", content: "", timestamp: new Date() },
+      });
+      for (const token of tokens) {
+        await new Promise((resolve) => setTimeout(resolve, 8));
+        send({ type: "token", conversationId, messageId: id, token });
+      }
+      send({
+        type: "done",
+        conversationId,
+        message: { id, role: "assistant", content: tokens.join(""), timestamp: new Date() },
+      });
+    },
+    { conversationId, tokens }
+  );
+
+  await expect(page.getByText(/word319/)).toBeVisible();
+  const stats = await page.evaluate(() => {
+    cancelAnimationFrame(window.__omPerf.handle);
+    return { ...window.__omPerf, handle: undefined };
+  });
+  console.log("stream perf:", stats);
+  expect(stats.longTasks).toBe(0);
+  expect(stats.maxFrameGap).toBeLessThan(120);
+});
+
+test("Settings opens from its own chunk instead of the cold-start bundle", async () => {
+  const requested = [];
+  const onRequest = (request) => {
+    if (request.resourceType() === "script") requested.push(request.url());
+  };
+  page.on("request", onRequest);
+  try {
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await expect(page.getByRole("navigation").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Privacy", exact: true })).toBeVisible();
+  } finally {
+    page.off("request", onRequest);
+  }
+
+  console.log("chunks loaded on demand:", requested);
+  expect(requested.some((url) => /SettingsView/i.test(url))).toBe(true);
+});

@@ -302,15 +302,31 @@ const MessageSkeleton: React.FC = () => (
   </div>
 );
 
-const LoadingCard: React.FC<{ title: string; copy: string }> = ({ title, copy }) => (
-  <div className="min-h-[46vh] flex items-center justify-center">
-    <div className="card px-7 py-6 text-center max-w-sm">
-      <Loader size={18} className="animate-spin text-accent-ink mx-auto mb-3" />
-      <p className="text-[13px] font-semibold mb-1">{title}</p>
-      <p className="text-muted text-[11px] leading-relaxed">{copy}</p>
+const LoadingCard: React.FC<{ title: string; copy: string }> = ({ title, copy }) => {
+  // A model load has no percentage to report; a visible clock proves the process
+  // is alive instead of leaving the spinner as the only signal.
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setSeconds((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="min-h-[46vh] flex items-center justify-center">
+      <div className="card px-7 py-6 text-center max-w-sm">
+        <Loader size={18} className="animate-spin text-accent-ink mx-auto mb-3" />
+        <p className="text-[13px] font-semibold mb-1">{title}</p>
+        <p className="text-muted text-[11px] leading-relaxed">{copy}</p>
+        {seconds > 0 && (
+          <p className="text-faint text-[10px] mt-2 tabular-nums">
+            {seconds}
+            {"s"}
+          </p>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   status,
@@ -338,6 +354,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const stickRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragDepth = useRef(0);
+  const pendingTokens = useRef("");
+  const tokenFrame = useRef(0);
+
+  // Tokens arrive faster than the display refreshes; batching them per frame
+  // renders a long reply at screen rate instead of once per token.
+  const cancelTokenFlush = () => {
+    if (tokenFrame.current) cancelAnimationFrame(tokenFrame.current);
+    tokenFrame.current = 0;
+    pendingTokens.current = "";
+  };
 
   useEffect(() => {
     const focus = () => textareaRef.current?.focus();
@@ -389,37 +415,54 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const api = window.electron;
     if (!api) return;
 
-    return api.onChatEvent((event) => {
+    const scheduleFlush = (messageId: string) => {
+      if (tokenFrame.current) return;
+      tokenFrame.current = requestAnimationFrame(() => {
+        tokenFrame.current = 0;
+        const chunk = pendingTokens.current;
+        pendingTokens.current = "";
+        if (!chunk) return;
+        setStream((current) =>
+          current && current.id === messageId
+            ? { ...current, content: current.content + chunk }
+            : current
+        );
+      });
+    };
+
+    const unsubscribe = api.onChatEvent((event) => {
       if (!conversationId || event.conversationId !== conversationId) return;
 
       switch (event.type) {
         case "start":
+          cancelTokenFlush();
           setFailure(null);
           setStream({ id: event.message.id, content: "" });
           break;
         case "token":
-          setStream((current) =>
-            current && current.id === event.messageId
-              ? { ...current, content: current.content + event.token }
-              : current
-          );
+          pendingTokens.current += event.token;
+          scheduleFlush(event.messageId);
           break;
         case "replace":
+          cancelTokenFlush();
           setStream((current) =>
             current && current.id === event.messageId ? { ...current, content: event.content } : current
           );
           break;
         case "done":
+          cancelTokenFlush();
           setStream(null);
           setMessages((current) => replaceMessage(current, event.message));
           break;
         case "stopped":
+          cancelTokenFlush();
           setStream(null);
           if (event.message.content.trim()) {
             setMessages((current) => replaceMessage(current, event.message));
           }
           break;
         case "error": {
+          cancelTokenFlush();
           setStream(null);
           const partial = event.message;
           if (partial) setMessages((current) => replaceMessage(current, partial));
@@ -428,6 +471,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
       }
     });
+
+    return () => {
+      cancelTokenFlush();
+      unsubscribe();
+    };
   }, [conversationId]);
 
   useEffect(() => {

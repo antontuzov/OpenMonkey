@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { FolderOpen, Loader, PanelRight, Settings2 } from "lucide-react";
 import { ChatInterface } from "./components/ChatInterface";
 import { TaskMonitor } from "./components/TaskMonitor";
 import { AppSidebar } from "./components/AppSidebar";
-import { SettingsView } from "./components/SettingsView";
 import { Onboarding } from "./components/Onboarding";
 import { ApprovalDialog } from "./components/ApprovalDialog";
 import { LockScreen } from "./components/LockScreen";
 import { useAppearance } from "./theme";
 import { moodLabel, setLanguage, t } from "./i18n";
+
+// Settings carries the model manager, extensions and diagnostics; loading it on
+// first open keeps it out of the cold-start bundle.
+const SettingsView = lazy(() =>
+  import("./components/SettingsView").then((module) => ({ default: module.SettingsView }))
+);
 import {
   MOOD_LOGOS,
   type AgentStatus,
@@ -332,14 +337,16 @@ export default function App() {
   if (view === "settings") {
     return (
       <>
-        <SettingsView
-          status={status}
-          mood={mood}
-          config={config}
-          onPatch={patchConfig}
-          onClose={() => setView("chat")}
-          onRefreshStatus={refreshStatus}
-        />
+        <Suspense fallback={<div className="h-screen bg-paper" aria-busy="true" />}>
+          <SettingsView
+            status={status}
+            mood={mood}
+            config={config}
+            onPatch={patchConfig}
+            onClose={() => setView("chat")}
+            onRefreshStatus={refreshStatus}
+          />
+        </Suspense>
         {approval && <ApprovalDialog approval={approval} agentName={agentName} onResolve={respond} />}
       </>
     );

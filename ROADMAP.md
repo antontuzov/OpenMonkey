@@ -430,7 +430,7 @@ flight, which removes that window.
     with Developer ID, hardened runtime, notarization and stapling; Windows signing. *(L)*
 33. ✅ **Auto-update**: `electron-updater` with GitHub Releases, staged rollout, rollback,
     migration-safe startup. *(M)*
-34. **Performance budgets**: UI interactive < 2.5 s cold, no jank when streaming, settings
+34. ✅ **Performance budgets**: UI interactive < 2.5 s cold, no jank when streaming, settings
     lazy-loaded, memory ceiling documented, model load progress always visible. *(M)*
 35. **Docs & launch**: README screenshots, privacy page, model compatibility table,
     troubleshooting, release notes, support channel. *(M)*
@@ -489,6 +489,24 @@ through IPC for `"beta"`, selects **Stable** and polls for `"stable"`. All 7 e2e
 **Not exercised:** an actual download and install — the app under test is unpackaged, where the
 updater intentionally does nothing, and no release feed exists yet; the beta feed likewise awaits
 a published prerelease. `npm run typecheck` and `npm run build` are clean.
+
+**Phase 7 verification (34):** `test/e2e/perf.spec.mjs` enforces the budgets against the built app.
+Cold start — process spawn to the first interactive surface (onboarding), including Playwright's
+launch overhead — measured **526, 487 and 559 ms** on three runs against a 2,500 ms budget. Idle
+memory with no model loaded measured **455 MB** total across Browser (199), GPU (94), Utility (47)
+and renderer (115) processes against a 900 MB ceiling; the model is resident in the main process, so
+a 4B GGUF adds its file size and working set on top — the documented companion budget is 4 GB total
+with one 4B model warm, which stays well inside an 8 GB Mac. A synthetic stream injected over the
+real IPC channel (320 tokens at ~8 ms, 3.1 s) kept **0 long tasks** and a **17.7 ms maximum frame
+gap** over 180 frames against a 120 ms frame budget; that path exercises the same renderer code as
+a real reply. Settings is now a lazy chunk (132 kB) split out of the 780 kB entry bundle (down from
+906 kB), and the perf test proves the chunk is requested only when Settings first opens. The model
+load card now shows an elapsed-seconds counter beside the spinner, so a long load cannot look
+frozen; the model-download card already reports a percentage progress bar. **Not exercised:** a
+real Bonsai load and real token cadence — `models/Bonsai-4B-gguf/` is empty in this workspace and
+the download was deliberately not repeated, so model-load duration and decode speed are unmeasured;
+the synthetic stream proves the display path, not llama.cpp throughput. `npm run typecheck` and
+`npm run build` are clean.
 
 ---
 
