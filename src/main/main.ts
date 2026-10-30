@@ -58,11 +58,23 @@ function broadcast(channel: string, payload?: unknown): void {
 function applyZoom(window: BrowserWindow): void {
   if (window.isDestroyed()) return;
   const scale = config.get("ui").textScale;
-  window.webContents.setZoomFactor(scale === "s" ? 0.9 : scale === "l" ? 1.12 : 1);
+  const factor = scale === "s" ? 0.9 : scale === "l" ? 1.12 : 1;
+  // Setting the same factor still forces a full relayout of the page.
+  if (window.webContents.getZoomFactor() !== factor) window.webContents.setZoomFactor(factor);
+}
+
+function paperColor(): string {
+  return nativeTheme.shouldUseDarkColors ? "#121512" : "#f6f7f3";
+}
+
+function syncWindowBackground(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(paperColor());
 }
 
 function applyAppearance(): void {
-  nativeTheme.themeSource = config.get("ui").theme;
+  const theme = config.get("ui").theme;
+  if (nativeTheme.themeSource !== theme) nativeTheme.themeSource = theme;
+  syncWindowBackground();
   for (const window of BrowserWindow.getAllWindows()) applyZoom(window);
 }
 
@@ -99,7 +111,7 @@ function createWindow(): void {
     center: true,
     // Native frame everywhere; on macOS hiddenInset slides the traffic lights into the
     // sidebar's top strip, which the renderer makes draggable.
-    backgroundColor: "#f6f7f3",
+    backgroundColor: paperColor(),
     show: false,
     webPreferences: {
       nodeIntegration: false,
@@ -253,6 +265,8 @@ if (!app.requestSingleInstanceLock()) {
 
     installMenu();
     applyDesktopSettings();
+    // The renderer follows the OS in system mode; the native window backdrop must too.
+    nativeTheme.on("updated", syncWindowBackground);
     startUpdates();
 
     app.on("browser-window-created", (_event, window) => {

@@ -16,6 +16,7 @@ let page;
 let profile;
 let launchedAt = 0;
 let firstSurfaceMs = 0;
+const scriptRequests = [];
 
 test.beforeAll(async () => {
   profile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-perf-"));
@@ -25,6 +26,9 @@ test.beforeAll(async () => {
     env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
   });
   page = await app.firstWindow();
+  page.on("request", (request) => {
+    if (request.resourceType() === "script") scriptRequests.push({ url: request.url(), at: performance.now() - launchedAt });
+  });
   await page.waitForLoadState("domcontentloaded");
   await expect(page.getByRole("button", { name: "Skip setup" })).toBeVisible();
   firstSurfaceMs = Math.round(performance.now() - launchedAt);
@@ -119,20 +123,19 @@ test("a long synthetic stream keeps frames inside the jank budget", async () => 
   expect(stats.maxFrameGap).toBeLessThan(120);
 });
 
-test("Settings opens from its own chunk instead of the cold-start bundle", async () => {
-  const requested = [];
-  const onRequest = (request) => {
-    if (request.resourceType() === "script") requested.push(request.url());
-  };
-  page.on("request", onRequest);
-  try {
-    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
-    await expect(page.getByRole("navigation").first()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Privacy", exact: true })).toBeVisible();
-  } finally {
-    page.off("request", onRequest);
-  }
+test("Settings loads from its own chunk after the first paint", async () => {
+  await expect
+    .poll(() => scriptRequests.some((entry) => /SettingsView/i.test(entry.url)), { timeout: 5000 })
+    .toBe(true);
 
-  console.log("chunks loaded on demand:", requested);
-  expect(requested.some((url) => /SettingsView/i.test(url))).toBe(true);
+  expect(scriptRequests.some((entry) => /index-.*\.js/.test(entry.url))).toBe(true);
+  const chunk = scriptRequests.find((entry) => /SettingsView/i.test(entry.url));
+  console.log("settings chunk:", chunk);
+  // The split matters only if the chunk is absent from cold start: the prefetch
+  // must land after the first surface was already interactive.
+  expect(chunk.at).toBeGreaterThan(firstSurfaceMs);
+
+  await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+  await expect(page.getByRole("navigation").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Privacy", exact: true })).toBeVisible();
 });

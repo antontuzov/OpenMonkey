@@ -29,6 +29,27 @@ import {
 
 type View = "chat" | "settings";
 
+// Mirrors the settings shell so a first open paints the layout instead of a blank frame.
+function SettingsFallback() {
+  return (
+    <div className="h-screen bg-paper flex" aria-busy="true">
+      <div className="w-[275px] shrink-0 border-r border-line px-4 pt-6 space-y-3">
+        <div className="h-7 w-32 rounded bg-card-2 animate-pulse" />
+        <div className="h-8 w-full rounded-lg bg-card-2 animate-pulse" />
+        {Array.from({ length: 9 }, (_, index) => (
+          <div key={index} className="h-6 w-full rounded bg-card-2 animate-pulse" />
+        ))}
+      </div>
+      <div className="flex-1 px-12 py-10 space-y-5">
+        <div className="h-7 w-48 rounded bg-card-2 animate-pulse" />
+        <div className="h-3 w-96 max-w-full rounded bg-card-2 animate-pulse" />
+        <div className="h-44 w-full max-w-[720px] rounded-xl bg-card-2 animate-pulse" />
+        <div className="h-44 w-full max-w-[720px] rounded-xl bg-card-2 animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [status, setStatus] = useState<AgentStatus>({ state: "starting" });
   const [mood, setMood] = useState<Mood>("neutral");
@@ -40,6 +61,13 @@ export default function App() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [busyConversationId, setBusyConversationId] = useState<string | null>(null);
   const [privacyStatus, setPrivacyStatus] = useState<PrivacyStatus | null>(null);
+
+  useEffect(() => {
+    // Pull the settings chunk after the first paint: the split keeps it out of cold
+    // start without making the first visit wait on a module load.
+    const timer = setTimeout(() => void import("./components/SettingsView"), 2000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const api = window.electron;
@@ -338,7 +366,7 @@ export default function App() {
   if (view === "settings") {
     return (
       <>
-        <Suspense fallback={<div className="h-screen bg-paper" aria-busy="true" />}>
+        <Suspense fallback={<SettingsFallback />}>
           <SettingsView
             status={status}
             mood={mood}
