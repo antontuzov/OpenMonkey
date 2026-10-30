@@ -1,0 +1,80 @@
+# Premium upgrade list
+
+The 0.9.0 build is already a credible premium app: 12 mood portraits across window,
+tray and Dock; encrypted local history with a Keychain key and passphrase lock;
+approval-gated tools with an audit log; Quick Ask on Option+Space; full EN/RU; a
+lazy-loaded settings shell; and enforced budgets (767 ms cold start, 597 MB idle,
+zero long tasks in a 320-token stream). This list is what to do next to justify a
+price, ordered by what a buyer notices first.
+
+Effort: **S** ≈ a day, **M** ≈ a week, **L** ≈ two weeks or more (one developer).
+Every item names the evidence that proves it, because "premium" that cannot be
+shown is just a claim.
+
+## P0 — the first ten minutes
+
+What a trial user judges before they decide to pay.
+
+| # | Upgrade | Done when | Effort |
+| --- | --- | --- | --- |
+| 1 | **Signed, notarized DMG and a live update feed** | `spctl -a -vv` accepts the DMG on a clean Mac; a packaged 0.9.0 install updates itself to 0.9.1 from the GitHub release feed | M |
+| 2 | **Onboarding finishes the job** | Fresh profile → model downloaded (progress with MB, %, ETA, pause/cancel), checksum verified, disk-space precondition, or an existing GGUF imported → first reply, all without leaving the flow | L |
+| 3 | **An empty state worth looking at** | Mood-aware greeting plus four starter prompts (read a folder, summarize clipboard, explain this code, plan my day) that prefill the composer; dismissed prompts stay dismissed | S |
+| 4 | **Markdown that matches model output** | Lists, headings, tables, blockquotes, task lists and links render; fenced code gets syntax highlighting and a copy button; diffs render as diffs; streaming never reflows finished text | M |
+| 5 | **Message-level actions** | Edit and resend, regenerate with a variant switcher, branch a conversation from any message, copy/quote; each reply shows its duration and token count | M |
+| 6 | **Composer power** | Send on Enter or Cmd+Enter (setting), @file mentions, pasted images, several attachments, `/clear` and `/summarize`, and drop-to-attach with a real drop zone | M |
+| 7 | **One command palette** | Cmd+K searches conversations, settings pages and actions with fuzzy matching; today it only jumps to chat search. Whole flow usable without a mouse | M |
+| 8 | **Task monitor as a first-class surface** | Timeline with per-step durations, collapsible stdout, a diff preview for file writes, retry and copy; approvals keyboard-first and readable at a glance | M |
+| 9 | **Model manager that builds confidence** | Download with speed/ETA, verify and delete, tokens-per-second benchmark per backend, memory estimate before load, automatic backend pick, warm-up badge | M |
+| 10 | **Quick Ask grows up** | History of quick asks, a follow-up turn in place, "open in chat", and pinning; stays keyboard-only | S |
+| 11 | **Window feel** | macOS sidebar vibrancy, unified title bar, 160–220 ms springs for panel and view changes, crossfade into settings, no light flash on dark-mode resize (guarded today) | M |
+| 12 | **Settings that answer questions** | Search across all pages, reset-this-section, and a privacy dashboard: key source, database size, last prune, and a counter of network requests the app made | M |
+
+## P1 — depth that earns the price
+
+| # | Upgrade | Done when | Effort |
+| --- | --- | --- | --- |
+| 13 | **Memory browser** | Facts and summaries can be viewed, edited and deleted; a citation previews its source; recall can be toggled per conversation | M |
+| 14 | **Workspace retrieval** | Source list with reindex, ignore rules, chunk preview, and citations that jump to the exact passage | M |
+| 15 | **Richer tool previews** | Calendar/email cards show what will change, shell commands explain themselves, web fetches show the page, file writes show a reversible diff | L |
+| 16 | **MCP manager UX** | Add/edit a server, see health and stderr, and set a per-tool policy without editing JSON | M |
+| 17 | **Conversation organization** | Folders/tags, archive, saved searches, and bulk export of a selection | M |
+| 18 | **Tabs and multi-window** | Several conversations in one window or separate windows, with window-state restore | M |
+| 19 | **Offline voice** | Push-to-talk with a local whisper.cpp model and optional speech playback through `say`; nothing leaves the Mac | L |
+| 20 | **Optional vision** | A small VLM GGUF, image paste/drop and OCR, behind a clear opt-in download | L |
+| 21 | **Theming** | Accent palette, saved custom tokens, true-black OLED mode, per-theme density; contrast audited at AA | M |
+| 22 | **Notifications with verbs** | Approve/deny from the notification itself, focus-mode awareness, quiet hours | S |
+| 23 | **Update UX** | In-app release notes, staged rollout, rollback to the previous version, delta downloads | M |
+| 24 | **Localization depth** | Reviewed RU copy, date/number formats, at least one more language, RTL-safe layout | M |
+| 25 | **Chat performance at scale** | Virtualized history beyond 500 messages, incremental markdown parsing, idle memory trimmed, cold start under 400 ms | M |
+| 26 | **Reliability tools** | Database integrity check with automatic backup/restore, safe mode, crash-safe stream resume, and a local crash-log viewer (no telemetry) | M |
+| 27 | **Menu bar and Dock** | Recent conversations and quick actions in the tray, subtle mood animation, Dock recent documents | S |
+| 28 | **Accessibility as a gate** | VoiceOver pass over chat, settings and approvals; focus traps in every dialog; usable at 200% zoom; contrast AA verified | M |
+
+## P2 — commercial layer (Phase 8)
+
+| # | Upgrade | Done when | Effort |
+| --- | --- | --- | --- |
+| 29 | **Offline license** | A signed license file unlocks the app; 14-day trial, grace period, optional device binding, no phone-home required | M |
+| 30 | **Pricing page and checkout** | Merchant-of-record checkout (Paddle or Lemon Squeezy), clear local-first refund policy, license delivered by email | M |
+| 31 | **Support that scales** | In-app ticket with an attached redacted diagnostics bundle, searchable docs, and an honest response-time policy | M |
+| 32 | **Frictionless install** | Homebrew cask, a download page with checksums, and a one-line uninstall note | S |
+| 33 | **Legal shelf** | EULA, privacy page (exists), security-report path (exists), refund and export-control statements linked from the app and site | S |
+| 34 | **Founding-user program** | Beta channel entitlement, changelog feed in-app, and a named early-adopter perk | S |
+
+## Do not rebuild
+
+These are already the premium signal and should be protected, not replaced: the
+12-mood portrait system wired to window, tray and Dock; AES-256-GCM history with a
+Keychain key, scrypt lock and auto-lock; per-tool approvals, "remember for session"
+and the audit log; Quick Ask with inline approvals; full EN/RU with a real a11y
+audit; the lazy settings chunk; the perf budgets and their tests. Any new feature
+must keep the zero-telemetry, zero-network-by-default promise, and every list item
+above needs a test, a capture, or a recorded number before it is called done.
+
+## Suggested sequence
+
+1. **Sprint 1 — trust and first run:** 1, 2, 9, 11, 12.
+2. **Sprint 2 — chat depth:** 4, 5, 6, 7, 8, 10.
+3. **Sprint 3 — brain depth and money:** 13, 14, 15, 16, 23, 29, 30, 31.
+4. **Later:** voice, vision, tabs, extra languages.

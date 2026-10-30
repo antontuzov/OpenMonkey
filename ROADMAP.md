@@ -533,6 +533,9 @@ still do not exist in this checkout. `npm run typecheck` and `npm run build` are
 
 ## Phase 8 — Commercial layer (only if you charge, P2)
 
+The product-polish backlog that precedes pricing, with acceptance evidence and a
+sprint order, is in [docs/PREMIUM.md](docs/PREMIUM.md).
+
 36. **Licensing**: offline-verifiable license, trial, grace period, no phone-home by default.
 37. **Update & support policy**: supported macOS versions, model deprecations, refund policy.
 38. **Optional paid convenience** (hosted nothing): curated model packs, team policy templates,
