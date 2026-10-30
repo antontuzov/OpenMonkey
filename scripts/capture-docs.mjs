@@ -1,0 +1,68 @@
+import { _electron as electron } from "playwright-core";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const outDir = path.join(root, "docs", "screenshots");
+mkdirSync(outDir, { recursive: true });
+
+const modelPath = path.join(root, "models", "Bonsai-4B-gguf", "Bonsai-4B.gguf");
+const profile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-docs-"));
+const app = await electron.launch({
+  args: [root],
+  env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
+});
+
+try {
+  const page = await app.firstWindow();
+  await page.waitForLoadState("domcontentloaded");
+  await page.setViewportSize({ width: 1280, height: 820 });
+  await page.getByRole("button", { name: "Skip setup" }).waitFor();
+  await page.screenshot({ path: path.join(outDir, "onboarding.png") });
+
+  await page.getByRole("button", { name: "Skip setup" }).click();
+  await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
+
+  if (existsSync(modelPath)) {
+    const deadline = Date.now() + 180_000;
+    let state = "starting";
+    while (Date.now() < deadline && state !== "ready" && state !== "error") {
+      state = (await page.evaluate(() => window.electron.getAgentStatus())).state;
+      if (state !== "ready") await page.waitForTimeout(300);
+    }
+    if (state === "ready") {
+      await page.getByRole("textbox", { name: "Message OpenMonkey" }).fill("Greet me in one sentence and say that you run locally. Do not use tools.");
+      await page.getByRole("textbox", { name: "Message OpenMonkey" }).press("Enter");
+      const replyDeadline = Date.now() + 180_000;
+      while (Date.now() < replyDeadline) {
+        const [conversation] = await page.evaluate(() => window.electron.getConversations());
+        const messages = conversation
+          ? await page.evaluate((id) => window.electron.getMessages(id), conversation.id)
+          : [];
+        if (messages.some((message) => message.role === "assistant" && message.content.trim())) break;
+        await page.waitForTimeout(500);
+      }
+    } else {
+      console.warn("model loaded with state:", state);
+    }
+  } else {
+    console.warn("no model at", modelPath, "— chat.png shows the model error state");
+  }
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(outDir, "chat.png") });
+
+  await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+  await page.getByRole("navigation").first().waitFor();
+  await page.getByRole("button", { name: "Privacy", exact: true }).click();
+  await page.getByRole("heading", { name: "Privacy" }).waitFor();
+  await page.screenshot({ path: path.join(outDir, "settings-privacy.png") });
+
+  await page.getByRole("button", { name: "Desktop", exact: true }).click();
+  await page.getByText("Update channel", { exact: true }).waitFor();
+  await page.screenshot({ path: path.join(outDir, "settings-desktop.png") });
+} finally {
+  await app.evaluate(({ app }) => app.quit()).catch(() => undefined);
+  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}

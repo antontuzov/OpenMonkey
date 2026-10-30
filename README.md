@@ -5,17 +5,23 @@ machine, talks through a chat window, shows its working in a live task monitor, 
 expresses how a conversation is going through 12 ape portrait moods that update the
 window, the menu bar tray and the Dock icon at the same time.
 
-Nothing leaves the computer. There is no account, no telemetry, no API key and no
-network call except the ones you explicitly ask the agent to make.
+Nothing leaves the computer by default. There is no account, no telemetry, no API key
+and no network call except the ones you explicitly ask the agent to make.
+
+![Chat with a local model](docs/screenshots/chat.png)
+
+| Onboarding | Settings → Privacy | Settings → Desktop |
+| --- | --- | --- |
+| ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) |
 
 ## Requirements
 
 | | |
 | --- | --- |
-| OS | macOS or Windows 10+; the GGUF backend runs on both Apple Silicon and Intel |
+| OS | macOS 13+ (Apple Silicon and Intel); Windows 10+ for the GGUF backend |
 | Runtime | Node.js 22.12 or newer (Electron 45's `engines` requirement) |
-| Disk | ~600 MB for the model weights |
-| Memory | ~2 GB resident once the model is loaded (measured against Bonsai-4B GGUF: 1.6 GB in the main process plus ~400 MB of helpers) |
+| Disk | 572,270,624 bytes for the pinned model (~546 MiB) |
+| Memory | 455 MB for the shell before a model loads; ~2.0 GB total with Bonsai-4B loaded (measured 1.7 GB main + 0.3 GB helpers); plan for 4 GB |
 
 ## Get started
 
@@ -28,15 +34,16 @@ npm run dev
 `npm install` compiles `better-sqlite3` against Electron's ABI through the
 `postinstall` hook. If you change Electron versions, re-run `npm run rebuild`.
 
-`npm run download-models` fetches `prism-ml/Bonsai-4B-gguf` (~572 MB) into
-`models/Bonsai-4B-gguf/Bonsai-4B.gguf`, verifies it against the repo's
-`SHA256SUMS` when published, and deletes the file if the checksum mismatches.
-It prints the sha256 of what it downloaded. Pass `--mlx` to additionally snapshot
+`npm run download-models` fetches `prism-ml/Bonsai-4B-gguf` at a pinned revision into
+`models/Bonsai-4B-gguf/Bonsai-4B.gguf`, verifies the pinned SHA-256, and deletes the
+file on mismatch. Pass `--mlx` to additionally snapshot
 `arcee-ai/Virtuoso-Lite-8bit-mlx` for the Apple Silicon backend (needs
-`python3 -m pip install huggingface_hub mlx-lm`); without the flag it is skipped.
+`python3 -m pip install huggingface_hub mlx-lm`); without the flag it is skipped. See
+[docs/MODELS.md](docs/MODELS.md) for the compatibility table.
 
 The first launch loads the weights into memory, so the window shows a "Loading the
-local model" card for a few seconds before the composer becomes active.
+local model" card — with elapsed seconds — for a few seconds before the composer
+becomes active.
 
 ## Scripts
 
@@ -44,11 +51,28 @@ local model" card for a few seconds before the composer becomes active.
 | --- | --- |
 | `npm run dev` | electron-vite dev server with hot reload |
 | `npm run build` | Production bundles for main, preload and renderer |
-| `npm run typecheck` | Checks both TypeScript programs (node + web) |
+| `npm run typecheck` | Checks the node, web and test TypeScript programs |
+| `npm test` | Unit suites then integration suites (`node:test`) |
+| `npm run test:e2e` | Builds and runs Playwright against the real Electron app |
 | `npm run download-models` | Fetches model weights (`--mlx` for the MLX snapshot) |
 | `npm run rebuild` | Rebuilds `better-sqlite3` for the Electron ABI |
-| `npm run package:mac` | `build` + electron-builder DMG/zip |
+| `npm run package:mac` | `build` + electron-builder DMG/zip into `release/` |
 | `npm run package:win` | `build` + electron-builder NSIS installer |
+| `node scripts/capture-docs.mjs` | Refreshes the screenshots in `docs/screenshots/` |
+
+### Verification
+
+`npm test` runs 34 unit assertions and 20 integration assertions against a real SQLite
+file under a throwaway profile: the task-fence parser, tool-argument validation, the
+backup envelope, the mood map, encryption flipping with `VACUUM`, retention, approval
+gating, path confinement (including a symlink escape) and log redaction/rotation.
+`npm run test:e2e` adds 11 Playwright tests on a throwaway profile: onboarding, the
+chat surface with a button/field/image/landmark audit, Privacy rows and switches,
+RU/EN, close-to-tray, the update channel, and performance budgets (cold start under
+2.5 s, no long tasks during a synthetic 320-token stream, idle memory under 900 MB,
+Settings served as a lazy chunk). CI runs the same suites on both Mac architectures
+and packages tag builds on `v*` (signing and notarization run when the Apple secrets
+are present); see `.github/workflows/ci.yml`.
 
 ## How it is laid out
 
@@ -61,7 +85,8 @@ src/ui/         LogoManager (mood → icons), mood-detector, task-emojis
 src/renderer/   React UI: chat, settings, task monitor, styles
 src/utils/      config (electron-store), storage (SQLite + AES-GCM), logger, types
 assets/logos/   12 circular 512px mood portraits, sliced from the art sheet
-scripts/        download-models.ts, crop-logos.py
+scripts/        download-models.ts, crop-logos.py, capture-docs.mjs
+docs/           privacy, model compatibility, support, screenshots
 ```
 
 The renderer and the main process never import each other's runtime code. They
@@ -86,23 +111,34 @@ manually.
 
 ## Privacy and approvals
 
-- Chat history and tasks live in `data/openmonkey.db` (SQLite) inside the app's
-  userData directory: `~/Library/Application Support/openmonkey` in development and
-  `~/Library/Application Support/OpenMonkey` once packaged.
-- Message text is sealed with AES-256-GCM. The key is a random 32-byte secret in
-  `data/secret.key`, written with mode `0600` on first run. Turning off
-  **Encrypt stored data** in Settings → Privacy stores plaintext instead.
-- `privacy.autoDeleteAfter` (7/30/90/365 days) prunes old rows on launch.
+- Chat history, tasks, audit rows and memory facts live in `data/openmonkey.db`
+  (SQLite) inside the app's userData directory: `~/Library/Application Support/openmonkey`
+  in development and `~/Library/Application Support/OpenMonkey` once packaged.
+- Message bodies are sealed with AES-256-GCM. The key sits in the macOS Keychain
+  through `safeStorage`, falling back to `data/secret.key` with mode `0600` when no
+  keychain is available.
+- A passphrase lock wraps the key with scrypt (N=2¹⁵) and deletes every copy the app
+  could open on its own; **Auto-lock** closes the database after idle, sleep or screen
+  lock. A forgotten passphrase means the history cannot be read.
+- Turning **Encrypt stored data** off rewrites every row as plaintext and `VACUUM`s the
+  file; turning it back on re-seals everything under a fresh key.
+- **Auto-delete after** (7/30/90/365 days, default 30) prunes old rows on launch and
+  every six hours while the app runs. With history off, nothing is written to disk.
 - The filesystem tool refuses any path outside `Documents`, `Downloads`, `Desktop`
   and the app's own data directory, and it caps reads at 256 KB.
 - Tool actions need approval by default. Until **Run tool actions without asking**
-  is switched on in Settings → Identity & approvals, every call — file write, shell
-  command, web fetch, calendar or email action — stops at a dialog showing the tool
-  and its arguments, with **Deny** / **Allow once**.
-- The network is not reachable from the renderer: packaged builds get a
-  `default-src 'self'` CSP with `connect-src 'none'`, applied in
-  `onHeadersReceived`. Model inference happens in the main process.
-- Logs are appended to `logs/openmonkey.log` in the userData directory.
+  is switched on in Settings → Approvals, every call — file write, shell command, web
+  fetch, calendar or email action — stops at a dialog showing the tool and its
+  arguments, with **Deny** / **Allow once** / **Remember for this session**.
+- The renderer cannot reach the network: packaged builds get a `default-src 'self'`
+  CSP with `connect-src 'none'`, applied in `onHeadersReceived`. Model inference
+  happens in the main process, and **Network access** is a hard switch for every
+  request the app makes itself.
+- Logs rotate at 2 MB, keep two older copies, and replace conversation text, prompts
+  and responses with their lengths before writing.
+
+The full description, including update checks and what this does not protect, is in
+[docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Configuration
 
@@ -121,23 +157,47 @@ userData if you prefer to change it directly.
 | `privacy.saveHistory` | `true` | |
 | `privacy.encryptData` | `true` | |
 | `privacy.autoDeleteAfter` | `30` | Days |
+| `privacy.autoLockMinutes` | `0` | Off; needs a passphrase lock |
+| `privacy.networkAllowed` | `true` | Hard switch for app-initiated requests |
+| `desktop.launchAtLogin` | `false` | Packaged builds only |
+| `desktop.closeToTray` | platform default | Off on macOS, on elsewhere |
+| `desktop.updateChannel` | `stable` | `stable` or `beta` |
+| `ui.language` | `en` | `en` or `ru` |
 | `ui.currentMood` | `neutral` | |
 
 ## Troubleshooting
 
-**"No model loaded" card on launch.** Run `npm run download-models`. Settings →
-Model shows which backends it found; the GGUF path is
-`models/Bonsai-4B-gguf/Bonsai-4B.gguf` in development and inside userData in
-packaged builds.
+**"No local model loaded" on launch.** Run `npm run download-models` (or **Download**
+in Settings → Model for an installed build). Settings → Model shows which backends it
+found; the GGUF path is `models/Bonsai-4B-gguf/Bonsai-4B.gguf` in development and
+inside userData in packaged builds.
 
 **`better-sqlite3` threw `NODE_MODULE_VERSION` mismatch.** `npm run rebuild`.
 
 **MLX backend unavailable.** The MLX snapshot plus `mlx-lm` are optional and only
 work on Apple Silicon; the backend selector hides the option when either is missing.
 
+**Gatekeeper blocked an unsigned build.** Right-click → Open, or
+`xattr -d com.apple.quarantine /Applications/OpenMonkey.app`. Local builds are not
+signed; the CI package job signs and notarizes tag builds once the Apple secrets are
+configured.
+
+**Updates do nothing.** The updater runs only in a packaged app with **Network
+access** on. Installed builds check at launch and every six hours; the channel lives
+in Settings → Desktop → Updates.
+
+**Forgot the passphrase.** There is no recovery by design. **Erase everything** in
+Settings → Privacy drops the database and the key; the history cannot be decrypted.
+
 **Want to watch the agent's internals.** `OPENMONKEY_DEVTOOLS=1 npm run dev` opens
 DevTools; the packaged build stays closed. `OPENMONKEY_VERBOSE=1` also prints each
 log line to the console, not only to `logs/openmonkey.log`.
+
+More answers and the security-report path are in [docs/SUPPORT.md](docs/SUPPORT.md).
+
+## Release notes
+
+[CHANGELOG.md](CHANGELOG.md) records what shipped in 0.9.0 and its known limitations.
 
 ## License
 

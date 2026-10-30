@@ -432,7 +432,7 @@ flight, which removes that window.
     migration-safe startup. *(M)*
 34. ✅ **Performance budgets**: UI interactive < 2.5 s cold, no jank when streaming, settings
     lazy-loaded, memory ceiling documented, model load progress always visible. *(M)*
-35. **Docs & launch**: README screenshots, privacy page, model compatibility table,
+35. ✅ **Docs & launch**: README screenshots, privacy page, model compatibility table,
     troubleshooting, release notes, support channel. *(M)*
 
 **Phase 7 verification (31):** `npm test` runs 34 unit and 20 integration assertions in under a
@@ -507,6 +507,27 @@ real Bonsai load and real token cadence — `models/Bonsai-4B-gguf/` is empty in
 the download was deliberately not repeated, so model-load duration and decode speed are unmeasured;
 the synthetic stream proves the display path, not llama.cpp throughput. `npm run typecheck` and
 `npm run build` are clean.
+
+**Phase 7 verification (35):** the model is back on disk: `npm run download-models`
+fetched 572,270,624 bytes and the pinned SHA-256 (`4524b3f9…e42168`) matched. The built
+app then loaded it in about a second (`loading-model` → `ready`, `provider: "bonsai"`)
+and answered "hello from Bonsai." in 4 s; measured working set with the model warm was
+2,005 MB (main 1,703, GPU 102, helper 47, renderer 153), now the documented figure.
+Documentation shipped: `README.md` gains a real chat hero, onboarding/Privacy/Desktop
+screenshots captured from the app by `scripts/capture-docs.mjs`, current requirements,
+the full script table with test commands, accurate privacy bullets, the expanded config
+table and troubleshooting; `docs/PRIVACY.md` covers key storage, the passphrase lock,
+retention, every outbound call, log redaction, erasing and what is not protected;
+`docs/MODELS.md` states backend/platform/disk/memory compatibility and the pinned
+hashes; `docs/SUPPORT.md` covers triage facts, common answers and the private
+security-report path; `CHANGELOG.md` records 0.9.0 and its known limitations.
+**Fixed while capturing:** every mood portrait was a rooted `/logos/…` URL, which
+resolves to the disk root under `file://` in built and packaged builds — all renderer
+asset paths now go through `logoUrl()` and are document-relative, and the e2e a11y
+audit fails on any image whose `naturalWidth` is zero. The committed Privacy snapshot
+was regenerated with the portraits loading. **Not covered:** screenshots are macOS
+English only, and the signed/notarized artifacts and live update feed from items 32–33
+still do not exist in this checkout. `npm run typecheck` and `npm run build` are clean.
 
 ---
 
