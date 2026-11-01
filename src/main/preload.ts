@@ -7,6 +7,7 @@ import type {
   ElectronAPI,
   MenuCommand,
   Mood,
+  QuickAskResult,
   Task,
 } from "../utils/types";
 
@@ -23,7 +24,13 @@ const on = <T>(channel: string, callback: (payload: T) => void): (() => void) =>
 const api: ElectronAPI = {
   processMessage: (conversationId, message, attachment) =>
     ipcRenderer.invoke("process-message", conversationId, message, attachment),
-  quickAsk: (message: string) => ipcRenderer.invoke("quick-ask", message),
+  quickAsk: (message: string, threadId?: string) =>
+    ipcRenderer.invoke("quick-ask", message, threadId),
+  getQuickAskThreads: () => ipcRenderer.invoke("get-quick-asks"),
+  setQuickAskPinned: (id: string, pinned: boolean) =>
+    ipcRenderer.invoke("pin-quick-ask", id, pinned),
+  deleteQuickAsk: (id: string) => ipcRenderer.invoke("delete-quick-ask", id),
+  openQuickAskInChat: (id: string) => ipcRenderer.invoke("open-quick-ask-in-chat", id),
   getActiveConversationId: () => ipcRenderer.invoke("get-active-conversation-id"),
   showMainWindow: (command?: MenuCommand) => ipcRenderer.invoke("show-main-window", command),
   openQuickAsk: () => ipcRenderer.invoke("open-quick-ask"),
@@ -98,8 +105,11 @@ const api: ElectronAPI = {
   onHistoryReset: (callback: () => void) => on<undefined>("history-reset", () => callback()),
   onMenuCommand: (callback: (command: MenuCommand) => void) =>
     on<MenuCommand>("menu-command", callback),
+  onOpenConversation: (callback: (conversationId: string) => void) =>
+    on<string>("open-conversation", callback),
   onModelDownloadStatus: (callback) => on("model-download-status", callback),
   onChatEvent: (callback) => on<ChatEvent>("chat-event", callback),
+  onQuickAskStarted: (callback) => on<QuickAskResult>("quick-ask-started", callback),
   onLocalDataChanged: (callback: () => void) => on<undefined>("local-data-changed", () => callback()),
 };
 

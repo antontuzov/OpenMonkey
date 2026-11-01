@@ -121,10 +121,10 @@ export class DesktopManager {
 
   private createQuickWindow(): void {
     const window = new BrowserWindow({
-      width: 560,
-      height: 440,
-      minWidth: 420,
-      minHeight: 220,
+      width: 780,
+      height: 520,
+      minWidth: 620,
+      minHeight: 320,
       frame: false,
       transparent: true,
       backgroundColor: "#00000000",

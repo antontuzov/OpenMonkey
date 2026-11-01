@@ -26,6 +26,8 @@ export interface IpcDeps {
   getAgent: () => OpenMonkey | null;
   getTray: () => TrayManager | null;
   showMainWindow: (command?: MenuCommand) => void;
+  /** Brings the main window up on a conversation the user opened elsewhere. */
+  openConversation: (conversationId: string) => void;
   showQuickAsk: () => void;
   hideQuickAsk: () => void;
   onConfigChanged: () => void;
@@ -98,14 +100,30 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("regenerate", (_event, id: unknown) => agent().regenerate(conversationId(id)));
 
-  ipcMain.handle("quick-ask", async (_event, message: unknown) => {
+  ipcMain.handle("quick-ask", async (_event, message: unknown, threadId: unknown) => {
     if (typeof message !== "string" || !message.trim()) throw new Error("Empty message");
     // The popover has no unlock field, so it stays inert rather than answering from
     // an empty context and a history it cannot write to.
     if (storage.locked) throw new Error("History is locked. Unlock OpenMonkey first.");
-    const instance = agent();
-    const id = instance.getActiveConversationId() ?? instance.createConversation().id;
-    return await instance.processUserMessage(id, message, undefined, "quick");
+    const thread = typeof threadId === "string" && threadId ? threadId : undefined;
+    return await agent().askQuick(message, thread);
+  });
+
+  ipcMain.handle("get-quick-asks", () => agent().listQuickAsks());
+
+  ipcMain.handle("pin-quick-ask", (_event, id: unknown, pinned: unknown) => {
+    agent().setQuickAskPinned(conversationId(id), Boolean(pinned));
+  });
+
+  ipcMain.handle("delete-quick-ask", (_event, id: unknown) => {
+    agent().deleteQuickAsk(conversationId(id));
+  });
+
+  ipcMain.handle("open-quick-ask-in-chat", (_event, id: unknown) => {
+    const conversation = agent().openQuickAskInChat(conversationId(id));
+    if (!conversation) throw new Error("That quick ask no longer exists");
+    deps.openConversation(conversation);
+    return conversation;
   });
 
   ipcMain.handle("get-active-conversation-id", () => deps.getAgent()?.getActiveConversationId() ?? null);

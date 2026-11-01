@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { _electron as electron } from "playwright-core";
-import { mkdtempSync, rmSync } from "node:fs";
+import Database from "better-sqlite3";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -201,19 +202,83 @@ test("Settings → Desktop shows the update channel and stores the choice", asyn
     .toBe("stable");
 });
 
+test("Quick Ask keeps a history, pins a question and opens it in the chat", async () => {
+  const dbFile = path.join(profile, "data", "openmonkey.db");
+  await expect.poll(() => existsSync(dbFile)).toBe(true);
+
+  // The popover is a separate window; its own conversation is seeded straight into
+  // the database so the history can be checked without a model behind it.
+  const db = new Database(dbFile);
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO conversations (id, title, created_at, updated_at, pinned, archived, kind) VALUES (?, ?, ?, ?, 0, 0, 'quick')"
+  ).run("conv_qa_seed", "What is the plan?", now, now);
+  db.prepare(
+    "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)"
+  ).run("msg_qa_seed", "conv_qa_seed", "user", "What is the plan?", now);
+  db.prepare(
+    "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)"
+  ).run("msg_qa_seed_a", "conv_qa_seed", "assistant", "Ship the history today.", now + 1);
+  db.prepare(
+    "INSERT INTO quick_asks (id, conversation_id, question, answer, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
+  ).run("qa_seed", "conv_qa_seed", "What is the plan?", "Ship the history today.", now, now);
+  db.close();
+
+  await page.evaluate(() => window.electron.openQuickAsk());
+  await new Promise((resolve) => setTimeout(resolve, 800));
+  const windows = app.windows();
+  const quick = windows[windows.length - 1];
+  await quick.waitForLoadState("domcontentloaded");
+
+  // The history rail carries the question, and it is reachable with the keyboard.
+  await expect(quick.getByRole("button", { name: /What is the plan\?/ })).toBeVisible();
+  await expect(quick.getByText("History", { exact: true })).toBeVisible();
+
+  await quick.getByRole("button", { name: /What is the plan\?/ }).focus();
+  await quick.keyboard.press("p");
+  await expect
+    .poll(() => {
+      const reader = new Database(dbFile, { readonly: true });
+      const row = reader.prepare("SELECT pinned FROM quick_asks WHERE id = ?").get("qa_seed");
+      reader.close();
+      return row.pinned;
+    })
+    .toBe(1);
+
+  // Opening the entry shows the thread it kept, question and answer together.
+  await quick.keyboard.press("Enter");
+  await expect(quick.getByText("Ship the history today.")).toBeVisible();
+
+  // Opening it in the chat turns the quick ask into a normal conversation.
+  await quick.getByRole("button", { name: "Open in chat" }).click();
+  await expect(page.getByText("What is the plan?", { exact: true }).first()).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.electron.getConversations().then((list) => list.map((item) => item.id)))
+    )
+    .toContain("conv_qa_seed");
+});
+
 test("closing the window honours close-to-tray and keeps it hidden and alive", async () => {
   await page.evaluate(() => window.electron.setConfig({ desktop: { closeToTray: true } }));
+  // The Quick Ask popover is a window of its own, so the main window is picked by
+  // its URL rather than by its position in the list.
   const before = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length);
   expect(before).toBeGreaterThan(0);
   await app.evaluate(({ BrowserWindow }) => {
-    BrowserWindow.getAllWindows()[0].close();
+    const main = BrowserWindow.getAllWindows().find((window) => !window.webContents.getURL().includes("quick=1"));
+    main?.close();
   });
   await new Promise((resolve) => setTimeout(resolve, 500));
-  const after = await app.evaluate(({ BrowserWindow, app }) => ({
-    windows: BrowserWindow.getAllWindows().length,
-    visible: BrowserWindow.getAllWindows()[0]?.isVisible() ?? false,
-    alive: app.isReady(),
-  }));
+  const after = await app.evaluate(
+    ({ BrowserWindow, app }) => ({
+      windows: BrowserWindow.getAllWindows().length,
+      visible:
+        BrowserWindow.getAllWindows().find((window) => !window.webContents.getURL().includes("quick=1"))
+          ?.isVisible() ?? false,
+      alive: app.isReady(),
+    })
+  );
   expect(after.alive).toBe(true);
   expect(after.windows).toBe(before);
   expect(after.visible).toBe(false);

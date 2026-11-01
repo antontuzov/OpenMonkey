@@ -24,6 +24,8 @@ export interface ExportedConversation {
   updatedAt: string;
   pinned: boolean;
   archived: boolean;
+  /** A quick ask keeps its own kind so the popover history survives a backup. */
+  kind: "chat" | "quick";
   messages: ExportedMessage[];
 }
 
@@ -135,6 +137,7 @@ export function validateBundle(value: unknown, currentSchemaVersion: number): Ex
       updatedAt: str(entry.updatedAt, 40) || new Date().toISOString(),
       pinned: entry.pinned === true,
       archived: entry.archived === true,
+      kind: entry.kind === "quick" ? "quick" : "chat",
       messages,
     } satisfies ExportedConversation;
   });

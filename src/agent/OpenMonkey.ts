@@ -21,6 +21,8 @@ import type {
   Message,
   ModelStatus,
   Mood,
+  QuickAskResult,
+  QuickAskThread,
   Task,
   WorkspaceHit,
   WorkspaceIndexStatus,
@@ -158,6 +160,63 @@ export class OpenMonkey extends EventEmitter {
   getMessages(conversationId?: string, limit = 80): Message[] {
     const id = conversationId ?? this.activeConversationId;
     return id ? storage.getMessages(id, limit) : [];
+  }
+
+  /**
+   * A quick ask is a thread of its own: its own conversation, kept out of the chat
+   * list until the user opens it there. A follow-up continues the same thread, so the
+   * model keeps the context of the question before it.
+   */
+  async askQuick(message: string, threadId?: string): Promise<QuickAskResult> {
+    const text = message.trim();
+    if (!text) throw new Error("Empty message");
+    if (this.statusInfo.state !== "ready") {
+      throw new Error(this.statusInfo.message ?? "OpenMonkey is still loading its model");
+    }
+    if (this.controller) throw new Error("OpenMonkey is already answering. Stop that reply first.");
+
+    let thread = threadId ? storage.getQuickAsk(threadId) : null;
+    if (threadId && !thread) throw new Error("That quick ask no longer exists");
+    if (!thread) {
+      const conversation = storage.createConversation(titleFrom(text), "quick");
+      thread = storage.createQuickAsk(conversation.id, text);
+    }
+    // The popover needs the conversation before the first token arrives, otherwise it
+    // cannot tell this reply apart from the chat window's.
+    this.emit("quick-ask-started", { threadId: thread.id, conversationId: thread.conversationId });
+
+    const reply = await this.processUserMessage(thread.conversationId, text, undefined, "quick");
+    if (reply) storage.updateQuickAsk(thread.id, reply.content.slice(0, 400));
+    return { threadId: thread.id, conversationId: thread.conversationId, message: reply };
+  }
+
+  listQuickAsks(): QuickAskThread[] {
+    return storage.listQuickAsks();
+  }
+
+  setQuickAskPinned(id: string, pinned: boolean): void {
+    storage.setQuickAskPinned(id, pinned);
+  }
+
+  /** Removing a quick ask takes its transcript with it; it is not a chat yet. */
+  deleteQuickAsk(id: string): void {
+    const thread = storage.getQuickAsk(id);
+    if (!thread) return;
+    const wasActive = this.activeConversationId === thread.conversationId;
+    const fallback = storage.deleteConversation(thread.conversationId);
+    if (wasActive) this.activateConversation(fallback?.id ?? storage.createConversation().id);
+  }
+
+  /**
+   * Opening a quick ask in the chat turns its conversation into a normal one, so it
+   * joins the chat list and the main window can carry on from there.
+   */
+  openQuickAskInChat(id: string): string | null {
+    const thread = storage.getQuickAsk(id);
+    if (!thread) return null;
+    storage.promoteConversation(thread.conversationId);
+    this.activateConversation(thread.conversationId);
+    return thread.conversationId;
   }
 
   async processUserMessage(

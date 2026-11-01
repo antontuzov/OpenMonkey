@@ -20,6 +20,7 @@ let desktopManager: DesktopManager | null = null;
 let openMonkey: OpenMonkey | null = null;
 let shuttingDown = false;
 let pendingCommand: MenuCommand | null = null;
+let pendingConversation: string | null = null;
 
 const PRELOAD = path.join(__dirname, "../preload/preload.js");
 
@@ -155,6 +156,11 @@ function createWindow(): void {
       pendingCommand = null;
       mainWindow.webContents.send("menu-command", command);
     }
+    if (pendingConversation) {
+      const conversation = pendingConversation;
+      pendingConversation = null;
+      mainWindow.webContents.send("open-conversation", conversation);
+    }
   });
 
   mainWindow.on("close", (event) => {
@@ -184,6 +190,20 @@ function showMainWindow(command?: MenuCommand): void {
     pendingCommand = command;
   } else {
     mainWindow.webContents.send("menu-command", command);
+  }
+}
+
+/** Show the main window on a conversation picked somewhere else, such as Quick Ask. */
+function openConversation(conversationId: string): void {
+  if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+  if (!mainWindow) return;
+
+  mainWindow.show();
+  mainWindow.focus();
+  if (mainWindow.webContents.isLoading()) {
+    pendingConversation = conversationId;
+  } else {
+    mainWindow.webContents.send("open-conversation", conversationId);
   }
 }
 
@@ -222,6 +242,7 @@ async function initializeOpenMonkey(): Promise<void> {
     desktopManager?.notifyApproval(request);
   });
   openMonkey.on("chat", (event) => broadcast("chat-event", event));
+  openMonkey.on("quick-ask-started", (payload) => broadcast("quick-ask-started", payload));
 
   try {
     await openMonkey.initialize();
@@ -237,6 +258,7 @@ registerIpcHandlers({
   getAgent: () => openMonkey,
   getTray: () => trayManager,
   showMainWindow,
+  openConversation,
   showQuickAsk: () => desktopManager?.showQuickAsk(),
   hideQuickAsk: () => desktopManager?.hideQuickAsk(),
   onConfigChanged: applyDesktopSettings,

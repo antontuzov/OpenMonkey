@@ -21,8 +21,29 @@ export interface Conversation {
   updatedAt: Date;
   pinned: boolean;
   archived: boolean;
+  /** A quick ask keeps its own conversation, kept out of the chat list until opened. */
+  kind: ConversationKind;
   messageCount: number;
   preview: string;
+}
+
+export type ConversationKind = "chat" | "quick";
+
+/** One thread of the Quick Ask popover: a question, its answer and where it lives. */
+export interface QuickAskThread {
+  id: string;
+  conversationId: string;
+  question: string;
+  answer: string;
+  pinned: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface QuickAskResult {
+  threadId: string;
+  conversationId: string;
+  message: Message | null;
 }
 
 export interface ConversationSearchHit {
@@ -441,8 +462,13 @@ export type MenuCommand =
 
 export interface ElectronAPI {
   processMessage: (conversationId: string, message: string, attachment?: Attachment) => Promise<Message | null>;
-  /** Compact-window turn: uses the active conversation and tags approvals as quick. */
-  quickAsk: (message: string) => Promise<Message | null>;
+  /** Compact-window turn: a thread of its own, tagged so approvals show in the popover. */
+  quickAsk: (message: string, threadId?: string) => Promise<QuickAskResult>;
+  getQuickAskThreads: () => Promise<QuickAskThread[]>;
+  setQuickAskPinned: (id: string, pinned: boolean) => Promise<void>;
+  deleteQuickAsk: (id: string) => Promise<void>;
+  /** Turn a quick ask into a normal chat and point the main window at it. */
+  openQuickAskInChat: (id: string) => Promise<string | null>;
   getActiveConversationId: () => Promise<string | null>;
   showMainWindow: (command?: MenuCommand) => Promise<void>;
   openQuickAsk: () => Promise<void>;
@@ -514,8 +540,12 @@ export interface ElectronAPI {
   /** The history was locked or erased and the renderer must drop what it holds. */
   onHistoryReset: (callback: () => void) => () => void;
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
+  /** A quick ask was opened as a chat; the window should show that conversation. */
+  onOpenConversation: (callback: (conversationId: string) => void) => () => void;
   onModelDownloadStatus: (callback: (status: ModelDownloadStatus) => void) => () => void;
   onChatEvent: (callback: (event: ChatEvent) => void) => () => void;
+  /** A quick ask started; the popover needs its conversation before the first token. */
+  onQuickAskStarted: (callback: (payload: QuickAskResult) => void) => () => void;
   /** A backup import merged chats or settings underneath the open windows. */
   onLocalDataChanged: (callback: () => void) => () => void;
 }

@@ -20,9 +20,11 @@ import type {
   Config,
   ConfigPatch,
   Conversation,
+  ConversationKind,
   ConversationSearchHit,
   MemoryFact,
   Message,
+  QuickAskThread,
   Task,
 } from "./types";
 import type { ExportBundle, ExportedMessage } from "./portability";
@@ -55,8 +57,19 @@ interface ConversationRow {
   updated_at: number;
   pinned: number;
   archived: number;
+  kind: string;
   message_count: number;
   last_content: string | null;
+}
+
+interface QuickAskRow {
+  id: string;
+  conversation_id: string;
+  question: string;
+  answer: string;
+  pinned: number;
+  created_at: number;
+  updated_at: number;
 }
 
 const idFor = (prefix: string) =>
@@ -115,7 +128,8 @@ export class Storage {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         pinned INTEGER NOT NULL DEFAULT 0,
-        archived INTEGER NOT NULL DEFAULT 0
+        archived INTEGER NOT NULL DEFAULT 0,
+        kind TEXT NOT NULL DEFAULT 'chat'
       );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
@@ -164,6 +178,15 @@ export class Storage {
         content TEXT NOT NULL,
         created_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS quick_asks (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
     `);
 
     const columns = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
@@ -175,6 +198,12 @@ export class Storage {
     if (!names.has("duration_ms")) this.db.exec("ALTER TABLE messages ADD COLUMN duration_ms INTEGER");
     if (!names.has("stopped")) this.db.exec("ALTER TABLE messages ADD COLUMN stopped INTEGER");
 
+    const conversationColumns = this.db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
+    const conversationNames = new Set(conversationColumns.map((column) => column.name));
+    if (!conversationNames.has("kind")) {
+      this.db.exec("ALTER TABLE conversations ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'");
+    }
+
     const taskColumns = this.db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
     const taskNames = new Set(taskColumns.map((column) => column.name));
     if (!taskNames.has("command")) this.db.exec("ALTER TABLE tasks ADD COLUMN command TEXT");
@@ -185,6 +214,7 @@ export class Storage {
       CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations (updated_at);
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit (created_at);
       CREATE INDEX IF NOT EXISTS idx_memory_facts_created ON memory_facts (created_at);
+      CREATE INDEX IF NOT EXISTS idx_quick_asks_updated ON quick_asks (updated_at);
     `);
 
     this.migrateLegacyMessages();
@@ -218,8 +248,8 @@ export class Storage {
   exportBundle(): ExportBundle {
     if (!this.db) throw new Error("History is locked");
     const chats = this.db
-      .prepare("SELECT id, title, created_at, updated_at, pinned, archived FROM conversations ORDER BY updated_at DESC")
-      .all() as Array<Pick<ConversationRow, "id" | "title" | "created_at" | "updated_at" | "pinned" | "archived">>;
+      .prepare("SELECT id, title, created_at, updated_at, pinned, archived, kind FROM conversations ORDER BY updated_at DESC")
+      .all() as Array<Pick<ConversationRow, "id" | "title" | "created_at" | "updated_at" | "pinned" | "archived" | "kind">>;
     const messages = this.db
       .prepare("SELECT * FROM messages ORDER BY created_at ASC, rowid ASC")
       .all() as MessageRow[];
@@ -250,6 +280,7 @@ export class Storage {
         updatedAt: new Date(row.updated_at).toISOString(),
         pinned: row.pinned === 1,
         archived: row.archived === 1,
+        kind: row.kind === "quick" ? "quick" : "chat",
         messages: byChat.get(row.id) ?? [],
       })),
       facts: this.getMemoryFacts(2_000).map((fact) => ({
@@ -284,16 +315,18 @@ export class Storage {
         if (this.db!.prepare("SELECT 1 FROM conversations WHERE id = ?").get(exported.id)) continue;
         const createdAt = stamp(exported.createdAt, Date.now());
         this.db!
-          .prepare("INSERT INTO conversations (id, title, created_at, updated_at, pinned, archived) VALUES (?, ?, ?, ?, ?, ?)")
+          .prepare("INSERT INTO conversations (id, title, created_at, updated_at, pinned, archived, kind) VALUES (?, ?, ?, ?, ?, ?, ?)")
           .run(
             exported.id,
             clean(exported.title, 80) || DEFAULT_TITLE,
             createdAt,
             Math.max(createdAt, stamp(exported.updatedAt, createdAt)),
             exported.pinned ? 1 : 0,
-            exported.archived ? 1 : 0
+            exported.archived ? 1 : 0,
+            exported.kind === "quick" ? "quick" : "chat"
           );
         conversations += 1;
+        let lastAnswer = "";
         for (const message of exported.messages) {
           // An empty body means the row was unreadable where it was written; restoring
           // it would only add blank bubbles.
@@ -321,6 +354,22 @@ export class Storage {
               at
             );
           messages += 1;
+          if (message.role === "assistant" && message.content.trim()) lastAnswer = message.content;
+        }
+        // A quick ask keeps its place in the popover history after a restore.
+        if (exported.kind === "quick") {
+          this.db!
+            .prepare(
+              "INSERT OR IGNORE INTO quick_asks (id, conversation_id, question, answer, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
+            )
+            .run(
+              idFor("qa"),
+              exported.id,
+              this.seal(clean(exported.title, 200)),
+              this.seal(lastAnswer.slice(0, 400)),
+              createdAt,
+              Math.max(createdAt, stamp(exported.updatedAt, createdAt))
+            );
         }
       }
 
@@ -469,6 +518,7 @@ export class Storage {
       ["tasks", ["result", "error", "cwd"]],
       ["audit", ["arguments", "result", "error"]],
       ["memory_facts", ["content"]],
+      ["quick_asks", ["question", "answer"]],
     ];
     const recode = this.db.transaction(() => {
       for (const [table, names] of columns) {
@@ -632,6 +682,7 @@ export class Storage {
       updatedAt: new Date(row.updated_at),
       pinned: row.pinned === 1,
       archived: row.archived === 1,
+      kind: row.kind === "quick" ? "quick" : "chat",
       messageCount: row.message_count,
       preview: clean(this.open(row.last_content ?? ""), 90),
     };
@@ -647,7 +698,7 @@ export class Storage {
   listConversations(): Conversation[] {
     if (!this.db) return [];
     const rows = this.db
-      .prepare(this.conversationSelect("WHERE c.archived = 0 ORDER BY c.pinned DESC, c.updated_at DESC"))
+      .prepare(this.conversationSelect("WHERE c.archived = 0 AND c.kind = 'chat' ORDER BY c.pinned DESC, c.updated_at DESC"))
       .all() as ConversationRow[];
     return rows.map((row) => this.toConversation(row));
   }
@@ -664,14 +715,20 @@ export class Storage {
     return this.listConversations()[0] ?? null;
   }
 
-  createConversation(title = DEFAULT_TITLE): Conversation {
+  createConversation(title = DEFAULT_TITLE, kind: ConversationKind = "chat"): Conversation {
     if (!this.db) throw new Error("Storage is not open");
     const id = idFor("conv");
     const now = Date.now();
     this.db
-      .prepare("INSERT INTO conversations (id, title, created_at, updated_at, pinned, archived) VALUES (?, ?, ?, ?, 0, 0)")
-      .run(id, clean(title, 80) || DEFAULT_TITLE, now, now);
+      .prepare("INSERT INTO conversations (id, title, created_at, updated_at, pinned, archived, kind) VALUES (?, ?, ?, ?, 0, 0, ?)")
+      .run(id, clean(title, 80) || DEFAULT_TITLE, now, now, kind);
     return this.getConversation(id)!;
+  }
+
+  /** A quick ask becomes a normal chat once the user opens it in the main window. */
+  promoteConversation(id: string): void {
+    if (!this.db) return;
+    this.db.prepare("UPDATE conversations SET kind = 'chat' WHERE id = ?").run(id);
   }
 
   renameConversation(id: string, title: string): void {
@@ -696,9 +753,68 @@ export class Storage {
     const remove = this.db.transaction(() => {
       this.db!.prepare("DELETE FROM messages WHERE conversation_id = ?").run(id);
       this.db!.prepare("DELETE FROM conversations WHERE id = ?").run(id);
+      this.db!.prepare("DELETE FROM quick_asks WHERE conversation_id = ?").run(id);
     });
     remove();
     return this.latestConversation();
+  }
+
+  /**
+   * Quick asks are threads of their own. The question and the answer are sealed like
+   * any other history; the index only tells the popover what it has already shown.
+   */
+  createQuickAsk(conversationId: string, question: string): QuickAskThread {
+    if (!this.db) throw new Error("Storage is not open");
+    const id = idFor("qa");
+    const now = Date.now();
+    this.db
+      .prepare(
+        "INSERT INTO quick_asks (id, conversation_id, question, answer, pinned, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)"
+      )
+      .run(id, conversationId, this.seal(question), this.seal(""), now, now);
+    return this.getQuickAsk(id)!;
+  }
+
+  private toQuickAsk(row: QuickAskRow): QuickAskThread {
+    return {
+      id: row.id,
+      conversationId: row.conversation_id,
+      question: this.open(row.question),
+      answer: this.open(row.answer),
+      pinned: row.pinned === 1,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
+  getQuickAsk(id: string): QuickAskThread | null {
+    if (!this.db) return null;
+    const row = this.db.prepare("SELECT * FROM quick_asks WHERE id = ?").get(id) as
+      | QuickAskRow
+      | undefined;
+    return row ? this.toQuickAsk(row) : null;
+  }
+
+  /** Pinned threads first, then the most recent activity. */
+  listQuickAsks(): QuickAskThread[] {
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare("SELECT * FROM quick_asks ORDER BY pinned DESC, updated_at DESC")
+      .all() as QuickAskRow[];
+    return rows.map((row) => this.toQuickAsk(row));
+  }
+
+  setQuickAskPinned(id: string, pinned: boolean): void {
+    if (!this.db) return;
+    this.db.prepare("UPDATE quick_asks SET pinned = ? WHERE id = ?").run(pinned ? 1 : 0, id);
+  }
+
+  /** A follow-up replaces the preview so the history shows the latest answer. */
+  updateQuickAsk(id: string, answer: string): void {
+    if (!this.db) return;
+    this.db
+      .prepare("UPDATE quick_asks SET answer = ?, updated_at = ? WHERE id = ?")
+      .run(this.seal(answer), Date.now(), id);
   }
 
   /**
@@ -923,6 +1039,7 @@ export class Storage {
     this.db.prepare("DELETE FROM messages WHERE created_at < ?").run(cutoff);
     this.db.prepare("DELETE FROM tasks WHERE created_at < ?").run(cutoff);
     this.db.prepare("DELETE FROM audit WHERE created_at < ?").run(cutoff);
+    this.db.prepare("DELETE FROM quick_asks WHERE updated_at < ?").run(cutoff);
     this.db
       .prepare(
         "DELETE FROM conversations WHERE updated_at < ? AND NOT EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id)"

@@ -126,3 +126,77 @@ test("an export carries plaintext bodies, never the at-rest envelope", () => {
   assert.equal(JSON.stringify(bundle).includes("enc:v1:"), false);
   assert.ok(bundle.schemaVersion >= 1);
 });
+
+test("a quick ask keeps its own conversation out of the chat list", () => {
+  const conversation = storage.createConversation("What is the plan?", "quick");
+  const thread = storage.createQuickAsk(conversation.id, "What is the plan?");
+
+  assert.equal(storage.listConversations().some((item) => item.id === conversation.id), false);
+  assert.equal(storage.getConversation(conversation.id)?.kind, "quick");
+  assert.equal(storage.listQuickAsks().length, 1);
+  assert.equal(storage.listQuickAsks()[0].question, "What is the plan?");
+  assert.equal(storage.listQuickAsks()[0].answer, "");
+  assert.equal(storage.getQuickAsk(thread.id)?.conversationId, conversation.id);
+
+  storage.updateQuickAsk(thread.id, "Ship the history today.");
+  assert.equal(storage.listQuickAsks()[0].answer, "Ship the history today.");
+});
+
+test("a pinned quick ask stays at the top of the history", () => {
+  const first = storage.createQuickAsk(storage.createConversation("Older", "quick").id, "Older question");
+  const second = storage.createQuickAsk(storage.createConversation("Newer", "quick").id, "Newer question");
+  storage.setQuickAskPinned(first.id, true);
+
+  const order = storage.listQuickAsks().map((item) => item.id);
+  assert.equal(order[0], first.id);
+  assert.equal(storage.getQuickAsk(first.id)?.pinned, true);
+  assert.equal(storage.getQuickAsk(second.id)?.pinned, false);
+
+  storage.setQuickAskPinned(first.id, false);
+  assert.equal(storage.getQuickAsk(first.id)?.pinned, false);
+});
+
+test("a quick ask's question and answer are sealed like the rest of the history", () => {
+  storage.setEncryption(true);
+  const conversation = storage.createConversation("Sealed question", "quick");
+  const thread = storage.createQuickAsk(conversation.id, "sealed question body");
+  storage.updateQuickAsk(thread.id, "sealed answer body");
+
+  const db = raw();
+  try {
+    const row = db.prepare("SELECT question, answer FROM quick_asks WHERE id = ?").get(thread.id) as {
+      question: string;
+      answer: string;
+    };
+    assert.ok(row.question.startsWith("enc:v1:"));
+    assert.ok(row.answer.startsWith("enc:v1:"));
+    assert.equal(row.question.includes("sealed question body"), false);
+    assert.equal(row.answer.includes("sealed answer body"), false);
+  } finally {
+    db.close();
+  }
+  assert.equal(storage.getQuickAsk(thread.id)?.question, "sealed question body");
+  assert.equal(storage.getQuickAsk(thread.id)?.answer, "sealed answer body");
+});
+
+test("opening a quick ask in the chat puts its conversation back in the chat list", () => {
+  const conversation = storage.createConversation("Promoted", "quick");
+  storage.createQuickAsk(conversation.id, "Promoted question");
+  assert.equal(storage.listConversations().some((item) => item.id === conversation.id), false);
+
+  storage.promoteConversation(conversation.id);
+  assert.equal(storage.getConversation(conversation.id)?.kind, "chat");
+  assert.equal(storage.listConversations().some((item) => item.id === conversation.id), true);
+});
+
+test("deleting a quick ask takes its transcript with it", () => {
+  const conversation = storage.createConversation("Doomed", "quick");
+  const thread = storage.createQuickAsk(conversation.id, "Doomed question");
+  storage.saveMessage(conversation.id, message("msg_doomed"));
+  assert.equal(storage.getMessages(conversation.id).length, 1);
+
+  storage.deleteConversation(conversation.id);
+  assert.equal(storage.getQuickAsk(thread.id), null);
+  assert.equal(storage.getConversation(conversation.id), null);
+  assert.equal(storage.getMessages(conversation.id).length, 0);
+});

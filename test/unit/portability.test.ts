@@ -24,6 +24,7 @@ const bundle = (overrides: Partial<ExportBundle> = {}): ExportBundle => ({
       updatedAt: "2026-10-30T09:30:00.000Z",
       pinned: false,
       archived: false,
+      kind: "chat",
       messages: [
         {
           id: "msg_1",
@@ -94,6 +95,7 @@ test("unknown fields are dropped and defaults fill gaps", () => {
   const cleaned = validateBundle(raw, 1);
   assert.equal((cleaned as unknown as Record<string, unknown>).extra, undefined);
   assert.equal(cleaned.conversations[0].title, "Imported chat");
+  assert.equal(cleaned.conversations[0].kind, "chat");
   assert.equal(cleaned.conversations[0].messages[0].role, "user");
   assert.ok(cleaned.conversations[0].messages[0].timestamp.length > 0);
   assert.deepEqual(cleaned.facts, []);

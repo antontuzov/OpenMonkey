@@ -83,6 +83,15 @@ export default function App() {
         if ((request.origin ?? "main") === "main") setApproval(request);
       }),
       api.onOpenSettings(() => setView("settings")),
+      // A quick ask opened from the popover becomes a chat and lands here.
+      api.onOpenConversation((id) => {
+        setView("chat");
+        void api.switchConversation(id).then(() => {
+          setActiveConversationId(id);
+          setBusyConversationId(null);
+          return api.getConversations().then(setConversations);
+        }).catch(() => undefined);
+      }),
       // An imported backup can add chats and change settings while this window is open.
       api.onLocalDataChanged(() => {
         void api.getConfig().then(setConfig).catch(() => undefined);
