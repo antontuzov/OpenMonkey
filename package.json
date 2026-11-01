@@ -14,6 +14,7 @@
     "test:unit": "tsx --test test/unit/*.test.ts",
     "test:integration": "node test/integration/run.mjs",
     "download-models": "tsx scripts/download-models.ts",
+    "brand:animation": "python3 scripts/make-logo-animation.py",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "package:mac": "npm run build && electron-builder --mac",

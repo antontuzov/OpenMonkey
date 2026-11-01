@@ -1,5 +1,9 @@
 # OpenMonkey
 
+<p align="center">
+  <img src="assets/brand/openmonkey-moods.webp" alt="OpenMonkey changing moods" width="220">
+</p>
+
 A local-only AI agent for your desktop. It runs a small language model on your own
 machine, talks through a chat window, shows its working in a live task monitor, and
 expresses how a conversation is going through 12 ape portrait moods that update the
@@ -7,6 +11,11 @@ window, the menu bar tray and the Dock icon at the same time.
 
 Nothing leaves the computer by default. There is no account, no telemetry, no API key
 and no network call except the ones you explicitly ask the agent to make.
+
+The animation above is built from the same portraits the app uses:
+`python3 scripts/make-logo-animation.py` regenerates it into `assets/brand/`.
+A single-page product site lives in [`landing/`](landing/index.html) — open
+`landing/index.html` directly or serve the folder with any static host.
 
 ![Chat with a local model](docs/screenshots/chat.png)
 

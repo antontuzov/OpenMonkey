@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenMonkey — a local AI agent that lives on your Mac</title>
+    <meta
+      name="description"
+      content="OpenMonkey is a local-only AI agent for macOS and Windows: chat with a model on your own machine, run tools behind approval gates, and keep every conversation encrypted on disk."
+    />
+    <meta property="og:title" content="OpenMonkey — a local AI agent that lives on your Mac" />
+    <meta property="og:description" content="Chat, tools, memory and twelve moods, running entirely on your own hardware." />
+    <meta property="og:image" content="assets/openmonkey-moods-poster.png" />
+    <link rel="icon" href="assets/openmonkey-moods-poster.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <canvas id="ink" aria-hidden="true"></canvas>
+
+    <header class="site-head">
+      <a class="brand" href="#top">
+        <img class="brand-mark" src="assets/openmonkey-moods.webp" alt="" width="30" height="30" />
+        <span class="wordmark">OpenMonkey</span>
+      </a>
+      <nav class="site-nav">
+        <a href="#features" data-i18n="nav.features">Product</a>
+        <a href="#screenshots" data-i18n="nav.screens">Screenshots</a>
+        <a href="#download" data-i18n="nav.download">Download</a>
+        <a href="https://github.com/antontuzov/OpenMonkey" rel="noreferrer" target="_blank">GitHub</a>
+        <button class="lang" type="button" id="lang-toggle" aria-label="Language">
+          <span class="lang-on">EN</span><span class="lang-sep">/</span><span class="lang-off">RU</span>
+        </button>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-art" aria-hidden="true">
+          <div class="halo"></div>
+          <picture>
+            <source srcset="assets/openmonkey-moods.webp" type="image/webp" />
+            <img class="hero-portrait" src="assets/openmonkey-moods.gif" alt="" width="320" height="320" />
+          </picture>
+        </div>
+        <h1 class="hero-title">OpenMonkey</h1>
+        <p class="hero-sub" id="typewriter"></p>
+        <div class="platforms" role="list">
+          <span class="platform is-on" role="listitem" data-platform="macos">macOS 13+</span>
+          <span class="platform" role="listitem" data-platform="windows">Windows 10+</span>
+        </div>
+        <div class="terminal">
+          <div class="terminal-bar">
+            <span class="dot dot-a"></span><span class="dot dot-b"></span><span class="dot dot-c"></span>
+            <span class="terminal-label" id="terminal-label" data-i18n="terminal.fromSource">from source</span>
+            <button class="copy" id="copy" type="button">
+              <span class="copy-label" data-i18n="terminal.copy">Copy</span>
+            </button>
+          </div>
+          <pre class="terminal-body"><span class="prompt">$</span> <span id="terminal-command"></span></pre>
+        </div>
+        <div class="cta-row">
+          <a class="pill pill-solid" href="#download" data-i18n="hero.cta">Get OpenMonkey</a>
+          <a class="pill" href="https://github.com/antontuzov/OpenMonkey" rel="noreferrer" target="_blank" data-i18n="hero.github">GitHub</a>
+          <a class="pill" href="https://github.com/antontuzov/OpenMonkey/blob/main/README.md" rel="noreferrer" target="_blank" data-i18n="hero.docs">Documentation</a>
+        </div>
+      </section>
+
+      <section class="numbers" aria-label="Measured numbers">
+        <div class="number">
+          <strong>767<small>ms</small></strong>
+          <span data-i18n="stat.cold">Cold start to first paint</span>
+        </div>
+        <div class="number">
+          <strong>597<small>MB</small></strong>
+          <span data-i18n="stat.memory">Idle shell before a model loads</span>
+        </div>
+        <div class="number">
+          <strong>0</strong>
+          <span data-i18n="stat.telemetry">Telemetry calls, ever</span>
+        </div>
+        <div class="number">
+          <strong>12</strong>
+          <span data-i18n="stat.moods">Moods driving window, tray and Dock</span>
+        </div>
+      </section>
+
+      <section class="features" id="features">
+        <h2 class="section-title" data-animate data-i18n="features.title">Why OpenMonkey</h2>
+
+        <article class="feature">
+          <div class="feature-visual visual-chat">
+            <img src="assets/screenshots/chat.png" alt="A chat with the local model" loading="lazy" />
+          </div>
+          <div class="feature-text">
+            <h3 data-animate data-i18n="feature.one.title">Nothing leaves your Mac</h3>
+            <p data-i18n="feature.one.body">
+              There is no account, no telemetry and no API key. History is sealed with
+              AES-256-GCM under a Keychain key, and the renderer cannot reach the network at all.
+            </p>
+          </div>
+        </article>
+
+        <article class="feature feature-reverse">
+          <div class="feature-visual visual-mood">
+            <img src="assets/openmonkey-moods.webp" alt="OpenMonkey's moods" width="260" height="260" loading="lazy" />
+            <div class="mood-strip" aria-hidden="true">
+              <span>calm</span><span>thinking</span><span>happy</span><span>silly</span><span>tired</span>
+            </div>
+          </div>
+          <div class="feature-text">
+            <h3 data-animate data-i18n="feature.two.title">Twelve moods, one agent</h3>
+            <p data-i18n="feature.two.body">
+              The portrait in the window, the menu bar icon and the Dock badge change with the
+              conversation, so you can read how the work is going from across the desk.
+            </p>
+          </div>
+        </article>
+
+        <article class="feature">
+          <div class="feature-visual visual-approval">
+            <div class="mock">
+              <div class="mock-head"><span class="mock-dot"></span> shell · needs approval</div>
+              <code class="mock-command">ls ~/Documents/report.pdf</code>
+              <div class="mock-actions">
+                <span class="mock-deny">Deny</span>
+                <span class="mock-allow">Allow once</span>
+              </div>
+              <p class="mock-note" data-i18n="feature.three.note">
+                Every tool action waits for a decision and lands in the audit log.
+              </p>
+            </div>
+          </div>
+          <div class="feature-text">
+            <h3 data-animate data-i18n="feature.three.title">Every tool asks first</h3>
+            <p data-i18n="feature.three.body">
+              File writes, shell commands, web fetches and calendar changes stop at a dialog
+              showing the tool and its arguments. Approve once, deny, or remember the choice
+              for the session.
+            </p>
+          </div>
+        </article>
+
+        <article class="feature feature-reverse">
+          <div class="feature-visual visual-speed">
+            <div class="gauge">
+              <span class="gauge-value">0</span>
+              <span class="gauge-label" data-i18n="feature.four.label">long tasks while streaming</span>
+            </div>
+            <div class="gauge">
+              <span class="gauge-value">17.7<small>ms</small></span>
+              <span class="gauge-label" data-i18n="feature.four.label">worst frame gap in a 320-token stream</span>
+            </div>
+          </div>
+          <div class="feature-text">
+            <h3 data-animate data-i18n="feature.four.title">Fast enough to live in</h3>
+            <p data-i18n="feature.four.body">
+              Tokens are batched into one render per frame, the settings screen loads as its own
+              chunk, and a performance suite fails the build when the numbers drift.
+            </p>
+          </div>
+        </article>
+
+        <article class="feature">
+          <div class="feature-visual visual-quick">
+            <div class="mock quick">
+              <div class="quick-head">Quick Ask <kbd>⌥Space</kbd></div>
+              <p class="quick-question">Summarise the notes I wrote yesterday.</p>
+              <div class="quick-answer">
+                <span class="quick-bar"></span>
+                <span class="quick-bar"></span>
+                <span class="quick-bar short"></span>
+              </div>
+              <div class="quick-foot">
+                <span class="quick-task">▸ reading notes.md</span>
+                <span class="quick-approve">Allow</span>
+              </div>
+            </div>
+          </div>
+          <div class="feature-text">
+            <h3 data-animate data-i18n="feature.five.title">Ask from anywhere</h3>
+            <p data-i18n="feature.five.body">
+              Quick Ask opens with Option+Space, answers from the same model, and can approve a
+              tool inline. A live task monitor shows what the agent is doing right now.
+            </p>
+          </div>
+        </article>
+      </section>
+
+      <section class="gallery" id="screenshots">
+        <h2 class="section-title" data-animate data-i18n="gallery.title">The app itself</h2>
+        <div class="gallery-grid">
+          <figure>
+            <img src="assets/screenshots/onboarding.png" alt="First-run onboarding" loading="lazy" />
+            <figcaption data-i18n="gallery.one">First run: download the model and pick a mood.</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/screenshots/settings-privacy.png" alt="Privacy settings" loading="lazy" />
+            <figcaption data-i18n="gallery.two">Privacy: encryption, lock, retention, network switch.</figcaption>
+          </figure>
+          <figure>
+            <img src="assets/screenshots/settings-desktop.png" alt="Desktop settings" loading="lazy" />
+            <figcaption data-i18n="gallery.three">Desktop: theme, text scale, update channel.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="download" id="download">
+        <h2 class="section-title" data-animate data-i18n="download.title">Get OpenMonkey</h2>
+        <p class="download-lede" data-i18n="download.lede">
+          The app is free and open source. It runs the model on your hardware, so you need the
+          weights once and a machine that can hold them.
+        </p>
+        <div class="download-grid">
+          <div class="download-card">
+            <h3>macOS</h3>
+            <p data-i18n="download.mac">Ventura 13 or newer, Apple Silicon and Intel. Around 2 GB of memory once the model is loaded.</p>
+            <a class="pill pill-solid" href="https://github.com/antontuzov/OpenMonkey/releases" rel="noreferrer" target="_blank">Releases</a>
+          </div>
+          <div class="download-card">
+            <h3>Windows</h3>
+            <p data-i18n="download.win">Windows 10 or newer with the GGUF backend. macOS-only tools stay disabled until the model is present.</p>
+            <a class="pill" href="https://github.com/antontuzov/OpenMonkey/releases" rel="noreferrer" target="_blank">Releases</a>
+          </div>
+          <div class="download-card">
+            <h3 data-i18n="download.source.title">From source</h3>
+            <p data-i18n="download.source.body">
+              Node 22.12 or newer. One install command, one dev command, the model downloads itself.
+            </p>
+            <a class="pill" href="https://github.com/antontuzov/OpenMonkey/blob/main/README.md" rel="noreferrer" target="_blank" data-i18n="hero.docs">Documentation</a>
+          </div>
+        </div>
+        <p class="download-note" data-i18n="download.note">
+          Release artifacts are produced by the tag pipeline. Builds you make locally are
+          unsigned, so Gatekeeper asks once.
+        </p>
+      </section>
+    </main>
+
+    <footer class="site-foot">
+      <div class="foot-inner">
+        <p class="foot-brand">OpenMonkey</p>
+        <nav class="foot-nav">
+          <a href="https://github.com/antontuzov/OpenMonkey/blob/main/docs/PRIVACY.md" rel="noreferrer" target="_blank" data-i18n="foot.privacy">Privacy</a>
+          <a href="https://github.com/antontuzov/OpenMonkey/blob/main/docs/MODELS.md" rel="noreferrer" target="_blank" data-i18n="foot.models">Models</a>
+          <a href="https://github.com/antontuzov/OpenMonkey/blob/main/docs/SUPPORT.md" rel="noreferrer" target="_blank" data-i18n="foot.support">Support</a>
+          <a href="https://github.com/antontuzov/OpenMonkey/blob/main/CHANGELOG.md" rel="noreferrer" target="_blank" data-i18n="foot.changelog">Changelog</a>
+          <a href="https://github.com/antontuzov/OpenMonkey" rel="noreferrer" target="_blank">GitHub</a>
+        </nav>
+        <p class="foot-legal" data-i18n="foot.legal">MIT licensed. Built for people who want their assistant on their own hardware.</p>
+      </div>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>
