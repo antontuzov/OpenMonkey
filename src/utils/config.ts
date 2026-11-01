@@ -21,6 +21,7 @@ const defaultConfig: Config = {
     textScale: "m",
     density: "comfortable",
     reduceMotion: false,
+    starterPromptsHidden: false,
     language: "en",
   },
   privacy: {

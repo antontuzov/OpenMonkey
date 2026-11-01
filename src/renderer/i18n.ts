@@ -28,6 +28,22 @@ const EN = {
   "chat.welcome": "Welcome to {name}",
   "chat.intro":
     "Your personal AI assistant, running on this Mac. It answers questions and works with your files and apps — asking before it touches anything.",
+  "chat.moodCaption": "Mood: {mood}",
+  "chat.starterTitle": "Try one of these",
+  "chat.starterHide": "Hide",
+  "chat.starterShow": "Show prompts",
+  "chat.starter.folder.title": "Read a folder",
+  "chat.starter.folder.prompt":
+    "Read the files in this project folder and summarize what each one does.",
+  "chat.starter.clipboard.title": "Summarize my clipboard",
+  "chat.starter.clipboard.prompt":
+    "Summarize what is on my clipboard in three bullet points.",
+  "chat.starter.code.title": "Explain this code",
+  "chat.starter.code.prompt":
+    "Explain what this code does step by step, and point out anything risky.",
+  "chat.starter.day.title": "Plan my day",
+  "chat.starter.day.prompt":
+    "Help me plan my day: ask me three questions, then propose a schedule.",
   "chat.warning":
     "{name} can take actions using the permissions you enable. Review every prompt and only allow tools you trust.",
   "chat.placeholder": "Message {name}",
@@ -304,6 +320,22 @@ const RU: Record<StringKey, string> = {
   "chat.welcome": "Добро пожаловать в {name}",
   "chat.intro":
     "Ваш личный ИИ-ассистент, работающий на этом Mac. Он отвечает на вопросы и работает с файлами и приложениями — спрашивая перед каждым действием.",
+  "chat.moodCaption": "Настроение: {mood}",
+  "chat.starterTitle": "Попробуйте одно из",
+  "chat.starterHide": "Скрыть",
+  "chat.starterShow": "Показать подсказки",
+  "chat.starter.folder.title": "Разобрать папку",
+  "chat.starter.folder.prompt":
+    "Прочитай файлы в этой папке проекта и кратко опиши, что делает каждый.",
+  "chat.starter.clipboard.title": "Разобрать буфер обмена",
+  "chat.starter.clipboard.prompt":
+    "Суммируй то, что у меня в буфере обмена, в трёх пунктах.",
+  "chat.starter.code.title": "Объяснить код",
+  "chat.starter.code.prompt":
+    "Объясни по шагам, что делает этот код, и укажи всё рискованное.",
+  "chat.starter.day.title": "План на день",
+  "chat.starter.day.prompt":
+    "Помоги составить план на день: задай три вопроса, а потом предложи расписание.",
   "chat.warning":
     "{name} может выполнять действия в рамках выданных разрешений. Проверяйте каждый запрос и разрешайте только те инструменты, которым доверяете.",
   "chat.placeholder": "Сообщение для {name}",

@@ -61,6 +61,8 @@ export default function App() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [busyConversationId, setBusyConversationId] = useState<string | null>(null);
   const [privacyStatus, setPrivacyStatus] = useState<PrivacyStatus | null>(null);
+  /** Bumped when the history is locked or erased, so the chat list reloads. */
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   useEffect(() => {
     // Pull the settings chunk after the first paint: the split keeps it out of cold
@@ -86,6 +88,14 @@ export default function App() {
         void api.getConfig().then(setConfig).catch(() => undefined);
         void api.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
         void api.getConversations().then(setConversations).catch(() => undefined);
+      }),
+      // Locking or erasing drops the history: let go of it here instead of
+      // reloading the window, which would flash the whole app.
+      api.onHistoryReset(() => {
+        setConversations([]);
+        setActiveConversationId(null);
+        setHistoryVersion((value) => value + 1);
+        void api.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
       }),
     ];
 
@@ -144,7 +154,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [status.state, config?.onboarding.completed, privacyStatus?.locked]);
+  }, [status.state, config?.onboarding.completed, privacyStatus?.locked, historyVersion]);
 
   useEffect(() => {
     const api = window.electron;
@@ -442,9 +452,12 @@ export default function App() {
           autoExecute={config.agent.autoExecuteTasks}
           conversationId={activeConversationId}
           busyConversationId={busyConversationId}
+          starterPromptsHidden={config.ui.starterPromptsHidden}
           onConversationsChanged={conversationsChanged}
           onOpenSettings={() => setView("settings")}
           onNewConversation={() => void newChat()}
+          onHideStarterPrompts={() => void patchConfig({ ui: { starterPromptsHidden: true } })}
+          onShowStarterPrompts={() => void patchConfig({ ui: { starterPromptsHidden: false } })}
         />
       </main>
 

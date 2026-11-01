@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
+  CalendarDays,
   Check,
+  ClipboardList,
   Copy,
   FileText,
-  Files,
+  FolderSearch,
+  Lightbulb,
   Loader,
   Paperclip,
   Plus,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
-  Sparkles,
   Square,
   TriangleAlert,
   X,
@@ -36,28 +38,20 @@ interface ChatInterfaceProps {
   autoExecute: boolean;
   conversationId: string | null;
   busyConversationId: string | null;
+  starterPromptsHidden: boolean;
   onConversationsChanged: () => void;
   onOpenSettings: () => void;
   onNewConversation: () => void;
+  onHideStarterPrompts: () => void;
+  onShowStarterPrompts: () => void;
 }
 
-const WELCOME = [
-  {
-    icon: Sparkles,
-    title: "Ask, create, and automate",
-    copy: "Give your assistant a task and let it work across this Mac.",
-  },
-  {
-    icon: Files,
-    title: "Files, web, and shell",
-    copy: "Read a folder, fetch a page, run a command — one approval each time.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Stay in control",
-    copy: "Everything runs where you decide, with permissions you grant.",
-  },
-];
+const STARTERS = [
+  { icon: FolderSearch, key: "folder" },
+  { icon: ClipboardList, key: "clipboard" },
+  { icon: Lightbulb, key: "code" },
+  { icon: CalendarDays, key: "day" },
+] as const;
 
 const MAX_ATTACHMENT_LABEL = "256 KB";
 const MAX_ATTACHMENT_BYTES = 256 * 1024;
@@ -336,9 +330,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   autoExecute,
   conversationId,
   busyConversationId,
+  starterPromptsHidden,
   onConversationsChanged,
   onOpenSettings,
   onNewConversation,
+  onHideStarterPrompts,
+  onShowStarterPrompts,
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [stream, setStream] = useState<{ id: string; content: string } | null>(null);
@@ -493,12 +490,19 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [input]);
 
   useEffect(() => {
-    if (!loadingMessages && ready) textareaRef.current?.focus();
+    // preventScroll keeps the empty state's greeting in view: focusing the
+    // composer would otherwise scroll the panel down past it.
+    if (!loadingMessages && ready) textareaRef.current?.focus({ preventScroll: true });
   }, [conversationId, loadingMessages, ready]);
 
   const updateInput = (value: string) => {
     setInput(value);
     if (conversationId) sessionStorage.setItem(draftKey(conversationId), value);
+  };
+
+  const applyStarter = (key: (typeof STARTERS)[number]["key"]) => {
+    updateInput(t(`chat.starter.${key}.prompt`));
+    textareaRef.current?.focus({ preventScroll: true });
   };
 
   const send = useCallback(async () => {
@@ -705,26 +709,51 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <p className="text-muted text-[12px] mt-2 max-w-[46ch] mx-auto leading-relaxed">
                 {t("chat.intro")}
               </p>
+              <p className="text-faint text-[10.5px] mt-2">{t("chat.moodCaption", { mood: moodLabel(mood) })}</p>
 
-              <div className="card text-left mt-8">
-                {WELCOME.map((item, index) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={item.title}
-                      className={`flex items-start gap-3.5 px-5 py-4 ${index ? "border-t border-line" : ""}`}
+              {!starterPromptsHidden && (
+                <div className="mt-8">
+                  <div className="flex items-center justify-center gap-2 mb-3">
+                    <p className="text-faint text-[10.5px] uppercase tracking-[0.09em]">
+                      {t("chat.starterTitle")}
+                    </p>
+                    <button
+                      onClick={onHideStarterPrompts}
+                      className="text-[10.5px] text-faint hover:text-muted underline underline-offset-2"
                     >
-                      <Icon size={17} className="text-accent-ink mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-[12.5px] font-semibold">{item.title}</p>
-                        <p className="text-muted text-[11.5px] leading-relaxed mt-0.5">{item.copy}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      {t("chat.starterHide")}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5 text-left">
+                    {STARTERS.map((starter) => {
+                      const Icon = starter.icon;
+                      return (
+                        <button
+                          key={starter.key}
+                          onClick={() => applyStarter(starter.key)}
+                          className="card px-4 py-3 flex items-start gap-2.5 hover:border-accent-ink/40 transition-colors text-left"
+                        >
+                          <Icon size={15} className="text-accent-ink mt-0.5 shrink-0" />
+                          <span className="text-[12px] font-semibold leading-snug">
+                            {t(`chat.starter.${starter.key}.title`)}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-              <p className="text-faint text-[10.5px] mt-6 leading-relaxed">
+              {starterPromptsHidden && (
+                <button
+                  onClick={onShowStarterPrompts}
+                  className="text-[10.5px] text-faint hover:text-muted underline underline-offset-2 mt-6"
+                >
+                  {t("chat.starterShow")}
+                </button>
+              )}
+
+              <p className="text-faint text-[10.5px] mt-7 leading-relaxed">
                 {t("chat.warning", { name: agentName })}
               </p>
             </div>

@@ -347,6 +347,8 @@ export interface Config {
     density: UiDensity;
     /** Extra override on top of the OS Reduce Motion setting. */
     reduceMotion: boolean;
+    /** The empty chat keeps its starter prompts until the user hides them. */
+    starterPromptsHidden: boolean;
     language: AppLanguage;
   };
   privacy: {
@@ -509,6 +511,8 @@ export interface ElectronAPI {
   onTaskUpdate: (callback: (task: Task) => void) => () => void;
   onApprovalRequest: (callback: (request: ApprovalRequest) => void) => () => void;
   onOpenSettings: (callback: () => void) => () => void;
+  /** The history was locked or erased and the renderer must drop what it holds. */
+  onHistoryReset: (callback: () => void) => () => void;
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
   onModelDownloadStatus: (callback: (status: ModelDownloadStatus) => void) => () => void;
   onChatEvent: (callback: (event: ChatEvent) => void) => () => void;

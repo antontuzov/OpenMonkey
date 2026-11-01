@@ -67,27 +67,37 @@ function paperColor(): string {
   return nativeTheme.shouldUseDarkColors ? "#121512" : "#f6f7f3";
 }
 
+/**
+ * The native theme source decides the window backdrop. It has to be set before
+ * the first window exists: a window born with the OS colour and corrected a
+ * moment later flips the whole backdrop, which reads as a flash at launch.
+ */
+function applyNativeTheme(): void {
+  const theme = config.get("ui").theme;
+  if (nativeTheme.themeSource !== theme) nativeTheme.themeSource = theme;
+}
+
 function syncWindowBackground(): void {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.setBackgroundColor(paperColor());
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.setBackgroundColor(paperColor());
+  }
 }
 
 function applyAppearance(): void {
-  const theme = config.get("ui").theme;
-  if (nativeTheme.themeSource !== theme) nativeTheme.themeSource = theme;
+  applyNativeTheme();
   syncWindowBackground();
   for (const window of BrowserWindow.getAllWindows()) applyZoom(window);
 }
 
 /**
- * A locked or erased history must not survive in a renderer that already painted it,
- * so both paths rebuild the windows instead of pushing an event into them.
+ * A locked or erased history must not survive in a renderer that already painted it.
+ * The renderer clears what it holds on this event; reloading the window would also
+ * work but flashes the whole app every time the history changes.
  */
 function refreshHistoryViews(): void {
   openMonkey?.forgetConversation();
   openMonkey?.refreshMemory(true);
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) window.webContents.reload();
-  }
+  broadcast("history-reset");
 }
 
 function lockHistory(): void {
@@ -243,6 +253,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     enforceContentSecurityPolicy();
+    applyNativeTheme();
     createWindow();
 
     desktopManager = new DesktopManager({

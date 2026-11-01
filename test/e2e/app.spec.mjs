@@ -124,7 +124,68 @@ test("switching to Russian translates the page and the html lang", async () => {
   await expect(page.getByRole("switch", { name: "Save conversation history" })).toBeVisible();
 });
 
+test("the empty chat offers starter prompts that fill the composer", async () => {
+  await page.getByRole("button", { name: /Back to app/ }).click();
+  await expect(page.getByRole("textbox", { name: "Message OpenMonkey" })).toBeVisible();
+  await expect(page.getByText(/^Mood: /)).toBeVisible();
+
+  const composer = page.getByRole("textbox", { name: "Message OpenMonkey" });
+  await page.getByRole("button", { name: "Read a folder", exact: true }).click();
+  await expect(composer).toHaveValue(
+    "Read the files in this project folder and summarize what each one does."
+  );
+  await expect(composer).toBeFocused();
+
+  await page.getByRole("button", { name: "Plan my day", exact: true }).click();
+  await expect(composer).toHaveValue(
+    "Help me plan my day: ask me three questions, then propose a schedule."
+  );
+});
+
+test("hiding the starter prompts sticks across a reload and can be restored", async () => {
+  await page.getByRole("button", { name: "Hide", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Read a folder", exact: true })).toHaveCount(0);
+
+  await page.reload();
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.getByRole("button", { name: "Read a folder", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Show prompts", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Show prompts", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Read a folder", exact: true })).toBeVisible();
+});
+
+test("erasing the history clears the window instead of reloading it", async () => {
+  let navigations = 0;
+  const countNavigation = () => {
+    navigations += 1;
+  };
+  page.on("framenavigated", countNavigation);
+  try {
+    const before = await page.evaluate(() =>
+      window.electron.getConversations().then((list) => list.map((conversation) => conversation.id))
+    );
+    const result = await page.evaluate(() => window.electron.eraseAllHistory("ERASE"));
+    expect(result.ok).toBe(true);
+
+    // The old chats are gone and the window kept its place: a reload would
+    // flash the whole app, which is what the reset event replaced.
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.electron.getConversations().then((list) => list.map((conversation) => conversation.id))
+        )
+      )
+      .not.toEqual(expect.arrayContaining(before));
+    await page.waitForTimeout(500);
+    expect(navigations).toBe(0);
+  } finally {
+    page.off("framenavigated", countNavigation);
+  }
+});
+
 test("Settings → Desktop shows the update channel and stores the choice", async () => {
+  await page.getByRole("button", { name: "Settings", exact: true }).first().click();
   await page.getByRole("button", { name: "Desktop", exact: true }).click();
   await expect(page.getByText("Update channel", { exact: true })).toBeVisible();
   await expect(page.getByText(/Checks at launch and every six hours/)).toBeVisible();

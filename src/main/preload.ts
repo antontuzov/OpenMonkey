@@ -95,6 +95,7 @@ const api: ElectronAPI = {
   onApprovalRequest: (callback: (request: ApprovalRequest) => void) =>
     on<ApprovalRequest>("approval-request", callback),
   onOpenSettings: (callback: () => void) => on<undefined>("open-settings", () => callback()),
+  onHistoryReset: (callback: () => void) => on<undefined>("history-reset", () => callback()),
   onMenuCommand: (callback: (command: MenuCommand) => void) =>
     on<MenuCommand>("menu-command", callback),
   onModelDownloadStatus: (callback) => on("model-download-status", callback),
