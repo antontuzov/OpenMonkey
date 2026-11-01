@@ -401,7 +401,7 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-paper">
+    <div className="flex h-screen">
       <AppSidebar
         mood={mood}
         status={status}
@@ -420,7 +420,7 @@ export default function App() {
         onSearchConversations={searchConversations}
       />
 
-      <main className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 bg-paper view-crossfade">
         <header className="drag-region h-12 shrink-0 flex items-center justify-between gap-4 px-5 border-b border-line">
           <div className="flex items-center gap-2 text-[11.5px] min-w-0">
             <FolderOpen size={14} className="text-faint shrink-0" />
@@ -470,11 +470,12 @@ export default function App() {
         />
       </main>
 
-      {panelOpen && (
-        <aside className="w-[300px] shrink-0 border-l border-line bg-card-2 overflow-y-auto">
+      {/* The panel keeps its place in the tree so it can slide on the spring. */}
+      <div className={`motion-panel shrink-0 overflow-hidden ${panelOpen ? "w-[300px]" : "w-0"}`}>
+        <aside className="w-[300px] h-full border-l border-line bg-card-2 overflow-y-auto">
           <TaskMonitor autoExecute={config.agent.autoExecuteTasks} />
         </aside>
-      )}
+      </div>
 
       {approval && <ApprovalDialog approval={approval} agentName={agentName} onResolve={respond} />}
     </div>

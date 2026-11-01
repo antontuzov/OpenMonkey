@@ -74,6 +74,9 @@ export function useAppearance(config: Config | null): void {
     root.dataset.density = density;
     root.dataset.reduceMotion = reduceMotion ? "true" : "false";
     root.lang = language;
+    // macOS backs the window with a material; only there is the sidebar thin
+    // enough to let it through.
+    root.dataset.vibrant = window.electron?.platform === "darwin" ? "true" : "false";
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {

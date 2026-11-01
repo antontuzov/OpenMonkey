@@ -185,6 +185,85 @@ test("erasing the history clears the window instead of reloading it", async () =
   }
 });
 
+test("the window feels native: a material sidebar and springs on every panel", async () => {
+  const mac = process.platform === "darwin";
+  const toMillis = (value) => {
+    const text = String(value).trim();
+    if (text.endsWith("ms")) return Number.parseFloat(text);
+    return Number.parseFloat(text) * 1000;
+  };
+  const alphaOf = (value) => {
+    const text = String(value).trim();
+    if (text.startsWith("color(")) {
+      const slash = text.split("/")[1];
+      return slash ? Number.parseFloat(slash) : 1;
+    }
+    const parts = text.split(",");
+    return parts.length === 4 ? Number.parseFloat(parts[3]) : 1;
+  };
+
+  const motion = await page.evaluate(() => {
+    const panel = document.querySelector(".motion-panel");
+    const style = panel ? getComputedStyle(panel) : null;
+    return {
+      duration: style?.transitionDuration ?? "",
+      timing: style?.transitionTimingFunction ?? "",
+      property: style?.transitionProperty ?? "",
+    };
+  });
+  const millis = toMillis(motion.duration);
+  expect(millis).toBeGreaterThanOrEqual(160);
+  expect(millis).toBeLessThanOrEqual(220);
+  expect(motion.timing).toContain("cubic-bezier");
+  expect(motion.property).toContain("width");
+
+  // The panel slides on the spring instead of being torn out of the tree.
+  const panelWidth = () =>
+    page.evaluate(() => document.querySelector(".motion-panel")?.getBoundingClientRect().width ?? -1);
+  const open = await panelWidth();
+  await page.getByTitle("Hide activity").click();
+  await expect.poll(panelWidth).toBe(0);
+  await page.getByTitle("Show activity").click();
+  await expect.poll(panelWidth).toBe(open);
+
+  // The window is transparent so the material can show; the sidebar is the only
+  // surface thin enough to let it through.
+  const surface = await page.evaluate(() => {
+    const root = document.documentElement;
+    const sidebar = document.querySelector(".bg-sidebar");
+    return {
+      vibrant: root.dataset.vibrant ?? "",
+      body: getComputedStyle(document.body).backgroundColor,
+      sidebar: sidebar ? getComputedStyle(sidebar).backgroundColor : "",
+    };
+  });
+  expect(surface.vibrant).toBe(mac ? "true" : "false");
+  expect(surface.body).toBe(mac ? "rgba(0, 0, 0, 0)" : "rgb(246, 247, 243)");
+  const alpha = alphaOf(surface.sidebar);
+  if (mac) {
+    expect(alpha).toBeLessThan(1);
+    expect(alpha).toBeGreaterThan(0);
+  } else {
+    expect(alpha).toBe(1);
+  }
+
+  // Settings crossfades into the chat rather than swapping in a frame.
+  await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+  await expect(page.getByRole("button", { name: "Back to app" })).toBeVisible();
+  const crossfade = await page.evaluate(() => {
+    const view = document.querySelector(".view-crossfade");
+    const style = view ? getComputedStyle(view) : null;
+    return { name: style?.animationName ?? "", duration: style?.animationDuration ?? "" };
+  });
+  expect(crossfade.name).toBe("viewFade");
+  const fadeMillis = toMillis(crossfade.duration);
+  expect(fadeMillis).toBeGreaterThanOrEqual(160);
+  expect(fadeMillis).toBeLessThanOrEqual(220);
+
+  await page.getByRole("button", { name: "Back to app" }).click();
+  await expect(page.getByRole("textbox", { name: "Message OpenMonkey" })).toBeVisible();
+});
+
 test("Settings → Desktop shows the update channel and stores the choice", async () => {
   await page.getByRole("button", { name: "Settings", exact: true }).first().click();
   await page.getByRole("button", { name: "Desktop", exact: true }).click();

@@ -16,6 +16,7 @@
   --color-bubble: #e2f3ea;
   --color-danger: #c2453d;
   --color-warn: #b07a1f;
+  --color-sidebar: #f0f2ec;
 
   --font-mono:
     ui-monospace, "SF Mono", "Menlo", "Monaco", "Cascadia Mono", "Roboto Mono", monospace;
@@ -27,7 +28,23 @@
   --color-accent-ink: color-mix(in srgb, var(--color-accent) 66%, #06251a);
   --color-accent-soft: color-mix(in srgb, var(--color-accent) 13%, var(--color-card));
   --color-bubble: color-mix(in srgb, var(--color-accent) 16%, var(--color-card));
+  /* One spring for every panel and view change: it leaves fast and settles slowly,
+     the way a Mac window does. */
+  --motion-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-panel: 200ms;
+  --motion-view: 180ms;
   color-scheme: light;
+}
+
+/* On macOS the window sits on a system material and the sidebar is thin enough
+   to let it through. Everywhere else the sidebar is a plain surface. */
+html[data-vibrant="true"] {
+  --color-sidebar: color-mix(in srgb, var(--color-card-2) 84%, transparent);
+}
+
+html[data-vibrant="true"],
+html[data-vibrant="true"] body {
+  background-color: transparent;
 }
 
 [data-theme="dark"] {
@@ -40,6 +57,7 @@
   --color-faint: #6f776d;
   --color-danger: #ef7a70;
   --color-warn: #d8a24a;
+  --color-sidebar: #1e231d;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.35);
   --shadow-pop: 0 18px 50px -12px rgb(0 0 0 / 0.6);
   --color-accent-ink: color-mix(in srgb, var(--color-accent) 52%, #ffffff);
@@ -673,6 +691,29 @@ html[data-quick="true"] body {
 
 .pulse-dot {
   animation: pulseDot 1.1s ease-in-out infinite;
+}
+
+/* The activity panel slides on the spring rather than appearing out of nowhere. */
+.motion-panel {
+  transition-property: width;
+  transition-duration: var(--motion-panel);
+  transition-timing-function: var(--motion-spring);
+}
+
+/* Settings and the chat cross into each other instead of swapping in a frame. */
+.view-crossfade {
+  animation: viewFade var(--motion-view) var(--motion-spring);
+}
+
+@keyframes viewFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 input[type="range"] {

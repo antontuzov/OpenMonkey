@@ -360,7 +360,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   };
 
   return (
-    <aside className="drag-region w-[264px] shrink-0 bg-card-2 border-r border-line flex flex-col">
+    <aside className="drag-region w-[264px] shrink-0 bg-sidebar border-r border-line flex flex-col">
       <div className="pt-9 px-3">
         <button
           onClick={onSettings}

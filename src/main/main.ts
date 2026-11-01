@@ -24,6 +24,13 @@ let pendingConversation: string | null = null;
 
 const PRELOAD = path.join(__dirname, "../preload/preload.js");
 
+/**
+ * macOS can back the window with a system material. The sidebar is left
+ * translucent so the material shows through it; the rest of the app paints its
+ * own paper over it.
+ */
+const vibrant = process.platform === "darwin";
+
 // Opt-in automation hook for local UI verification; packaged builds never open a port.
 if (!app.isPackaged && process.env.OPENMONKEY_DEBUG_PORT) {
   app.commandLine.appendSwitch("remote-debugging-port", process.env.OPENMONKEY_DEBUG_PORT);
@@ -79,9 +86,9 @@ function applyNativeTheme(): void {
 }
 
 function syncWindowBackground(): void {
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) window.setBackgroundColor(paperColor());
-  }
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  // A vibrant window has to stay transparent, or painting it hides the material.
+  mainWindow.setBackgroundColor(vibrant ? "#00000000" : paperColor());
 }
 
 function applyAppearance(): void {
@@ -120,9 +127,10 @@ function createWindow(): void {
     minWidth: 980,
     minHeight: 660,
     center: true,
-    // Native frame everywhere; on macOS hiddenInset slides the traffic lights into the
-    // sidebar's top strip, which the renderer makes draggable.
-    backgroundColor: paperColor(),
+    // A vibrant window keeps a transparent backdrop; the renderer paints the paper
+    // itself, so only the sidebar lets the material through.
+    backgroundColor: vibrant ? "#00000000" : paperColor(),
+    vibrancy: vibrant ? "sidebar" : undefined,
     show: false,
     webPreferences: {
       nodeIntegration: false,
@@ -131,7 +139,9 @@ function createWindow(): void {
       preload: PRELOAD,
     },
     icon: assetPath("app-icon.png"),
-    titleBarStyle: "hiddenInset",
+    // No native title bar: the app's own strip is the title bar, and the traffic
+    // lights float in the sidebar above the avatar.
+    titleBarStyle: "hidden",
     trafficLightPosition: { x: 12, y: 12 },
   });
 

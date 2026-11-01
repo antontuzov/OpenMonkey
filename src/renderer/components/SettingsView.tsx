@@ -826,7 +826,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           : "Starting the local runtime…";
 
   return (
-    <div className="flex h-screen bg-paper">
+    <div className="flex h-screen bg-paper view-crossfade">
       <aside className="drag-region w-[300px] shrink-0 bg-card-2 border-r border-line flex flex-col">
         <div className="pt-9 px-3">
           <button
