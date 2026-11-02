@@ -25,6 +25,7 @@ try {
       path.join(here, "paths.test.ts"),
       path.join(here, "approval.test.ts"),
       path.join(here, "logger.test.ts"),
+      path.join(here, "settings.test.ts"),
     ],
     absWorkingDir: root,
     outdir,
@@ -38,9 +39,14 @@ try {
     logLevel: "warning",
   });
 
-  const files = ["storage.test.cjs", "paths.test.cjs", "approval.test.cjs", "logger.test.cjs"].map((name) =>
-    path.join(outdir, name)
-  );
+  const files = [
+    "storage.test.cjs",
+    "paths.test.cjs",
+    "approval.test.cjs",
+    "logger.test.cjs",
+    // Last: it writes config sections other suites read, and the runs are sequential.
+    "settings.test.cjs",
+  ].map((name) => path.join(outdir, name));
   // The files share one throwaway home (and SQLite file), so run them one at a
   // time: parallel processes can lock each other's writes and drop assertions.
   const run = spawnSync(process.execPath, ["--test", "--test-concurrency=1", ...files], {

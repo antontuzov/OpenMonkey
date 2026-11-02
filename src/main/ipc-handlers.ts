@@ -2,19 +2,23 @@ import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { OpenMonkey } from "../agent/OpenMonkey";
-import config, { ggufPath } from "../utils/config";
+import config, { ggufPath, resetPatch } from "../utils/config";
 import {
   MOODS,
   MOOD_LOGOS,
+  RESETTABLE_PAGES,
   type Attachment,
+  type Config,
   type MenuCommand,
   type ModelPreference,
   type Mood,
   type PrivacyActionResult,
   type PrivacyStatus,
+  type SettingsPage,
 } from "../utils/types";
 import storage, { SCHEMA_VERSION } from "../utils/storage";
 import { keychainAvailable } from "../utils/secret-key";
+import { networkActivity } from "../utils/network";
 import { EXPORT_FILE_SUFFIX, encryptBundle, readBundleFile } from "../utils/portability";
 import type { PortabilityResult } from "../utils/types";
 import { ModelDownloader } from "../models/model-downloader";
@@ -350,15 +354,22 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   ipcMain.handle("get-config", () => config.getAll());
 
   // The privacy page states where the key actually lives, so it asks instead of guessing.
-  ipcMain.handle("get-privacy-status", (): PrivacyStatus => ({
-    keySource: storage.keySource,
-    keychainAvailable: keychainAvailable(),
-    locked: storage.locked,
-    passphraseConfigured: storage.lockable,
-    autoLockMinutes: config.get("privacy").autoLockMinutes,
-    schemaVersion: storage.schemaVersion(),
-    networkAllowed: config.get("privacy").networkAllowed !== false,
-  }));
+  ipcMain.handle("get-privacy-status", (): PrivacyStatus => {
+    const activity = networkActivity();
+    return {
+      keySource: storage.keySource,
+      keychainAvailable: keychainAvailable(),
+      locked: storage.locked,
+      passphraseConfigured: storage.lockable,
+      autoLockMinutes: config.get("privacy").autoLockMinutes,
+      schemaVersion: storage.schemaVersion(),
+      networkAllowed: config.get("privacy").networkAllowed !== false,
+      databaseBytes: storage.databaseBytes(),
+      lastPruneAt: config.get("system").lastPruneAt,
+      requestsAllowed: activity.allowed,
+      requestsBlocked: activity.blocked,
+    };
+  });
 
   const passphraseFrom = (value: unknown): string | null => {
     if (typeof value !== "string") return null;
@@ -485,7 +496,11 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     }
   );
 
-  ipcMain.handle("set-config", async (_event, patch: Parameters<typeof config.merge>[0]) => {
+  /**
+   * A settings change and a section reset both land here, so a reset cannot skip the
+   * guards that keep a passphrase-protected history readable.
+   */
+  const applyConfigPatch = async (patch: Parameters<typeof config.merge>[0]): Promise<Config> => {
     const wasEncrypted = config.get("privacy").encryptData;
     // The idle timer is driven by this number, so only the picker's values count.
     let next = patch;
@@ -524,6 +539,20 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     else if (patch && "agent" in patch) agent().refreshMemory(true);
     if (patch && ("ui" in patch || "desktop" in patch)) deps.onConfigChanged();
     return updated;
+  };
+
+  ipcMain.handle("set-config", (_event, patch: Parameters<typeof config.merge>[0]) =>
+    applyConfigPatch(patch)
+  );
+
+  // The renderer names a page, never a config key: only sections this build owns are
+  // resettable, and the defaults come from the main process where they are defined.
+  ipcMain.handle("reset-settings-section", async (_event, page: unknown) => {
+    if (typeof page !== "string" || !RESETTABLE_PAGES.includes(page as SettingsPage)) {
+      throw new Error("That settings page has nothing to reset");
+    }
+    logger.info("settings.section.reset", { page });
+    return applyConfigPatch(resetPatch(page as SettingsPage));
   });
 
   ipcMain.handle("open-external", (_event, url: string) => {

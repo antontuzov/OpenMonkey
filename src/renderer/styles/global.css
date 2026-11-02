@@ -182,6 +182,12 @@ html[data-vibrant="true"] body {
     border-top: 1px solid var(--color-line);
   }
 
+  /* A settings search result marks the row it jumped to. */
+  .row-flash {
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    transition: background 0.35s ease;
+  }
+
   .row-title {
     color: var(--color-ink);
     font-size: 12.5px;

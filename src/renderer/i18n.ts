@@ -149,6 +149,10 @@ const EN = {
   "settings.ask": "Ask OpenMonkey",
   "settings.search": "Search settings…",
   "settings.noMatch": "No settings match “{query}”.",
+  "settings.reset": "Reset page",
+  "settings.resetConfirm": "Confirm reset",
+  "settings.resetHint": "Puts only this page's own settings back to their defaults.",
+  "settings.matches": "Matching rows",
 
   "desktop.startup": "Startup",
   "desktop.launchAtLogin": "Launch at login",
@@ -213,6 +217,7 @@ const EN = {
   "toast.workspaceCleared": "Workspace index cleared",
   "toast.serverAdded": "MCP server added",
   "toast.reindexed": "Workspace index rebuilt",
+  "toast.sectionReset": "{page} is back to its defaults.",
   "appearance.typography": "Typography",
   "appearance.mood": "Mood",
   "appearance.avatar": "Avatar",
@@ -256,6 +261,12 @@ const EN = {
   "privacy.autoDeleteCopy": "Older messages, tasks and audit rows are pruned on launch and every six hours while the app runs.",
   "privacy.database": "Database",
   "privacy.databaseCopy": "data/openmonkey.db inside this app's support folder. Tasks share the same file.",
+  "privacy.sizeStat": "history on disk",
+  "privacy.lastPruneStat": "last prune",
+  "privacy.requestsStat": "requests made",
+  "privacy.refusedStat": "refused by the switch",
+  "privacy.neverPruned": "never",
+  "privacy.dashboardCopy": "Size is the file on this Mac, write-ahead log included, and the prune stamp is the last time retention ran over it. The two counts are requests this app made since it started — model downloads, page fetches and update checks. Links you open go to your browser and are never the app's request.",
   "privacy.logs": "Logs",
   "privacy.logsCopy": "logs/openmonkey.log in the same folder, rotated by the app.",
   "privacy.historyKey": "History key",
@@ -298,7 +309,7 @@ const EN = {
   "toast.passphraseRemoved": "Passphrase removed",
 } as const;
 
-type StringKey = keyof typeof EN;
+export type StringKey = keyof typeof EN;
 
 const RU: Record<StringKey, string> = {
   "nav.home": "Главная",
@@ -449,6 +460,10 @@ const RU: Record<StringKey, string> = {
   "settings.ask": "Спросить OpenMonkey",
   "settings.search": "Поиск настроек…",
   "settings.noMatch": "Нет настроек по «{query}».",
+  "settings.reset": "Сбросить страницу",
+  "settings.resetConfirm": "Подтвердить сброс",
+  "settings.resetHint": "Возвращает значения по умолчанию только для этой страницы.",
+  "settings.matches": "Подходящие строки",
 
   "desktop.startup": "Запуск",
   "desktop.launchAtLogin": "Запускать при входе",
@@ -513,6 +528,7 @@ const RU: Record<StringKey, string> = {
   "toast.workspaceCleared": "Индекс рабочей папки очищен",
   "toast.serverAdded": "MCP-сервер добавлен",
   "toast.reindexed": "Индекс рабочей папки пересобран",
+  "toast.sectionReset": "{page} снова по умолчанию.",
   "appearance.typography": "Типографика",
   "appearance.mood": "Настроение",
   "appearance.avatar": "Аватар",
@@ -556,6 +572,12 @@ const RU: Record<StringKey, string> = {
   "privacy.autoDeleteCopy": "Старые сообщения, задачи и записи аудита удаляются при запуске и раз в шесть часов, пока приложение работает.",
   "privacy.database": "База данных",
   "privacy.databaseCopy": "data/openmonkey.db в папке поддержки приложения. Задачи в том же файле.",
+  "privacy.sizeStat": "история на диске",
+  "privacy.lastPruneStat": "последняя очистка",
+  "privacy.requestsStat": "запросов сделано",
+  "privacy.refusedStat": "отклонено тумблером",
+  "privacy.neverPruned": "никогда",
+  "privacy.dashboardCopy": "Размер — это файл на этом Mac, включая журнал дозаписи; отметка очистки — когда правило хранения последний раз что-то удалило. Счётчики считают запросы самого приложения с момента запуска: загрузку модели, чтение страниц и проверку обновлений. Ссылки, которые вы открываете, уходят в ваш браузер и запросом приложения не считаются.",
   "privacy.logs": "Логи",
   "privacy.logsCopy": "logs/openmonkey.log в той же папке, файл перекатывается приложением.",
   "privacy.historyKey": "Ключ истории",

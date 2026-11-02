@@ -231,7 +231,27 @@ export class Storage {
   /** Delete rows older than the configured window. Safe to call any time. */
   runRetention(): void {
     if (!this.db) return;
-    this.pruneOlderThan(config.get("privacy").autoDeleteAfter);
+    const days = config.get("privacy").autoDeleteAfter;
+    this.pruneOlderThan(days);
+    // "Keep for: forever" prunes nothing, so the dashboard only stamps a real pass.
+    if (days > 0) config.set("system", { ...config.get("system"), lastPruneAt: Date.now() });
+  }
+
+  /**
+   * The history as it sits on disk, write-ahead log included — that is what a user
+   * would actually copy away. Readable even while the database is locked, because
+   * the file size leaks nothing the ciphertext does not already.
+   */
+  databaseBytes(): number {
+    let total = 0;
+    for (const suffix of ["", "-wal", "-shm"]) {
+      try {
+        total += fs.statSync(path.join(dataRoot(), `openmonkey.db${suffix}`)).size;
+      } catch {
+        /* no journal file simply means nothing is waiting to be folded in */
+      }
+    }
+    return total;
   }
 
   /** The layout on disk; 0 while the history is locked or not yet opened. */

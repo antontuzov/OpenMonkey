@@ -59,6 +59,12 @@ try {
   await page.getByRole("heading", { name: "Privacy" }).waitFor();
   await page.screenshot({ path: path.join(outDir, "settings-privacy.png") });
 
+  const search = page.getByRole("textbox", { name: "Search settings…" });
+  await search.fill("bigger text");
+  await page.getByText("Appearance", { exact: true }).first().waitFor();
+  await page.screenshot({ path: path.join(outDir, "settings-search.png") });
+  await search.fill("");
+
   await page.getByRole("button", { name: "Desktop", exact: true }).click();
   await page.getByText("Update channel", { exact: true }).waitFor();
   await page.screenshot({ path: path.join(outDir, "settings-desktop.png") });

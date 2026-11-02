@@ -8,6 +8,7 @@ import type {
   MenuCommand,
   Mood,
   QuickAskResult,
+  SettingsPage,
   Task,
 } from "../utils/types";
 
@@ -64,6 +65,7 @@ const api: ElectronAPI = {
   importHistoryBackup: (passphrase: string, restoreSettings: boolean) =>
     ipcRenderer.invoke("import-history-backup", passphrase, restoreSettings),
   setConfig: (patch: ConfigPatch) => ipcRenderer.invoke("set-config", patch),
+  resetSettingsSection: (page: SettingsPage) => ipcRenderer.invoke("reset-settings-section", page),
   approveTask: (requestId: string, approved: boolean, remember = false) =>
     ipcRenderer.invoke("approve-task", requestId, approved, remember),
   cancelTask: (taskId: string) => ipcRenderer.invoke("cancel-task", taskId),

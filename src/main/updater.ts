@@ -2,7 +2,7 @@ import { app, dialog } from "electron";
 import { autoUpdater } from "electron-updater";
 import config from "../utils/config";
 import logger from "../utils/logger";
-import { networkAllowed } from "../utils/network";
+import { allowOutboundRequest } from "../utils/network";
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
@@ -16,7 +16,7 @@ function applyChannel(): void {
 
 /** App-initiated traffic obeys the same switch as downloads and page fetches. */
 export async function checkForUpdates(): Promise<void> {
-  if (!app.isPackaged || !networkAllowed()) return;
+  if (!app.isPackaged || !allowOutboundRequest("update-check")) return;
   applyChannel();
   try {
     await autoUpdater.checkForUpdates();

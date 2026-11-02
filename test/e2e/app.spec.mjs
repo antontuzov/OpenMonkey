@@ -14,12 +14,21 @@ test.describe.configure({ mode: "serial" });
 let app;
 let page;
 let profile;
+/**
+ * The suite's own quit is a real quit, so its exit status doubles as the crash check:
+ * teardown that leaves a node-llama-cpp worker outstanding aborts with a signal
+ * instead of exiting 0.
+ */
+let quitStatus = null;
 
 test.beforeAll(async () => {
   profile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-e2e-"));
   app = await electron.launch({
     args: [root],
     env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
+  });
+  app.process().on("exit", (code, signal) => {
+    quitStatus = { code, signal };
   });
   page = await app.firstWindow();
   await page.waitForLoadState("domcontentloaded");
@@ -31,8 +40,26 @@ test.afterAll(async () => {
   } catch {
     /* the app may already be gone */
   }
+  for (let i = 0; quitStatus === null && i < 40; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  expect(quitStatus?.signal, `the app died with ${quitStatus?.signal} on quit`).toBeNull();
+  expect(quitStatus?.code, "a real quit must exit 0").toBe(0);
   rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
+
+/**
+ * The settings view replaces the chat, so a test can arrive with either on screen.
+ * Opens the sidebar page by name and leaves settings showing.
+ */
+async function openSettingsPage(section) {
+  const inChat = await page
+    .getByRole("textbox", { name: "Message OpenMonkey" })
+    .isVisible()
+    .catch(() => false);
+  if (inChat) await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+  await page.getByRole("navigation").first().getByRole("button", { name: section, exact: true }).click();
+}
 
 test("a fresh profile opens the onboarding on Welcome", async () => {
   await expect(page.getByRole("button", { name: "Skip setup" })).toBeVisible();
@@ -95,7 +122,11 @@ test("Settings → Privacy states its rows and switches, and every switch has a 
   expect(names).toEqual(["Save conversation history", "Encrypt stored data", "Network access"]);
   for (const element of await switches.all()) await expect(element).toBeEnabled();
 
-  await expect(page).toHaveScreenshot("settings-privacy.png", { fullPage: true });
+  // The History card, not the whole page: the dashboard above it prints the clock, and a
+  // capture that changes every minute is not a check.
+  const historyCard = page.locator("main section").filter({ hasText: "Save conversation history" }).first();
+  await expect(historyCard).toBeVisible();
+  await expect(historyCard).toHaveScreenshot("settings-privacy.png");
 });
 
 test("the history switch flips and the page stays consistent", async () => {
@@ -124,6 +155,153 @@ test("switching to Russian translates the page and the html lang", async () => {
   await page.getByRole("button", { name: "Settings", exact: true }).first().click();
   await page.getByRole("button", { name: "Privacy", exact: true }).click();
   await expect(page.getByRole("switch", { name: "Save conversation history" })).toBeVisible();
+});
+
+test("the privacy dashboard answers from what the main process reports", async () => {
+  await openSettingsPage("Privacy");
+  await expect(page.getByRole("heading", { name: "Privacy" })).toBeVisible();
+  await expect(page.getByText("Dashboard", { exact: true })).toBeVisible();
+
+  const reported = await page.evaluate(() => window.electron.getPrivacyStatus());
+  const tileText = async (label) =>
+    (((await page.locator(`[data-stat="${label}"] p`).first().textContent()) ?? "").trim());
+
+  // Nothing is guessed while the reply is on its way: every tile carries a value.
+  for (const label of ["history on disk", "last prune", "requests made", "refused by the switch"]) {
+    await expect(page.locator(`[data-stat="${label}"]`)).toBeVisible();
+    const value = await tileText(label);
+    expect(value.length > 0).toBe(true);
+    expect(value.startsWith("—")).toBe(false);
+  }
+
+  expect(await tileText("requests made")).toBe(String(reported.requestsAllowed));
+  expect(await tileText("refused by the switch")).toBe(String(reported.requestsBlocked));
+  const prune = await tileText("last prune");
+  expect(prune === "never").toBe(reported.lastPruneAt === null);
+
+  // The key row says where the key actually is, in the main process's own words.
+  const keyChip = page.locator(".row", { has: page.getByText("History key", { exact: true }) }).locator(".chip");
+  await expect(keyChip.first()).toBeVisible();
+  await expect(keyChip.first()).toHaveText(/keychain|0600 file|passphrase|locked|off/);
+
+  // One number, one source: the tile and the storage row read the same size.
+  const size = await tileText("history on disk");
+  const databaseChip = page
+    .locator(".row", { has: page.getByText("Database", { exact: true }) })
+    .locator(".chip")
+    .first();
+  const chipText = ((await databaseChip.textContent()) ?? "").trim();
+  expect(chipText.startsWith(`${size} · `)).toBe(true);
+  expect(chipText).toMatch(/· (sealed|plain text)$/);
+});
+
+test("resetting a page puts its own settings back and leaves every other page alone", async () => {
+  await openSettingsPage("Desktop");
+  await expect(page.getByRole("heading", { name: "Desktop" })).toBeVisible();
+
+  const read = (keyPath) =>
+    page.evaluate((path) => window.electron.getConfig().then((value) => path.reduce((o, key) => o[key], value)), [
+      ...keyPath,
+    ]);
+
+  const autoLockBefore = await read(["privacy", "autoLockMinutes"]);
+  await page.getByRole("button", { name: "Beta", exact: true }).click();
+  await expect.poll(() => read(["desktop", "updateChannel"])).toBe("beta");
+  // A choice on another page, to prove the reset stays inside its own section.
+  await page.evaluate(() => window.electron.setConfig({ privacy: { autoLockMinutes: 60 } }));
+
+  const reset = page.getByRole("button", { name: "Reset page" });
+  await expect(reset).toBeVisible();
+  await reset.click();
+  await expect(reset).toHaveText("Confirm reset");
+  // One click only arms the button; the settings are untouched until it is confirmed.
+  await expect.poll(() => read(["desktop", "updateChannel"])).toBe("beta");
+
+  await reset.click();
+  await expect.poll(() => read(["desktop", "updateChannel"])).toBe("stable");
+  expect(await read(["privacy", "autoLockMinutes"])).toBe(60);
+  await expect(page.getByText("Desktop is back to its defaults.")).toBeVisible();
+  await expect(reset).toHaveText("Reset page");
+
+  await page.evaluate((minutes) => window.electron.setConfig({ privacy: { autoLockMinutes: minutes } }), autoLockBefore);
+});
+
+test("the settings search finds a row on another page, opens it and marks it", async () => {
+  await openSettingsPage("Profile");
+  const search = page.getByLabel(/Search settings/);
+  const results = page.locator("[data-settings-results]");
+
+  await search.fill("bigger text");
+  await expect(results).toBeVisible();
+  const hit = results.locator("button", { hasText: "Text size" });
+  await expect(hit).toBeVisible();
+  // The result names the page that owns the row, so the jump is not a surprise.
+  await expect(hit).toContainText("Appearance");
+
+  await hit.click();
+  await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+  expect(
+    await page.evaluate(() => document.querySelector(".row-flash .row-title")?.textContent?.trim() ?? null)
+  ).toBe("Text size");
+  // The query is spent once it has been used, so the sidebar goes back to the pages.
+  await expect(search).toHaveValue("");
+  await expect(results).toHaveCount(0);
+
+  // A word that appears nowhere on screen still reaches the row it belongs to.
+  await search.fill("keychain");
+  await results.locator("button", { hasText: "History key" }).click();
+  await expect(page.getByRole("heading", { name: "Privacy" })).toBeVisible();
+  expect(
+    await page.evaluate(() => document.querySelector(".row-flash .row-title")?.textContent?.trim() ?? null)
+  ).toBe("History key");
+
+  await search.fill("nothingresemblesthis");
+  await expect(results).toHaveCount(0);
+  await expect(page.getByText(/No settings match/)).toBeVisible();
+  await search.fill("");
+});
+
+test("every row a settings page renders can be found by typing its own name", async () => {
+  // Run before any test writes facts, digests or audit rows: this sweep reads the
+  // rows a page renders by itself, and user data is nobody's business but the index's.
+  // Every row is typed into the box, so this is a minute of work rather than a check.
+  test.setTimeout(180_000);
+  await openSettingsPage("Profile");
+  const nav = page.getByRole("navigation").first();
+  const search = page.getByLabel(/Search settings/);
+  const labels = () =>
+    page.locator("[data-settings-results] .truncate").evaluateAll((elements) => elements.map((e) => e.textContent?.trim()));
+
+  const missing = [];
+  let rowsSeen = 0;
+  for (const pageName of [
+    "Profile",
+    "Appearance",
+    "Desktop",
+    "Approvals",
+    "Memory",
+    "Workspace",
+    "Permissions",
+    "Privacy",
+    "MCP servers",
+    "Model",
+  ]) {
+    await nav.getByRole("button", { name: pageName, exact: true }).click();
+    const titles = await page.locator("main .row-title").evaluateAll((elements) => [
+      ...new Set(elements.map((element) => element.textContent?.trim()).filter(Boolean)),
+    ]);
+    rowsSeen += titles.length;
+    for (const title of titles) {
+      await search.fill(title);
+      const hits = await labels();
+      if (!hits.includes(title)) missing.push(`${pageName}: ${title}`);
+    }
+    await search.fill("");
+  }
+  // The sweep is only worth running if it walked the pages.
+  expect(rowsSeen).toBeGreaterThan(30);
+  console.log(`settings search indexes every rendered row: ${rowsSeen} rows checked, ${missing.length} missing`);
+  expect(missing).toEqual([]);
 });
 
 test("the empty chat offers starter prompts that fill the composer", async () => {

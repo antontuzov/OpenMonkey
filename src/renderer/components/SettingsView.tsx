@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  ArrowRight,
   Bell,
   Brain,
   CalendarClock,
@@ -44,9 +45,11 @@ import { checkAccent } from "../theme";
 import { logoUrl } from "../assets";
 import { moodLabel, t } from "../i18n";
 import { toast } from "./Toast";
+import { searchSettings } from "../settings-search";
 import {
   MOODS,
   MOOD_LOGOS,
+  RESETTABLE_PAGES,
   type AgentStatus,
   type ApprovalPolicy,
   type AuditEntry,
@@ -60,6 +63,7 @@ import {
   type ModelStatus,
   type Mood,
   type PrivacyStatus,
+  type SettingsPage,
   type WorkspaceHit,
 } from "../../utils/types";
 import { formatBytes, formatMilliseconds } from "../../models/benchmark";
@@ -69,21 +73,13 @@ interface SettingsViewProps {
   mood: Mood;
   config: Config;
   onPatch: (patch: ConfigPatch) => Promise<void>;
+  /** Restore one page's own settings; the defaults live in the main process. */
+  onResetSection: (page: SettingsPage) => Promise<void>;
   onClose: () => void;
   onRefreshStatus: () => Promise<void>;
 }
 
-type Section =
-  | "profile"
-  | "appearance"
-  | "desktop"
-  | "approvals"
-  | "memory"
-  | "workspace"
-  | "permissions"
-  | "privacy"
-  | "extensions"
-  | "model";
+type Section = SettingsPage;
 
 const DEFAULT_POLICIES: Record<"file" | "web" | "shell" | "calendar" | "email" | "mcp", ApprovalPolicy> = {
   file: "ask",
@@ -277,6 +273,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   mood,
   config,
   onPatch,
+  onResetSection,
   onClose,
   onRefreshStatus,
 }) => {
@@ -320,7 +317,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [encryptBusy, setEncryptBusy] = useState(false);
   const [logText, setLogText] = useState<string | null>(null);
   const [logNotice, setLogNotice] = useState("");
+  const [resetArmed, setResetArmed] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
   const [online, setOnline] = useState(() => navigator.onLine);
+
+  // A search result names a row, so the page it lives on opens and that row is marked.
+  useEffect(() => {
+    if (!highlight) return;
+    const title = [...document.querySelectorAll<HTMLElement>(".row-title")].find(
+      (element) => element.textContent?.trim() === highlight
+    );
+    const row = title?.closest(".row") ?? null;
+    title?.scrollIntoView({ block: "center" });
+    row?.classList.add("row-flash");
+    return () => {
+      row?.classList.remove("row-flash");
+    };
+  }, [highlight, section]);
 
   useEffect(() => {
     const up = () => setOnline(true);
@@ -362,6 +376,43 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const providerLabel = status.provider === "mlx" ? "MLX" : "Bonsai 4B";
   const modelMemory = models?.memory ?? null;
   const lastBenchmark = models?.lastBenchmark ?? null;
+
+  /** The privacy dashboard answers from what the main process actually reports. */
+  const keySourceCopy =
+    keySource === "locked"
+      ? t("privacy.keyCopyLocked")
+      : keySource === "passphrase"
+        ? t("privacy.keyCopyPassphrase")
+        : keySource === "keychain"
+          ? t("privacy.keyCopyKeychain")
+          : keySource === "file"
+            ? t("privacy.keyCopyFile")
+            : t("privacy.keyCopyOff");
+  const keySourceLabel =
+    keySource === "keychain"
+      ? "keychain"
+      : keySource === "file"
+        ? "0600 file"
+        : keySource === "passphrase"
+          ? t("privacy.keyPassphrase")
+          : keySource === "locked"
+            ? t("privacy.keyLocked")
+            : "off";
+  const pruneAt = privacyStatus?.lastPruneAt ?? null;
+  const databaseBytes = privacyStatus?.databaseBytes ?? 0;
+  // Nothing is claimed before the main process answers.
+  const stat = (label: string, value: string) => ({ label, value: privacyStatus ? value : "—" });
+  const dashboardStats: Array<{ label: string; value: string }> = [
+    stat(t("privacy.sizeStat"), formatBytes(databaseBytes)),
+    stat(
+      t("privacy.lastPruneStat"),
+      pruneAt
+        ? new Date(pruneAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+        : t("privacy.neverPruned")
+    ),
+    stat(t("privacy.requestsStat"), String(privacyStatus?.requestsAllowed ?? 0)),
+    stat(t("privacy.refusedStat"), String(privacyStatus?.requestsBlocked ?? 0)),
+  ];
 
   useEffect(() => {
     void window.electron?.getModelStatus().then(setModels).catch(() => undefined);
@@ -795,8 +846,42 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     })).filter((group) => group.items.length > 0);
   }, [query, config.ui.language]);
 
+  const results = useMemo(() => searchSettings(query), [query, config.ui.language]);
+
+  const jumpToRow = (page: Section, label: string) => {
+    setSection(page);
+    setHighlight(label);
+    setQuery("");
+  };
+
   const patchUi = (changes: Partial<Config["ui"]>) => void onPatch({ ui: changes });
   const patchDesktop = (changes: Partial<Config["desktop"]>) => void onPatch({ desktop: changes });
+
+  // Leaving the page disarms the button: a second click must never reset a page the
+  // user is no longer looking at.
+  useEffect(() => setResetArmed(false), [section]);
+
+  const canReset = RESETTABLE_PAGES.includes(section);
+
+  const resetThisPage = async () => {
+    if (!canReset) return;
+    if (!resetArmed) {
+      setResetArmed(true);
+      window.setTimeout(() => setResetArmed(false), 4_000);
+      return;
+    }
+    setResetArmed(false);
+    setResetBusy(true);
+    try {
+      await onResetSection(section);
+      await Promise.all([refreshPrivacy(), refreshModels()]);
+      toast(t("toast.sectionReset", { page: t(TITLES[section].titleKey) }));
+    } catch (error) {
+      toast(failureText(error), "error");
+    } finally {
+      setResetBusy(false);
+    }
+  };
 
   const switchProvider = async (provider: ModelPreference) => {
     setBusy(true);
@@ -906,6 +991,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {t("settings.ask")}
           </button>
 
+          {results.length > 0 && (
+            <div className="mt-4" data-settings-results>
+              <p className="section-label px-2">{t("settings.matches")}</p>
+              <div className="space-y-0.5">
+                {results.map((hit) => (
+                  <button
+                    key={`${hit.page}:${hit.label}`}
+                    onClick={() => jumpToRow(hit.page, hit.label)}
+                    className="nav-item w-full"
+                  >
+                    <ArrowRight size={15} className="text-faint" />
+                    <span className="truncate">{hit.label}</span>
+                    <span className="ml-auto text-[9.5px] text-faint shrink-0 pl-2">
+                      {t(TITLES[hit.page].titleKey)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {groups.map((group) => (
             <div key={group.labelKey} className="mt-4">
               <p className="section-label px-2">{t(group.labelKey)}</p>
@@ -927,7 +1033,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </div>
           ))}
 
-          {groups.length === 0 && (
+          {groups.length === 0 && results.length === 0 && (
             <p className="text-[11px] text-faint px-3 py-5 leading-relaxed">
               {t("settings.noMatch", { query })}
             </p>
@@ -951,12 +1057,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <h1 className="page-title">{t(head.titleKey)}</h1>
               <p className="lede">{head.ledeKey ? t(head.ledeKey) : head.lede}</p>
             </div>
-            {section === "model" && (
-              <button onClick={() => void checkAgain()} disabled={busy} className="btn shrink-0 mt-1">
-                <RefreshCw size={13} className={busy ? "animate-spin" : ""} />
-                Check again
-              </button>
-            )}
+            <div className="flex items-start gap-2 shrink-0 mt-1">
+              {section === "model" && (
+                <button onClick={() => void checkAgain()} disabled={busy} className="btn">
+                  <RefreshCw size={13} className={busy ? "animate-spin" : ""} />
+                  Check again
+                </button>
+              )}
+              {canReset && (
+                <button
+                  onClick={() => void resetThisPage()}
+                  disabled={resetBusy}
+                  title={t("settings.resetHint")}
+                  aria-label={t("settings.reset")}
+                  className={`btn ${resetArmed ? "!text-danger" : ""}`}
+                >
+                  {resetBusy ? (
+                    <Loader size={12} className="animate-spin" />
+                  ) : (
+                    <RotateCw size={12} />
+                  )}
+                  {resetArmed ? t("settings.resetConfirm") : t("settings.reset")}
+                </button>
+              )}
+            </div>
           </div>
 
           {section === "memory" && memoryNotice && (
@@ -2163,6 +2287,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {section === "privacy" && (
               <>
                 <section>
+                  <p className="section-label">Dashboard</p>
+                  <div className="card">
+                    <div className="grid grid-cols-2 gap-2 px-4 pt-4 pb-2">
+                      {dashboardStats.map((item) => (
+                        <div
+                          key={item.label}
+                          data-stat={item.label}
+                          className="rounded-lg bg-card-2 border border-line px-2.5 py-2"
+                        >
+                          <p className="text-[17px] font-semibold tabular-nums leading-tight">{item.value}</p>
+                          <p className="text-[9.5px] text-muted leading-tight mt-0.5">{item.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="px-4 pb-3 text-[10px] text-faint leading-relaxed">
+                      {t("privacy.dashboardCopy")}
+                    </p>
+                    <div className="border-t border-line">
+                      <SettingRow title={t("privacy.historyKey")} copy={keySourceCopy}>
+                        <span
+                          className={`chip ${keySource === "keychain" || keySource === "passphrase" ? "chip-accent" : ""}`}
+                        >
+                          {keySourceLabel}
+                        </span>
+                      </SettingRow>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
                   <p className="section-label">History</p>
                   <div className="card">
                     <SettingRow title={t("privacy.saveHistory")} copy={t("privacy.saveHistoryCopy")}>
@@ -2374,36 +2528,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <p className="section-label">Storage</p>
                   <div className="card">
                     <SettingRow title={t("privacy.database")} copy={t("privacy.databaseCopy")}>
-                      <span className="chip">{privacy.encryptData ? "sealed" : "plain text"}</span>
+                      <span className="chip">
+                        {formatBytes(databaseBytes)} · {privacy.encryptData ? "sealed" : "plain text"}
+                      </span>
                     </SettingRow>
                     <SettingRow title={t("privacy.logs")} copy={t("privacy.logsCopy")}>
                       <span className="chip">local</span>
-                    </SettingRow>
-                    <SettingRow
-                      title={t("privacy.historyKey")}
-                      copy={
-                        keySource === "locked"
-                          ? t("privacy.keyCopyLocked")
-                          : keySource === "passphrase"
-                            ? t("privacy.keyCopyPassphrase")
-                            : keySource === "keychain"
-                              ? t("privacy.keyCopyKeychain")
-                              : keySource === "file"
-                                ? t("privacy.keyCopyFile")
-                                : t("privacy.keyCopyOff")
-                      }
-                    >
-                      <span className={`chip ${keySource === "keychain" || keySource === "passphrase" ? "chip-accent" : ""}`}>
-                        {keySource === "keychain"
-                          ? "keychain"
-                          : keySource === "file"
-                            ? "0600 file"
-                            : keySource === "passphrase"
-                              ? t("privacy.keyPassphrase")
-                              : keySource === "locked"
-                                ? t("privacy.keyLocked")
-                                : "off"}
-                      </span>
                     </SettingRow>
                   </div>
                 </section>

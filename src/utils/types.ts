@@ -313,6 +313,49 @@ export interface AgentStatus {
 /** Where the history key is kept right now. `locked` means the database is closed. */
 export type HistoryKeySource = "keychain" | "file" | "passphrase" | "locked" | "off";
 
+/** The settings pages, in the order the sidebar lists them. */
+export type SettingsPage =
+  | "profile"
+  | "appearance"
+  | "desktop"
+  | "approvals"
+  | "memory"
+  | "workspace"
+  | "permissions"
+  | "privacy"
+  | "extensions"
+  | "model";
+
+/** Every settings page, in the order the sidebar lists them. */
+export const SETTINGS_PAGES: SettingsPage[] = [
+  "profile",
+  "appearance",
+  "desktop",
+  "approvals",
+  "memory",
+  "workspace",
+  "permissions",
+  "privacy",
+  "extensions",
+  "model",
+];
+
+/**
+ * Pages that own at least one stored setting, so "reset this page" has something to
+ * put back. `permissions` only reports what macOS grants, so it has nothing to reset.
+ */
+export const RESETTABLE_PAGES: SettingsPage[] = [
+  "profile",
+  "appearance",
+  "desktop",
+  "approvals",
+  "memory",
+  "workspace",
+  "privacy",
+  "extensions",
+  "model",
+];
+
 /** What the privacy page is allowed to claim about stored data. */
 export interface PrivacyStatus {
   keySource: HistoryKeySource;
@@ -324,6 +367,13 @@ export interface PrivacyStatus {
   schemaVersion: number;
   /** False when the deny-all-network switch is on. */
   networkAllowed: boolean;
+  /** Bytes the history file plus its write-ahead log take on disk. */
+  databaseBytes: number;
+  /** When retention last ran over the stored history, or null if it never has. */
+  lastPruneAt: number | null;
+  /** Requests the app itself made since this launch, split by the network switch. */
+  requestsAllowed: number;
+  requestsBlocked: number;
 }
 
 /** Outcome of a passphrase or erase request, shaped for the settings page. */
@@ -380,6 +430,11 @@ export interface Config {
     autoLockMinutes: number;
     /** When false the app makes no requests of its own: no downloads, no page fetches. */
     networkAllowed: boolean;
+  };
+  /** Bookkeeping the app keeps for itself; never a setting the user edits. */
+  system: {
+    /** Wall-clock time of the last retention pass, so the privacy page can date it. */
+    lastPruneAt: number | null;
   };
   memory: {
     enabled: boolean;
@@ -532,6 +587,8 @@ export interface ElectronAPI {
   exportHistoryBackup: (passphrase: string) => Promise<PortabilityResult>;
   importHistoryBackup: (passphrase: string, restoreSettings: boolean) => Promise<PortabilityResult>;
   setConfig: (patch: ConfigPatch) => Promise<Config>;
+  /** Restore one page's own settings to their defaults. */
+  resetSettingsSection: (page: SettingsPage) => Promise<Config>;
   approveTask: (requestId: string, approved: boolean, remember?: boolean) => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
   getAuditLog: (limit?: number) => Promise<AuditEntry[]>;

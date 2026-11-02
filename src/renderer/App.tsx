@@ -25,6 +25,7 @@ import {
   type ConversationSearchHit,
   type Mood,
   type PrivacyStatus,
+  type SettingsPage,
 } from "../utils/types";
 
 type View = "chat" | "settings";
@@ -293,6 +294,11 @@ export default function App() {
     if (next) setConfig(next);
   }, []);
 
+  const resetSection = useCallback(async (page: SettingsPage) => {
+    const next = await window.electron?.resetSettingsSection(page);
+    if (next) setConfig(next);
+  }, []);
+
   const refreshStatus = useCallback(async () => {
     const next = await window.electron?.getAgentStatus();
     if (next) setStatus(next);
@@ -391,6 +397,7 @@ export default function App() {
             mood={mood}
             config={config}
             onPatch={patchConfig}
+            onResetSection={resetSection}
             onClose={() => setView("chat")}
             onRefreshStatus={refreshStatus}
           />

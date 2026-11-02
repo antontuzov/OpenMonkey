@@ -2,7 +2,7 @@ import Store from "electron-store";
 import { app } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import type { Config, ConfigPatch } from "./types";
+import type { Config, ConfigPatch, SettingsPage } from "./types";
 import { BONSAI_4B } from "../models/catalog";
 
 const defaultConfig: Config = {
@@ -66,6 +66,9 @@ const defaultConfig: Config = {
   mcp: {
     servers: [],
   },
+  system: {
+    lastPruneAt: null,
+  },
 };
 
 const store = new Store<Config>({
@@ -110,8 +113,77 @@ export const config = {
   },
 };
 
-const isPackaged = (): boolean => !!app.isPackaged;
+/**
+ * What "reset this page" puts back: only the fields that page owns, so resetting
+ * Appearance cannot quietly undo a privacy choice made somewhere else.
+ */
+const PAGE_DEFAULTS: Partial<Record<SettingsPage, ConfigPatch>> = {
+  profile: {
+    agent: { name: defaultConfig.agent.name, personality: defaultConfig.agent.personality },
+  },
+  appearance: {
+    ui: {
+      theme: defaultConfig.ui.theme,
+      accent: defaultConfig.ui.accent,
+      textScale: defaultConfig.ui.textScale,
+      density: defaultConfig.ui.density,
+      reduceMotion: defaultConfig.ui.reduceMotion,
+      language: defaultConfig.ui.language,
+    },
+  },
+  desktop: {
+    desktop: {
+      launchAtLogin: defaultConfig.desktop.launchAtLogin,
+      closeToTray: defaultConfig.desktop.closeToTray,
+      notifications: defaultConfig.desktop.notifications,
+      notifyOnComplete: defaultConfig.desktop.notifyOnComplete,
+      quickAsk: defaultConfig.desktop.quickAsk,
+      updateChannel: defaultConfig.desktop.updateChannel,
+    },
+  },
+  approvals: {
+    agent: {
+      autoExecuteTasks: defaultConfig.agent.autoExecuteTasks,
+      approvalPolicies: { ...defaultConfig.agent.approvalPolicies },
+    },
+  },
+  memory: {
+    memory: { enabled: defaultConfig.memory.enabled, workspaceSearch: defaultConfig.memory.workspaceSearch },
+  },
+  workspace: { agent: { workspaceRoots: [] } },
+  privacy: {
+    privacy: {
+      saveHistory: defaultConfig.privacy.saveHistory,
+      encryptData: defaultConfig.privacy.encryptData,
+      autoDeleteAfter: defaultConfig.privacy.autoDeleteAfter,
+      autoLockMinutes: defaultConfig.privacy.autoLockMinutes,
+      networkAllowed: defaultConfig.privacy.networkAllowed,
+    },
+  },
+  extensions: { mcp: { servers: [] } },
+  model: {
+    model: {
+      provider: defaultConfig.model.provider,
+      temperature: defaultConfig.model.temperature,
+      maxTokens: defaultConfig.model.maxTokens,
+    },
+  },
+};
 
+/** Pages whose settings are stored, so the reset action only appears where it does something. */
+export const resettablePages = (): SettingsPage[] =>
+  Object.keys(PAGE_DEFAULTS) as SettingsPage[];
+
+/**
+ * The defaults for one page, as a patch. Returning the patch instead of writing it lets
+ * the IPC layer apply it through the same guarded path as a normal settings change, so a
+ * reset cannot skip the history-encryption checks.
+ */
+export function resetPatch(page: SettingsPage): ConfigPatch {
+  return PAGE_DEFAULTS[page] ?? {};
+}
+
+const isPackaged = (): boolean => !!app.isPackaged;
 /** `assets/` ships via electron-builder extraResources, so it moves in packaged builds. */
 export function assetPath(...segments: string[]): string {
   const base = isPackaged() ? process.resourcesPath : path.resolve(app.getAppPath(), "assets");
