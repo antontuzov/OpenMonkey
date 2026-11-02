@@ -2,12 +2,13 @@ import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { OpenMonkey } from "../agent/OpenMonkey";
-import config from "../utils/config";
+import config, { ggufPath } from "../utils/config";
 import {
   MOODS,
   MOOD_LOGOS,
   type Attachment,
   type MenuCommand,
+  type ModelPreference,
   type Mood,
   type PrivacyActionResult,
   type PrivacyStatus,
@@ -198,9 +199,14 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     deps.getAgent()?.stopGeneration();
   });
 
-  ipcMain.handle("switch-provider", async (_event, provider: "mlx" | "bonsai") => {
+  ipcMain.handle("switch-provider", async (_event, provider: ModelPreference) => {
+    if (provider !== "auto" && provider !== "mlx" && provider !== "bonsai") {
+      throw new Error(`Unknown model backend: ${String(provider)}`);
+    }
     await agent().switchProvider(provider);
   });
+
+  ipcMain.handle("benchmark-model", () => agent().benchmarkModel());
 
   ipcMain.handle("download-model", async () => {
     const status = await downloader.download();
@@ -216,6 +222,11 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   ipcMain.handle("verify-model", () => downloader.verifyInstalled());
   ipcMain.handle("get-model-download-status", () => downloader.current);
   ipcMain.handle("reload-model", () => agent().reloadModel());
+  ipcMain.handle("delete-model", async () => {
+    const status = downloader.removeInstalled();
+    await agent().releaseModel();
+    return status;
+  });
 
   ipcMain.handle("probe-automation", (_event, area: "calendar" | "mail") => {
     if (area !== "calendar" && area !== "mail") throw new Error(`Unknown automation target: ${area}`);
@@ -230,7 +241,17 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("get-model-status", async () => {
     const instance = deps.getAgent();
-    if (!instance) return { provider: null, mlxAvailable: false, bonsaiAvailable: false };
+    if (!instance) {
+      return {
+        provider: null,
+        preference: config.get("model").provider,
+        mlxAvailable: false,
+        bonsaiAvailable: fs.existsSync(ggufPath()),
+        warmedUp: false,
+        memory: null,
+        lastBenchmark: null,
+      };
+    }
     return await instance.modelStatus();
   });
 

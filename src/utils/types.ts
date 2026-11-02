@@ -287,7 +287,7 @@ export const MOOD_LOGOS: Record<
 };
 
 export interface ModelConfig {
-  provider: "mlx" | "bonsai";
+  provider: ModelPreference;
   path: string;
   contextSize: number;
   temperature: number;
@@ -355,7 +355,7 @@ export interface Config {
     completed: boolean;
   };
   model: {
-    provider: "mlx" | "bonsai";
+    provider: ModelPreference;
     temperature: number;
     maxTokens: number;
   };
@@ -416,8 +416,15 @@ export type AppLanguage = "en" | "ru";
 
 export interface ModelStatus {
   provider: ModelProvider | null;
+  /** What the user asked for: a concrete backend, or "auto" to let the app pick. */
+  preference: ModelPreference;
   mlxAvailable: boolean;
   bonsaiAvailable: boolean;
+  /** True once a short warm-up prompt has run against the loaded weights. */
+  warmedUp: boolean;
+  memory: ModelMemoryEstimate | null;
+  /** The most recent measured run, kept until the model is unloaded. */
+  lastBenchmark: ModelBenchmark | null;
 }
 
 export type ModelDownloadPhase = "idle" | "downloading" | "verifying" | "done" | "error" | "cancelled";
@@ -438,6 +445,31 @@ export interface ModelDownloadStatus {
 }
 
 export type ModelProvider = "mlx" | "bonsai";
+
+/** What the user picked: a backend, or "auto" so the app picks the fastest one. */
+export type ModelPreference = ModelProvider | "auto";
+
+/** What the weights and the KV cache will cost before anything is loaded. */
+export interface ModelMemoryEstimate {
+  modelBytes: number;
+  contextBytes: number;
+  cpuRamBytes: number;
+  gpuVramBytes: number;
+  contextSize: number;
+  trainContextSize: number | null;
+}
+
+/** One measured run of the local model. */
+export interface ModelBenchmark {
+  provider: ModelProvider;
+  tokens: number;
+  tokensPerSecond: number;
+  timeToFirstTokenMs: number | null;
+  generationMs: number;
+  prompt: string;
+  modelBytes: number;
+  ranAt: number;
+}
 
 /** Sections of Config the renderer may change, one at a time. */
 export type ConfigPatch = Partial<{
@@ -519,10 +551,12 @@ export interface ElectronAPI {
   clearWorkspaceIndex: () => Promise<WorkspaceIndexStatus>;
   searchWorkspaceMemory: (query: string) => Promise<WorkspaceHit[]>;
   stopGeneration: () => Promise<void>;
-  switchProvider: (provider: "mlx" | "bonsai") => Promise<void>;
+  switchProvider: (provider: ModelPreference) => Promise<void>;
+  benchmarkModel: () => Promise<ModelBenchmark>;
   downloadModel: () => Promise<ModelDownloadStatus>;
   cancelModelDownload: () => Promise<void>;
   verifyModel: () => Promise<ModelDownloadStatus>;
+  deleteModel: () => Promise<ModelDownloadStatus>;
   getModelDownloadStatus: () => Promise<ModelDownloadStatus>;
   reloadModel: () => Promise<void>;
   probeAutomation: (area: "calendar" | "mail") => Promise<AutomationProbe>;

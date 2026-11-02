@@ -8,6 +8,7 @@ import type {
 } from "node-llama-cpp";
 import * as fs from "node:fs";
 import logger from "../utils/logger";
+import type { BenchmarkMeasurement } from "./benchmark";
 
 export interface BonsaiConfig {
   modelPath: string;
@@ -123,6 +124,56 @@ export class BonsaiGGUF {
     }
     this.session.setChatHistory(items);
     this.activeSystemPrompt = systemPrompt;
+  }
+
+  /** What the loaded weights and the KV cache actually cost right now. */
+  memoryUsage(): { ram: number; vram: number } | null {
+    if (!this.model) return null;
+    return this.model.memoryUsage;
+  }
+
+  /**
+   * Runs one fixed prompt and reports how fast the tokens came out. The chat
+   * history is saved and put back, so a benchmark leaves no trace in a
+   * conversation.
+   */
+  async benchmark(prompt: string, maxTokens: number, signal?: AbortSignal): Promise<BenchmarkMeasurement> {
+    if (!this.session) await this.load();
+    const session = this.session;
+    if (!session) throw new Error("Model not loaded");
+
+    const history = session.getChatHistory();
+    let tokens = 0;
+    let firstTokenAt: number | null = null;
+    let lastTokenAt = Date.now();
+    const startedAt = Date.now();
+
+    try {
+      await session.prompt(prompt, {
+        temperature: 0,
+        maxTokens,
+        signal,
+        stopOnAbortSignal: true,
+        onToken: (batch) => {
+          const now = Date.now();
+          if (firstTokenAt === null) firstTokenAt = now;
+          lastTokenAt = now;
+          tokens += batch.length;
+        },
+      });
+    } finally {
+      session.setChatHistory(history);
+      this.activeSystemPrompt = "";
+    }
+
+    const generationMs = lastTokenAt - (firstTokenAt ?? startedAt);
+    return {
+      provider: "bonsai",
+      tokens,
+      timeToFirstTokenMs: firstTokenAt === null ? null : firstTokenAt - startedAt,
+      generationMs,
+      modelBytes: this.model?.size ?? 0,
+    };
   }
 
   /** Drop the running conversation but keep the loaded weights. */

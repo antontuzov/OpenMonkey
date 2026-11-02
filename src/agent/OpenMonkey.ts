@@ -19,6 +19,8 @@ import type {
   MemoryFact,
   MemorySnapshot,
   Message,
+  ModelBenchmark,
+  ModelPreference,
   ModelStatus,
   Mood,
   QuickAskResult,
@@ -781,17 +783,43 @@ Always maintain a helpful, professional tone while being approachable.`;
     this.emit("status", status);
   }
 
-  async switchProvider(provider: "mlx" | "bonsai"): Promise<void> {
+  async switchProvider(provider: ModelPreference): Promise<void> {
     this.setStatus({ state: "loading-model" });
     try {
       await this.modelManager.switchModel(provider);
       this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
-      this.setStatus({ state: "ready", provider });
+      this.setStatus({ state: "ready", provider: this.modelManager.active ?? undefined });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.setStatus({ state: "error", message });
       throw error;
     }
+  }
+
+  /**
+   * Measures the local model so the user can see how fast this Mac is. It takes
+   * the same slot as a chat turn: both drive the one loaded session, and Stop
+   * aborts whichever is running.
+   */
+  async benchmarkModel(): Promise<ModelBenchmark> {
+    if (this.controller) throw new Error("OpenMonkey is already answering. Stop that reply first.");
+    const controller = new AbortController();
+    this.controller = controller;
+    try {
+      return await this.modelManager.benchmark(controller.signal);
+    } finally {
+      if (this.controller === controller) this.controller = null;
+    }
+  }
+
+  /** Free the weights after the file is deleted, so nothing claims a loaded model. */
+  async releaseModel(): Promise<void> {
+    this.stopGeneration();
+    await this.modelManager.shutdown();
+    this.setStatus({
+      state: "error",
+      message: "The model was deleted from this Mac. Download it again to keep chatting.",
+    });
   }
 
   /** Load weights that appeared after startup, e.g. once an in-app download finishes. */

@@ -40,6 +40,33 @@ model load has no percentage to report from `llama.cpp`, so the chat shows an
 elapsed-seconds counter beside the spinner; the download, by contrast, reports real
 percentage progress.
 
+### What the weights cost, and how fast they answer
+
+Settings → Model shows both of these before and after a load, and
+`npm run benchmark-model` prints the same pair from the command line:
+
+| Measurement | Bonsai-4B on this Mac |
+| --- | --- |
+| Weights | 566 MB |
+| KV cache for a 4,096-token context | 1.29 GB |
+| Total the estimate asks for | 1.85 GB system RAM, 0 MB VRAM |
+| Context the file was trained on | 32,768 tokens |
+| Generation speed, warm | 22.8–24.1 tokens/s |
+| First token | 223–306 ms warm, ~2 s in a cold process |
+
+The speed comes from the app's own benchmark: one fixed prompt, temperature 0, a
+96-token cap, timed from the first token to the last so reading the prompt is not
+counted. The same prompt wrote 78 tokens in 3.42 s. A cold `npm run benchmark-model`
+run measured 13.3 tokens/s, because the weights are still being paged in while the
+model writes; the 1.85 GB estimate lines up with the 2,005 MB loaded working set
+above.
+
+The MLX backend is measured the same way (its own streamed request, token counts from
+`usage.completion_tokens`), so the two numbers are comparable — but no MLX install was
+available on this Mac, so only the Bonsai column carries a recorded number.
+
+![The measured run in Settings → Model](docs/screenshots/settings-model-benchmark.png)
+
 ## Not wired
 
 Other GGUF files are not selectable in the UI, even if you place them on disk. The

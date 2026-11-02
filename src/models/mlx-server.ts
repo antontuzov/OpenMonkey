@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import * as net from "node:net";
 import logger from "../utils/logger";
 import type { GenerateOptions } from "./bonsai-gguf";
+import type { BenchmarkMeasurement } from "./benchmark";
 
 export interface MLXServerConfig {
   modelPath: string;
@@ -123,13 +124,90 @@ export class MLXServer {
       return content;
     }
 
+    let content = "";
+    await this.readStream(response, (frame) => {
+      if (frame.delta) {
+        content += frame.delta;
+        options.onTextChunk?.(frame.delta);
+      }
+      return !frame.finishReason;
+    });
+
+    if (!content) throw new Error("MLX server returned no completion");
+    return content;
+  }
+
+  /**
+   * Runs one fixed prompt against the server and reports how fast the tokens
+   * came out. The server counts the tokens for us, so the number matches the
+   * one the model actually produced.
+   */
+  async benchmark(prompt: string, maxTokens: number, signal?: AbortSignal): Promise<BenchmarkMeasurement> {
+    const startedAt = Date.now();
+    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "mlx-model",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0,
+        max_tokens: maxTokens,
+        stream: true,
+        stream_options: { include_usage: true },
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`MLX server returned HTTP ${response.status}: ${await response.text()}`);
+    }
+
+    let tokens = 0;
+    let firstTokenAt: number | null = null;
+    let lastTokenAt = Date.now();
+
+    await this.readStream(response, (frame) => {
+      if (frame.usage?.completion_tokens != null) {
+        tokens = frame.usage.completion_tokens;
+        return true;
+      }
+      if (!frame.delta) return true;
+      const now = Date.now();
+      if (firstTokenAt === null) firstTokenAt = now;
+      lastTokenAt = now;
+      return true;
+    });
+
+    if (tokens === 0) throw new Error("MLX server reported no generated tokens");
+
+    return {
+      provider: "mlx",
+      tokens,
+      timeToFirstTokenMs: firstTokenAt === null ? null : firstTokenAt - startedAt,
+      generationMs: lastTokenAt - (firstTokenAt ?? startedAt),
+      modelBytes: 0,
+    };
+  }
+
+  /**
+   * Reads one SSE completion. Frames arrive as `data:` lines, and the stream
+   * may split a frame across two reads, so a partial line waits for the next one.
+   * The callback returns false to stop reading.
+   */
+  private async readStream(
+    response: Response,
+    onFrame: (frame: {
+      delta?: string;
+      finishReason?: string | null;
+      usage?: { completion_tokens?: number };
+    }) => boolean
+  ): Promise<void> {
+    if (!response.body) throw new Error("MLX server returned an empty stream");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let content = "";
-    let finished = false;
 
-    while (!finished) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
@@ -143,21 +221,19 @@ export class MLXServer {
         try {
           const parsed = JSON.parse(payload) as {
             choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
+            usage?: { completion_tokens?: number };
           };
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (typeof delta === "string" && delta) {
-            content += delta;
-            options.onTextChunk?.(delta);
-          }
-          if (parsed.choices?.[0]?.finish_reason) finished = true;
+          const keepGoing = onFrame({
+            delta: parsed.choices?.[0]?.delta?.content,
+            finishReason: parsed.choices?.[0]?.finish_reason,
+            usage: parsed.usage,
+          });
+          if (!keepGoing) return;
         } catch {
           // A partial SSE frame can arrive between reads; the next chunk completes it.
         }
       }
     }
-
-    if (!content) throw new Error("MLX server returned no completion");
-    return content;
   }
 
   async isRunning(): Promise<boolean> {

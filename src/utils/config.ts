@@ -10,7 +10,7 @@ const defaultConfig: Config = {
     completed: false,
   },
   model: {
-    provider: "bonsai",
+    provider: "auto",
     temperature: 0.7,
     maxTokens: 2048,
   },

@@ -62,6 +62,31 @@ try {
   await page.getByRole("button", { name: "Desktop", exact: true }).click();
   await page.getByText("Update channel", { exact: true }).waitFor();
   await page.screenshot({ path: path.join(outDir, "settings-desktop.png") });
+
+  await page.getByRole("button", { name: "Model", exact: true }).click();
+  await page.getByText(/of weights plus/).waitFor();
+  const benchmarkButton = page.getByRole("button", { name: /Run benchmark|Measuring/ });
+  if (existsSync(modelPath)) {
+    await benchmarkButton.waitFor({ timeout: 180_000 });
+    await benchmarkButton.click();
+    const deadline = Date.now() + 180_000;
+    while (Date.now() < deadline) {
+      const status = await page.evaluate(() => window.electron.getModelStatus());
+      if (status.lastBenchmark) {
+        console.log(`measured ${status.lastBenchmark.tokensPerSecond.toFixed(1)} tokens/s`);
+        break;
+      }
+      await page.waitForTimeout(500);
+    }
+  }
+  await page.waitForTimeout(400);
+  await page.evaluate(() => document.querySelector("main")?.scrollTo({ top: 0 }));
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(outDir, "settings-model.png") });
+  await page
+    .locator("section", { hasText: "Generation speed" })
+    .locator(".card")
+    .screenshot({ path: path.join(outDir, "settings-model-benchmark.png") });
 } finally {
   await app.evaluate(({ app }) => app.quit()).catch(() => undefined);
   rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

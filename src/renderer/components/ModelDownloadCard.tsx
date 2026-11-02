@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Download, Loader, Pause, Play, RefreshCw, TriangleAlert } from "lucide-react";
+import { Check, Download, Loader, Pause, Play, RefreshCw, Trash2, TriangleAlert } from "lucide-react";
 import { BONSAI_4B } from "../../models/catalog";
 import type { ModelDownloadStatus } from "../../utils/types";
 
@@ -13,6 +13,15 @@ interface ModelDownloadCardProps {
 const mb = (bytes: number) => `${Math.round(bytes / 1_000_000)} MB`;
 const rate = (bytesPerSecond: number) => `${(bytesPerSecond / 1_000_000).toFixed(1)} MB/s`;
 
+/** Human ETA from the measured download speed; "—" until the speed is known. */
+const eta = (bytesRemaining: number, bytesPerSecond: number) => {
+  if (bytesPerSecond <= 0 || bytesRemaining <= 0) return null;
+  const minutes = bytesRemaining / bytesPerSecond / 60;
+  if (minutes < 1) return "less than a minute left";
+  if (minutes < 60) return `${Math.ceil(minutes)} min left`;
+  return `${Math.floor(minutes / 60)} h ${Math.round(minutes % 60)} min left`;
+};
+
 export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
   installed,
   ready,
@@ -21,6 +30,7 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
 }) => {
   const [download, setDownload] = useState<ModelDownloadStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -77,6 +87,23 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
     }
   };
 
+  const removeModel = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      window.setTimeout(() => setConfirmDelete(false), 4_000);
+      return;
+    }
+    setConfirmDelete(false);
+    setBusy(true);
+    try {
+      const status = await window.electron?.deleteModel();
+      if (status) setDownload(status);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const statusChip = (() => {
     if (downloading) return `${Math.round(percent)}%`;
     if (verifying) return "verifying";
@@ -92,7 +119,12 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
     if (verifying) return "Checking the file against the pinned SHA-256…";
     if (downloading) {
       const speed = download?.speedBytesPerSecond ?? 0;
-      return `${mb(received)} of ${mb(total)}${speed > 0 ? ` · ${rate(speed)}` : ""}`;
+      const remaining = Math.max(0, total - received);
+      const parts = [`${mb(received)} of ${mb(total)}`];
+      if (speed > 0) parts.push(rate(speed));
+      const left = eta(remaining, speed);
+      if (left) parts.push(left);
+      return parts.join(" · ");
     }
     if (download?.verified === true) return "SHA-256 matches the pinned release. Ready to run.";
     if (installed) return `${mb(BONSAI_4B.bytes)} on this Mac. Verify it any time.`;
@@ -159,6 +191,17 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
               <button onClick={() => void useModel()} disabled={busy} className="btn btn-primary">
                 <Play size={12} />
                 Use model
+              </button>
+            )}
+            {!compact && (
+              <button
+                onClick={() => void removeModel()}
+                disabled={busy}
+                aria-label="Delete model from this Mac"
+                className={`btn !ml-auto shrink-0 ${confirmDelete ? "!text-danger" : ""}`}
+              >
+                <Trash2 size={12} />
+                {confirmDelete ? "Confirm delete" : "Delete"}
               </button>
             )}
           </>

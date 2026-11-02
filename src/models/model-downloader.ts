@@ -257,6 +257,28 @@ export class ModelDownloader {
     }
   }
 
+  /**
+   * Frees the weights and any half-finished download. Nothing else is touched:
+   * the chat history lives in the database, not next to the model.
+   */
+  removeInstalled(): ModelDownloadStatus {
+    const dest = ggufPath();
+    fs.rmSync(dest, { force: true });
+    fs.rmSync(`${dest}.part`, { force: true });
+    // The next read must re-hydrate against an empty folder, not the cached state.
+    this.hydrated = false;
+    this.status = {
+      phase: "idle",
+      bytesReceived: 0,
+      totalBytes: BONSAI_4B.bytes,
+      speedBytesPerSecond: 0,
+      verified: null,
+    };
+    this.onUpdate(this.status);
+    logger.info("model.deleted", { path: dest });
+    return this.status;
+  }
+
   async verifyInstalled(): Promise<ModelDownloadStatus> {
     if (!this.installed) {
       this.emit({

@@ -19,9 +19,9 @@ A single-page product site lives in [`landing/`](landing/index.html) — open
 
 ![Chat with a local model](docs/screenshots/chat.png)
 
-| Onboarding | Settings → Privacy | Settings → Desktop |
-| --- | --- | --- |
-| ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) |
+| Onboarding | Settings → Privacy | Settings → Desktop | Settings → Model |
+| --- | --- | --- | --- |
+| ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) | ![Model](docs/screenshots/settings-model.png) |
 
 ## Requirements
 
@@ -64,6 +64,7 @@ becomes active.
 | `npm test` | Unit suites then integration suites (`node:test`) |
 | `npm run test:e2e` | Builds and runs Playwright against the real Electron app |
 | `npm run download-models` | Fetches model weights (`--mlx` for the MLX snapshot) |
+| `npm run benchmark-model` | Prints the GGUF memory estimate and a measured tokens/s |
 | `npm run rebuild` | Rebuilds `better-sqlite3` for the Electron ABI |
 | `npm run package:mac` | `build` + electron-builder DMG/zip into `release/` |
 | `npm run package:win` | `build` + electron-builder NSIS installer |
@@ -71,17 +72,20 @@ becomes active.
 
 ### Verification
 
-`npm test` runs 34 unit assertions and 20 integration assertions against a real SQLite
+`npm test` runs 41 unit assertions and 25 integration assertions against a real SQLite
 file under a throwaway profile: the task-fence parser, tool-argument validation, the
-backup envelope, the mood map, encryption flipping with `VACUUM`, retention, approval
-gating, path confinement (including a symlink escape) and log redaction/rotation.
-`npm run test:e2e` adds 11 Playwright tests on a throwaway profile: onboarding, the
+backup envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
+retention, approval gating, path confinement (including a symlink escape) and log
+redaction/rotation.
+`npm run test:e2e` adds 17 Playwright tests on a throwaway profile: onboarding, the
 chat surface with a button/field/image/landmark audit, Privacy rows and switches,
-RU/EN, close-to-tray, the update channel, and performance budgets (cold start under
-2.5 s, no long tasks during a synthetic 320-token stream, idle memory under 900 MB,
-Settings served as a lazy chunk). CI runs the same suites on both Mac architectures
-and packages tag builds on `v*` (signing and notarization run when the Apple secrets
-are present); see `.github/workflows/ci.yml`.
+RU/EN, close-to-tray, the update channel, the vibrancy and spring timings, Quick Ask
+history, and the model manager's memory estimate plus a real tokens-per-second run
+against the loaded weights. Performance budgets are their own four tests (cold start
+under 2.5 s, no long tasks during a synthetic 320-token stream, idle memory under
+900 MB, Settings served as a lazy chunk). CI runs the same suites on both Mac
+architectures and packages tag builds on `v*` (signing and notarization run when the
+Apple secrets are present); see `.github/workflows/ci.yml`.
 
 ## How it is laid out
 
@@ -89,7 +93,8 @@ are present); see `.github/workflows/ci.yml`.
 src/main/       Electron host: window, tray, IPC handlers, sandboxed preload
 src/agent/      OpenMonkey core: prompt loop, mood detection, tool dispatch
 src/agent/tools FileSystemTools, WebBrowserTools, ShellTools, CalendarEmailTools
-src/models/     ModelManager → BonsaiGGUF (node-llama-cpp) or MLXServer
+src/models/     ModelManager → BonsaiGGUF (node-llama-cpp) or MLXServer, plus the
+                downloader, benchmark maths and GGUF memory estimate
 src/ui/         LogoManager (mood → icons), mood-detector, task-emojis
 src/renderer/   React UI: chat, settings, task monitor, styles
 src/utils/      config (electron-store), storage (SQLite + AES-GCM), logger, types

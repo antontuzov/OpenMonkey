@@ -14,6 +14,7 @@ import {
   FolderOpen,
   FolderPlus,
   FolderSearch,
+  Gauge,
   Globe,
   Info,
   Keyboard,
@@ -55,11 +56,13 @@ import {
   type McpServerConfig,
   type McpServerStatus,
   type MemorySnapshot,
+  type ModelPreference,
   type ModelStatus,
   type Mood,
   type PrivacyStatus,
   type WorkspaceHit,
 } from "../../utils/types";
+import { formatBytes, formatMilliseconds } from "../../models/benchmark";
 
 interface SettingsViewProps {
   status: AgentStatus;
@@ -281,6 +284,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [query, setQuery] = useState("");
   const [models, setModels] = useState<ModelStatus | null>(null);
   const [busy, setBusy] = useState(false);
+  const [benchmarking, setBenchmarking] = useState(false);
+  const [modelNotice, setModelNotice] = useState("");
   const [probes, setProbes] = useState<Partial<Record<"calendar" | "mail", AutomationProbe | "checking">>>({});
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [auditOpen, setAuditOpen] = useState<string | null>(null);
@@ -355,6 +360,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           ? t("privacy.encryptFile")
           : t("privacy.encryptDefault");
   const providerLabel = status.provider === "mlx" ? "MLX" : "Bonsai 4B";
+  const modelMemory = models?.memory ?? null;
+  const lastBenchmark = models?.lastBenchmark ?? null;
 
   useEffect(() => {
     void window.electron?.getModelStatus().then(setModels).catch(() => undefined);
@@ -760,6 +767,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return () => window.clearInterval(timer);
   }, [section]);
 
+  // The model page shows warm-up and memory state that only settle after boot,
+  // so it re-reads the manager while it is open.
+  useEffect(() => {
+    if (section !== "model") return;
+    const read = () =>
+      void window.electron?.getModelStatus().then(setModels).catch(() => undefined);
+    read();
+    const timer = window.setInterval(read, 2_500);
+    return () => window.clearInterval(timer);
+  }, [section]);
+
   const probeChip = (area: "calendar" | "mail") => {
     const probe = probes[area];
     if (probe === "checking") return { label: "checking…", tone: "" };
@@ -780,15 +798,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const patchUi = (changes: Partial<Config["ui"]>) => void onPatch({ ui: changes });
   const patchDesktop = (changes: Partial<Config["desktop"]>) => void onPatch({ desktop: changes });
 
-  const switchProvider = async (provider: "mlx" | "bonsai") => {
+  const switchProvider = async (provider: ModelPreference) => {
     setBusy(true);
     try {
       await window.electron?.switchProvider(provider);
       const next = await window.electron?.getModelStatus();
       if (next) setModels(next);
       await onRefreshStatus();
+    } catch (error) {
+      setModelNotice(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const runBenchmark = async () => {
+    setBenchmarking(true);
+    setModelNotice("");
+    try {
+      await window.electron?.benchmarkModel();
+      const status = await window.electron?.getModelStatus();
+      if (status) setModels(status);
+    } catch (error) {
+      setModelNotice(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBenchmarking(false);
     }
   };
 
@@ -2451,15 +2485,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </p>
                       <p className="row-copy">{statusCopy}</p>
                     </div>
-                    <span className="chip ml-auto shrink-0">
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          ready ? "bg-accent" : status.state === "error" ? "bg-danger" : "bg-warn pulse-dot"
-                        }`}
-                      />
-                      {ready ? "connected" : status.state.replace("-", " ")}
-                    </span>
+                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                      {models?.warmedUp === true && ready && (
+                        <span
+                          className="chip chip-accent"
+                          title="The weights have already answered once, so the first reply is not paying for a cold start."
+                        >
+                          warm
+                        </span>
+                      )}
+                      <span className="chip">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            ready ? "bg-accent" : status.state === "error" ? "bg-danger" : "bg-warn pulse-dot"
+                          }`}
+                        />
+                        {ready ? "connected" : status.state.replace("-", " ")}
+                      </span>
+                    </div>
                   </div>
+                  {modelNotice && (
+                    <p role="status" className="text-[10.5px] text-danger mt-2 px-1 leading-relaxed">
+                      {modelNotice}
+                    </p>
+                  )}
                 </section>
 
                 <section>
@@ -2467,12 +2516,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="card">
                     <SettingRow
                       title="Runtime"
-                      copy="Switching unloads the current weights and loads the other backend."
+                      copy="Auto uses the fastest backend installed on this Mac. Switching unloads the current weights."
                     >
                       <Segmented
-                        value={status.provider ?? model.provider}
-                        onChange={(value) => void switchProvider(value as "mlx" | "bonsai")}
+                        value={models?.preference ?? model.provider}
+                        onChange={(value) => void switchProvider(value as ModelPreference)}
                         options={[
+                          {
+                            value: "auto",
+                            label: "Auto",
+                            disabled: busy || (!models?.mlxAvailable && !models?.bonsaiAvailable),
+                          },
                           {
                             value: "bonsai",
                             label: "Bonsai 4B",
@@ -2490,6 +2544,87 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {models?.mlxAvailable ? "ready" : "not installed"}
                       </span>
                     </SettingRow>
+                    {modelMemory && (
+                      <SettingRow
+                        title="Memory this needs"
+                        copy={`${formatBytes(modelMemory.modelBytes)} of weights plus ${formatBytes(
+                          modelMemory.contextBytes
+                        )} of KV cache for a ${modelMemory.contextSize}-token context, measured from the GGUF header before loading.`}
+                      >
+                        <span className="chip">
+                          {formatBytes(modelMemory.cpuRamBytes + modelMemory.gpuVramBytes)}
+                        </span>
+                      </SettingRow>
+                    )}
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">Performance</p>
+                  <div className="card p-4">
+                    <div className="flex items-start gap-3.5">
+                      <span className="w-9 h-9 rounded-full bg-accent-soft flex items-center justify-center shrink-0">
+                        <Gauge size={16} className="text-accent-ink" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="row-title">Generation speed</p>
+                        <p className="row-copy">
+                          {lastBenchmark
+                            ? `${lastBenchmark.provider === "mlx" ? "MLX" : "Bonsai 4B"} · ${new Date(
+                                lastBenchmark.ranAt
+                              ).toLocaleTimeString()}`
+                            : "Runs one fixed prompt on the loaded model and times the tokens it writes."}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => void runBenchmark()}
+                        disabled={!ready || benchmarking}
+                        className="btn btn-primary ml-auto shrink-0"
+                      >
+                        {benchmarking ? (
+                          <Loader size={12} className="animate-spin" />
+                        ) : (
+                          <Gauge size={12} />
+                        )}
+                        {benchmarking ? "Measuring" : "Run benchmark"}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2 mt-4">
+                      {([
+                        {
+                          label: "tokens / second",
+                          value: lastBenchmark ? lastBenchmark.tokensPerSecond.toFixed(1) : "—",
+                        },
+                        {
+                          label: "first token",
+                          value: formatMilliseconds(lastBenchmark?.timeToFirstTokenMs ?? null),
+                        },
+                        {
+                          label: "tokens written",
+                          value: lastBenchmark ? String(lastBenchmark.tokens) : "—",
+                        },
+                        {
+                          label: "generation time",
+                          value: formatMilliseconds(lastBenchmark?.generationMs ?? null),
+                        },
+                      ] as Array<{ label: string; value: string }>).map((stat) => (
+                        <div
+                          key={stat.label}
+                          data-stat={stat.label}
+                          className="rounded-lg bg-card-2 border border-line px-2.5 py-2"
+                        >
+                          <p className="text-[17px] font-semibold tabular-nums leading-tight">{stat.value}</p>
+                          <p className="text-[9.5px] text-muted leading-tight mt-0.5">{stat.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {lastBenchmark && (
+                      <p className="text-[10px] text-faint mt-2.5 leading-relaxed">
+                        Timed from the first token to the last, so prompt reading is not counted. Answers vary a
+                        little run to run.
+                      </p>
+                    )}
                   </div>
                 </section>
 

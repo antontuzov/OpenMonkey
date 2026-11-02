@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const weightsOnDisk = existsSync(path.join(root, "models", "Bonsai-4B-gguf", "Bonsai-4B.gguf"));
 
 test.describe.configure({ mode: "serial" });
 
@@ -261,6 +262,77 @@ test("the window feels native: a material sidebar and springs on every panel", a
   expect(fadeMillis).toBeLessThanOrEqual(220);
 
   await page.getByRole("button", { name: "Back to app" }).click();
+  await expect(page.getByRole("textbox", { name: "Message OpenMonkey" })).toBeVisible();
+});
+
+test("Settings → Model offers Auto and reports the weights on disk", async () => {
+  await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+  await page.getByRole("button", { name: "Model", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Model" })).toBeVisible();
+
+  // The library card reads the filesystem instead of assuming.
+  await expect(page.getByText(/not downloaded|MB on this Mac|SHA-256 matches the pinned release/)).toBeVisible();
+
+  const segments = page.locator(".segmented").first().locator("button");
+  await expect(segments).toHaveCount(3);
+  expect(await segments.evaluateAll((elements) => elements.map((element) => element.textContent))).toEqual([
+    "Auto",
+    "Bonsai 4B",
+    "MLX",
+  ]);
+  // Nothing was chosen yet, so the app decides which installed backend to run.
+  await expect(segments.nth(0)).toHaveClass(/segmented-active/);
+
+  await expect(page.getByText("Generation speed")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Run benchmark|Measuring/ })).toBeVisible();
+
+  await page.getByRole("button", { name: /Back to app/ }).click();
+  await expect(page.getByRole("textbox", { name: "Message OpenMonkey" })).toBeVisible();
+});
+
+test("Settings → Model estimates the weights before loading them and measures real speed", async () => {
+  // Both halves need the real weights, which a CI checkout does not carry.
+  test.skip(!weightsOnDisk, "no Bonsai GGUF on disk to estimate or measure");
+  // Loading 572 MB of weights and writing 96 tokens is the point of the test, so it
+  // gets far more time than a UI check.
+  test.setTimeout(240_000);
+
+  await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+  await page.getByRole("button", { name: "Model", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Model" })).toBeVisible();
+
+  // The estimate comes from the GGUF header, so it is there before the load.
+  await expect(page.getByText(/of weights plus .* of KV cache for a 4096-token context/)).toBeVisible();
+
+  const status = () => page.evaluate(() => window.electron.getModelStatus());
+  const estimate = await status().then((value) => value.memory);
+  expect(estimate.modelBytes).toBeGreaterThan(400_000_000);
+  expect(estimate.contextSize).toBe(4096);
+
+  const runButton = page.getByRole("button", { name: /Run benchmark|Measuring/ });
+  await expect(runButton).toBeEnabled({ timeout: 180_000 });
+
+  const tokensPerSecond = async () => {
+    const text = await page.locator('[data-stat="tokens / second"] p').first().textContent();
+    const value = Number.parseFloat((text ?? "").trim());
+    return Number.isFinite(value) ? value : 0;
+  };
+  expect(await tokensPerSecond()).toBe(0);
+
+  await runButton.click();
+  await expect.poll(tokensPerSecond, { timeout: 120_000 }).toBeGreaterThan(0);
+
+  const measured = await tokensPerSecond();
+  const record = await status();
+  console.log(`measured ${measured.toFixed(1)} tokens/s · first token ${record.lastBenchmark.timeToFirstTokenMs} ms`);
+  expect(record.lastBenchmark.tokens).toBeGreaterThan(0);
+  expect(record.lastBenchmark.generationMs).toBeGreaterThan(0);
+  expect(record.provider).toBe(record.lastBenchmark.provider);
+
+  // Generating real tokens means the cold start is paid for.
+  await expect(page.getByText("warm", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: /Back to app/ }).click();
   await expect(page.getByRole("textbox", { name: "Message OpenMonkey" })).toBeVisible();
 });
 
