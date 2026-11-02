@@ -25,6 +25,9 @@ export interface GenerateOptions {
 
 type LlamaCppModule = typeof import("node-llama-cpp");
 
+/** A load takes a few seconds; quit waits that long before it gives up draining one. */
+const UNLOAD_DRAIN_MS = 15_000;
+
 /**
  * node-llama-cpp is ESM with top-level await, so `require()` throws and a literal
  * `await import()` is rewritten to `require()` when this file bundles to CJS.
@@ -42,6 +45,15 @@ export class BonsaiGGUF {
   private session: LlamaChatSession | null = null;
   private loading: Promise<void> | null = null;
   private activeSystemPrompt = "";
+  /**
+   * node-llama-cpp does its work on a libuv thread pool. A worker that is still
+   * outstanding when Node frees the environment at exit gets completed from a
+   * teardown hook, and the addon then throws into a dead JS context: the process
+   * aborts with SIGABRT. So every addon call is tracked here and drained before exit.
+   */
+  private inFlight = new Set<Promise<unknown>>();
+  private aborts = new Set<AbortController>();
+  private quitting = false;
 
   constructor(config: BonsaiConfig) {
     this.config = config;
@@ -52,6 +64,7 @@ export class BonsaiGGUF {
   }
 
   async load(): Promise<void> {
+    if (this.quitting) throw new Error("The app is closing, so the model will not load again");
     if (this.loading) return this.loading;
 
     this.loading = (async () => {
@@ -75,15 +88,53 @@ export class BonsaiGGUF {
       logger.info("gguf.load.done", { contextSize });
     })();
 
+    const loading = this.loading;
+    this.inFlight.add(loading);
     try {
-      await this.loading;
+      await loading;
     } catch (error) {
       this.loading = null;
       await this.unload();
       throw error;
+    } finally {
+      this.inFlight.delete(loading);
+    }
+    return loading;
+  }
+
+  /**
+   * Runs a prompt under a controller `quit()` can abort, and keeps the promise tracked
+   * so teardown waits for the worker to settle instead of exiting on top of it.
+   */
+  private async runPrompt(
+    session: LlamaChatSession,
+    prompt: string,
+    options: {
+      temperature: number;
+      maxTokens: number;
+      signal?: AbortSignal;
+      stopOnAbortSignal?: boolean;
+      onTextChunk?: (text: string) => void;
+      onToken?: (tokens: readonly number[]) => void;
+    }
+  ): Promise<string> {
+    const controller = new AbortController();
+    this.aborts.add(controller);
+    const external = options.signal;
+    if (external) {
+      if (external.aborted) controller.abort();
+      else external.addEventListener("abort", () => controller.abort(), { once: true });
     }
 
-    return this.loading;
+    const { signal: _signal, ...rest } = options;
+    const work = session.prompt(prompt, { ...rest, signal: controller.signal });
+    this.inFlight.add(work);
+    try {
+      return await work;
+    } finally {
+      this.inFlight.delete(work);
+      this.aborts.delete(controller);
+    }
   }
 
   /**
@@ -105,7 +156,7 @@ export class BonsaiGGUF {
     const systemPrompt = options.systemPrompt ?? "";
     this.syncSystemPrompt(systemPrompt);
 
-    return await session.prompt(prompt, {
+    return await this.runPrompt(session, prompt, {
       temperature: options.temperature ?? 0.7,
       maxTokens: options.maxTokens ?? 2048,
       signal: options.signal,
@@ -149,7 +200,7 @@ export class BonsaiGGUF {
     const startedAt = Date.now();
 
     try {
-      await session.prompt(prompt, {
+      await this.runPrompt(session, prompt, {
         temperature: 0,
         maxTokens,
         signal,
@@ -183,7 +234,20 @@ export class BonsaiGGUF {
     this.activeSystemPrompt = systemPrompt;
   }
 
+  /**
+   * Abort and await everything the addon is running, then free the weights. A worker
+   * that outlives the Node environment aborts the process, so this is what quit calls.
+   */
   async unload(): Promise<void> {
+    for (const controller of this.aborts) controller.abort();
+    this.aborts.clear();
+
+    const drained = await Promise.race([
+      Promise.allSettled([...this.inFlight]).then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), UNLOAD_DRAIN_MS)),
+    ]);
+    if (!drained) logger.warn("gguf.unload.drain.timedOut", { pending: this.inFlight.size });
+
     for (const resource of [this.session, this.context, this.model]) {
       try {
         resource?.dispose();
@@ -195,6 +259,7 @@ export class BonsaiGGUF {
     this.context = null;
     this.model = null;
     this.activeSystemPrompt = "";
+    this.loading = null;
 
     try {
       await this.llama?.dispose();
@@ -202,6 +267,12 @@ export class BonsaiGGUF {
       /* runtime already stopped */
     }
     this.llama = null;
-    this.loading = null;
+    this.inFlight.clear();
+  }
+
+  /** unload() plus the promise that no later call reloads the weights. */
+  async quit(): Promise<void> {
+    this.quitting = true;
+    await this.unload();
   }
 }

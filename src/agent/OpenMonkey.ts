@@ -844,7 +844,7 @@ Always maintain a helpful, professional tone while being approachable.`;
   async shutdown(): Promise<void> {
     this.stopGeneration();
     await this.taskManager.shutdown();
-    await this.modelManager.shutdown();
+    await this.modelManager.quit();
     storage.close();
     logger.close();
   }

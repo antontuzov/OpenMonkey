@@ -211,9 +211,20 @@ export class ModelManager {
     };
   }
 
+  /** Frees the weights but keeps the manager usable, e.g. after the model is deleted. */
   async shutdown(): Promise<void> {
     await this.mlxServer.stop();
     await this.bonsaiModel.unload();
+    this.currentModel = null;
+    this.warmedUp = false;
+    this.memory = null;
+    this.lastBenchmark = null;
+  }
+
+  /** App teardown: nothing may start another load behind us. */
+  async quit(): Promise<void> {
+    await this.mlxServer.stop();
+    await this.bonsaiModel.quit();
     this.currentModel = null;
     this.warmedUp = false;
     this.memory = null;

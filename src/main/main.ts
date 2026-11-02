@@ -24,6 +24,9 @@ let pendingConversation: string | null = null;
 
 const PRELOAD = path.join(__dirname, "../preload/preload.js");
 
+/** Model teardown waits for the worker it aborted; this caps how long quit can take. */
+const SHUTDOWN_WATCHDOG_MS = 30_000;
+
 /**
  * macOS can back the window with a system material. The sidebar is left
  * translucent so the material shows through it; the rest of the app paints its
@@ -331,15 +334,21 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", (event) => {
   if (shuttingDown || !openMonkey) return;
-  // Unloading the GGUF weights and killing the MLX child process must finish first.
+  // Unloading the GGUF weights and killing the MLX child process must finish first:
+  // freeing the Node environment while an addon worker is still running aborts it.
   event.preventDefault();
   shuttingDown = true;
+  const watchdog = setTimeout(() => {
+    logger.warn("agent.shutdown.slow", { ms: SHUTDOWN_WATCHDOG_MS });
+    app.exit(0);
+  }, SHUTDOWN_WATCHDOG_MS);
   openMonkey
     .shutdown()
     .catch((error: unknown) => logger.error("agent.shutdown.failed", { error }))
     .finally(() => {
+      clearTimeout(watchdog);
       desktopManager?.destroy();
       trayManager?.destroy();
-      app.exit(0);
+      app.quit();
     });
 });
