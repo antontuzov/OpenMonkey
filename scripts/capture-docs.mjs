@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { seedMarkdownThread } from "../test/fixtures/markdown-answer.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(root, "docs", "screenshots");
@@ -52,6 +53,26 @@ try {
   }
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(outDir, "chat.png") });
+
+  // A seeded thread shows every markdown block the renderer knows; a live answer
+  // from a 4B model could not be relied on to produce them all.
+  const dbFile = path.join(profile, "data", "openmonkey.db");
+  if (existsSync(dbFile)) {
+    seedMarkdownThread(dbFile);
+    await page.setViewportSize({ width: 1280, height: 1200 });
+    await page.reload();
+    await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
+    await page.getByRole("button", { name: /Markdown probe/ }).click();
+    await page.locator(".message-assistant").last().waitFor();
+    await page.waitForTimeout(400);
+    await page
+      .locator(".message-assistant")
+      .last()
+      .screenshot({ path: path.join(outDir, "chat-markdown.png") });
+    await page.setViewportSize({ width: 1280, height: 820 });
+  } else {
+    console.warn("no database at", dbFile, "— chat-markdown.png is skipped");
+  }
 
   await page.getByRole("button", { name: "Settings", exact: true }).first().click();
   await page.getByRole("navigation").first().waitFor();

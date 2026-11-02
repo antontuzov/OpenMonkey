@@ -726,6 +726,42 @@ input[type="range"] {
   accent-color: var(--color-accent);
 }
 
+/* A chat answer's highlighted code, tinted from the same palette as everything
+   else so the two themes need no separate rules. */
+.tok-comment {
+  color: var(--color-faint);
+  font-style: italic;
+}
+.tok-keyword {
+  color: var(--color-warn);
+}
+.tok-string {
+  color: var(--color-accent-ink);
+}
+.tok-number {
+  color: color-mix(in srgb, var(--color-accent) 58%, var(--color-ink));
+}
+.tok-type {
+  color: color-mix(in srgb, var(--color-warn) 62%, var(--color-ink));
+}
+.tok-func {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.tok-punct {
+  color: color-mix(in srgb, var(--color-muted) 65%, transparent);
+}
+
+.diff-add {
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+}
+.diff-del {
+  background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+}
+.diff-hunk {
+  color: var(--color-accent-ink);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

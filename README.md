@@ -19,6 +19,11 @@ A single-page product site lives in [`landing/`](landing/index.html) — open
 
 ![Chat with a local model](docs/screenshots/chat.png)
 
+An answer is markdown, not a wall of text: headings, task lists, tables, links,
+highlighted code with a copy button and diffs render as themselves.
+
+![A markdown answer in the chat](docs/screenshots/chat-markdown.png)
+
 | Onboarding | Settings → Privacy | Settings → Desktop | Settings → Model |
 | --- | --- | --- | --- |
 | ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) | ![Model](docs/screenshots/settings-model.png) |
