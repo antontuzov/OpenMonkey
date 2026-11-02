@@ -2,7 +2,7 @@ import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { OpenMonkey } from "../agent/OpenMonkey";
-import config, { ggufPath, resetPatch } from "../utils/config";
+import config, { allowedRoots, ggufPath, resetPatch } from "../utils/config";
 import {
   MOODS,
   MOOD_LOGOS,
@@ -17,6 +17,8 @@ import {
   type SettingsPage,
 } from "../utils/types";
 import storage, { SCHEMA_VERSION } from "../utils/storage";
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TEXT, MAX_ATTACHMENTS_PER_MESSAGE } from "../utils/attachments";
+import { readFileAsAttachment, searchFiles } from "../utils/file-search";
 import { keychainAvailable } from "../utils/secret-key";
 import { networkActivity } from "../utils/network";
 import { EXPORT_FILE_SUFFIX, encryptBundle, readBundleFile } from "../utils/portability";
@@ -61,13 +63,12 @@ const MENU_COMMANDS = new Set<MenuCommand>([
   "focus-composer",
 ]);
 
-const MAX_ATTACHMENT_BYTES = 256 * 1024;
-const MAX_ATTACHMENT_TEXT = 400_000;
 const TEXT_EXTENSIONS = [
   "txt", "md", "markdown", "json", "csv", "tsv", "log", "yaml", "yml", "toml", "xml",
   "html", "css", "js", "jsx", "ts", "tsx", "py", "rb", "go", "rs", "swift", "sh",
   "sql", "c", "h", "cpp", "java", "env", "ini", "conf",
 ];
+const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "heic"];
 
 function conversationId(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) throw new Error("A conversation id is required");
@@ -79,14 +80,29 @@ function messageId(value: unknown): string {
   return value;
 }
 
-function attachmentFrom(value: unknown): Attachment | undefined {
-  if (value == null) return undefined;
-  if (typeof value !== "object") throw new Error("Invalid attachment");
-  const { name, bytes, text } = value as Record<string, unknown>;
+function attachmentFrom(value: unknown): Attachment {
+  if (typeof value !== "object" || value === null) throw new Error("Invalid attachment");
+  const { name, bytes, text, kind } = value as Record<string, unknown>;
   if (typeof name !== "string" || !name.trim()) throw new Error("Invalid attachment name");
   if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes < 0) throw new Error("Invalid attachment size");
   if (typeof text !== "string" || text.length > MAX_ATTACHMENT_TEXT) throw new Error("Attachment text is too large");
-  return { name: name.slice(0, 120), bytes, text };
+  if (bytes > MAX_ATTACHMENT_BYTES) throw new Error("That file is too large to attach");
+  return {
+    name: name.slice(0, 120),
+    bytes,
+    text: kind === "image" ? "" : text,
+    kind: kind === "image" ? "image" : "text",
+  };
+}
+
+/** A message may carry several files, but only as many as the composer offers. */
+function attachmentsFrom(value: unknown): Attachment[] {
+  if (value == null) return [];
+  const items = Array.isArray(value) ? value : [value];
+  if (items.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    throw new Error(`A message can carry at most ${MAX_ATTACHMENTS_PER_MESSAGE} files`);
+  }
+  return items.map(attachmentFrom);
 }
 
 /** Every renderer → main call goes through here; nothing else is exposed by the preload. */
@@ -101,11 +117,11 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return instance;
   };
 
-  ipcMain.handle("process-message", async (_event, id: unknown, message: unknown, attachment: unknown) => {
+  ipcMain.handle("process-message", async (_event, id: unknown, message: unknown, attachments: unknown) => {
     if (typeof message !== "string") throw new Error("Message must be text");
-    const file = attachmentFrom(attachment);
-    if (!message.trim() && !file) throw new Error("Empty message");
-    return await agent().processUserMessage(conversationId(id), message, file);
+    const files = attachmentsFrom(attachments);
+    if (!message.trim() && !files.length) throw new Error("Empty message");
+    return await agent().processUserMessage(conversationId(id), message, files);
   });
 
   ipcMain.handle("regenerate", (_event, id: unknown) => agent().regenerate(conversationId(id)));
@@ -183,29 +199,54 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return agent().searchConversations(query);
   });
 
-  ipcMain.handle("attach-file", async () => {
+  ipcMain.handle("attach-files", async () => {
     const window = deps.getWindow();
     const options: Electron.OpenDialogOptions = {
-      title: "Attach a text file",
-      properties: ["openFile"],
-      filters: [{ name: "Text & code", extensions: TEXT_EXTENSIONS }],
+      title: "Attach files",
+      properties: ["openFile", "multiSelections"],
+      filters: [
+        { name: "Text, code & images", extensions: [...TEXT_EXTENSIONS, ...IMAGE_EXTENSIONS] },
+        { name: "All files", extensions: ["*"] },
+      ],
     };
     const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
-    if (result.canceled || !result.filePaths[0]) return null;
-    const filePath = result.filePaths[0];
-    const stat = fs.statSync(filePath);
-    if (stat.size > MAX_ATTACHMENT_BYTES) {
-      throw new Error(`That file is ${Math.round(stat.size / 1024)} KB. Attachments are capped at 256 KB.`);
+    if (result.canceled || !result.filePaths.length) return [];
+    const files: Attachment[] = [];
+    for (const filePath of result.filePaths.slice(0, MAX_ATTACHMENTS_PER_MESSAGE)) {
+      const stat = fs.statSync(filePath);
+      if (stat.size > MAX_ATTACHMENT_BYTES) {
+        throw new Error(`That file is ${Math.round(stat.size / 1024)} KB. Attachments are capped at 256 KB.`);
+      }
+      const isImage = IMAGE_EXTENSIONS.includes(path.extname(filePath).slice(1).toLowerCase());
+      if (isImage) {
+        files.push({ name: path.basename(filePath), bytes: stat.size, text: "", kind: "image" });
+        continue;
+      }
+      const buffer = fs.readFileSync(filePath);
+      if (buffer.subarray(0, 8192).includes(0)) {
+        throw new Error("Only plain text, code and image files can be attached.");
+      }
+      files.push({ name: path.basename(filePath), bytes: stat.size, text: buffer.toString("utf8"), kind: "text" });
     }
-    const buffer = fs.readFileSync(filePath);
-    if (buffer.subarray(0, 8192).includes(0)) {
-      throw new Error("Only plain text and code files can be attached.");
-    }
-    return {
-      name: path.basename(filePath),
-      bytes: stat.size,
-      text: buffer.toString("utf8"),
-    } satisfies Attachment;
+    return files;
+  });
+
+  ipcMain.handle("search-files", async (_event, query: unknown) => {
+    if (typeof query !== "string") return [];
+    return await searchFiles(query, allowedRoots());
+  });
+
+  ipcMain.handle("read-file", (_event, filePath: unknown) => {
+    if (typeof filePath !== "string" || !filePath.trim()) throw new Error("A file path is required");
+    return readFileAsAttachment(filePath, allowedRoots());
+  });
+
+  ipcMain.handle("clear-conversation", (_event, id: unknown) => {
+    return agent().clearConversation(conversationId(id));
+  });
+
+  ipcMain.handle("summarize-conversation", async (_event, id: unknown) => {
+    return await agent().summarizeConversation(conversationId(id));
   });
 
   ipcMain.handle("get-current-mood", () => agent().getCurrentMood());

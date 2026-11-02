@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
-import type { Config, MessageMetadata } from "./types";
+import type { Config, MessageAttachment, MessageMetadata } from "./types";
 
 export const BUNDLE_FORMAT = "openmonkey-export";
 export const BUNDLE_VERSION = 1;
@@ -89,7 +89,7 @@ const num = (value: unknown): number | undefined =>
 /** Only the fields this build knows about survive; anything else is dropped, not stored. */
 function normalizeMetadata(value: unknown): MessageMetadata | undefined {
   if (!isRecord(value)) return undefined;
-  const attachment = isRecord(value.attachment) ? value.attachment : undefined;
+  const attachments = normalizeAttachments(value.attachments, value.attachment);
   return {
     mood: str(value.mood, 40) || undefined,
     taskType: str(value.taskType, 40) || undefined,
@@ -97,11 +97,26 @@ function normalizeMetadata(value: unknown): MessageMetadata | undefined {
     tokens: num(value.tokens),
     variantOf: str(value.variantOf, 120) || undefined,
     stopped: value.stopped === true ? true : undefined,
-    attachment:
-      attachment && typeof attachment.name === "string" && attachment.name
-        ? { name: str(attachment.name, 120), bytes: num(attachment.bytes) ?? 0 }
-        : undefined,
+    attachments: attachments.length ? attachments : undefined,
   };
+}
+
+/**
+ * A backup may carry the list of files a message came with, or the single file an
+ * older build wrote. Both are checked field by field before they are stored.
+ */
+function normalizeAttachments(list: unknown, legacy: unknown): MessageAttachment[] {
+  const items = Array.isArray(list) ? list : [];
+  const one = isRecord(legacy) ? [legacy] : [];
+  return [...items, ...one]
+    .filter(isRecord)
+    .map((item) => ({
+      name: str(item.name, 160),
+      bytes: num(item.bytes) ?? 0,
+      kind: item.kind === "image" ? ("image" as const) : ("text" as const),
+    }))
+    .filter((item) => item.name.length > 0)
+    .slice(0, 20);
 }
 
 /** A file is untrusted input even when the user chose it, so every field is checked. */

@@ -39,6 +39,7 @@ const ENTRIES: SettingEntry[] = [
   { page: "appearance", key: "appearance.density", keywords: ["compact", "spacing", "roomy"] },
   { page: "appearance", key: "appearance.motion", keywords: ["reduce motion", "animation", "springs"] },
   { page: "appearance", key: "appearance.language", keywords: ["russian", "english", "locale", "translate"] },
+  { page: "appearance", key: "appearance.sendKey", keywords: ["enter", "return", "send", "newline", "keyboard", "cmd"] },
   ...ACCENTS.map((accent): SettingEntry => ({
     page: "appearance",
     label: accent.name,

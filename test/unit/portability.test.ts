@@ -31,7 +31,7 @@ const bundle = (overrides: Partial<ExportBundle> = {}): ExportBundle => ({
           role: "user",
           content: "the secret body",
           timestamp: "2026-10-30T09:01:00.000Z",
-          metadata: { attachment: { name: "note.txt", bytes: 12 } },
+          metadata: { attachments: [{ name: "note.txt", bytes: 12 }] },
         },
       ],
     },
@@ -47,7 +47,17 @@ test("a bundle round-trips through the passphrase envelope", () => {
   assert.equal(sealed.endsWith("."), false);
   const opened = decryptBundle(sealed, "correct horse battery") as ExportBundle;
   assert.equal(opened.conversations[0].messages[0].content, "the secret body");
-  assert.equal(opened.conversations[0].messages[0].metadata?.attachment?.name, "note.txt");
+  assert.equal(opened.conversations[0].messages[0].metadata?.attachments?.[0]?.name, "note.txt");
+});
+
+test("a backup written by an older build keeps its single attachment", () => {
+  const legacy = bundle() as unknown as {
+    conversations: Array<{ messages: Array<{ metadata: unknown }> }>;
+  };
+  legacy.conversations[0].messages[0].metadata = { attachment: { name: "old.txt", bytes: 4 } };
+  const opened = validateBundle(legacy, 3);
+  assert.equal(opened.conversations[0].messages[0].metadata?.attachments?.[0]?.name, "old.txt");
+  assert.equal(opened.conversations[0].messages[0].metadata?.attachments?.length, 1);
 });
 
 test("the same body sealed twice differs, so the salt and iv are fresh", () => {

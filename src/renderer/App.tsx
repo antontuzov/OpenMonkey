@@ -466,6 +466,7 @@ export default function App() {
           mood={mood}
           agentName={agentName}
           autoExecute={config.agent.autoExecuteTasks}
+          sendKey={config.ui.sendKey}
           conversationId={activeConversationId}
           busyConversationId={busyConversationId}
           starterPromptsHidden={config.ui.starterPromptsHidden}

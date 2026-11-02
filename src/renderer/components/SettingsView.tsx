@@ -1434,6 +1434,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </section>
 
                 <section>
+                  <p className="section-label">{t("appearance.composer")}</p>
+                  <div className="card">
+                    <SettingRow title={t("appearance.sendKey")} copy={t("appearance.sendKeyCopy")}>
+                      <Segmented
+                        value={config.ui.sendKey}
+                        onChange={(value) => patchUi({ sendKey: value as Config["ui"]["sendKey"] })}
+                        options={[
+                          { value: "enter", label: t("appearance.sendEnter") },
+                          { value: "cmd-enter", label: t("appearance.sendCmdEnter") },
+                        ]}
+                      />
+                    </SettingRow>
+                  </div>
+                </section>
+
+                <section>
                   <p className="section-label">{t("appearance.mood")}</p>
                   <div className="card p-4">
                     <div className="grid grid-cols-6 gap-1.5">

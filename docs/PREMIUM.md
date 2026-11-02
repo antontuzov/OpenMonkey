@@ -72,6 +72,7 @@ recorded number — not a claim.
 | 3 | An empty state worth looking at | Four starter prompts that prefill the composer, and a dismissal that sticks across a reload — two e2e specs |
 | 4 | Markdown that matches model output | 14 unit tests (parser, tokenizer, offset stability while streaming), an e2e spec per block, a region baseline and a docs capture |
 | 5 | Message-level actions | 14 integration tests (variant groups, truncation, branching, token accounting), an e2e spec that walks the switcher, quotes, copies and branches, two docs captures; the reply on screen shows 3.4 s and 128 tokens |
+| 6 | Composer power | Send on Enter or Cmd+Enter as a stored setting, @file mentions over the folders the app may read, up to eight attachments per message, `/clear` and `/summarize`, and a drop zone that takes files — 13 unit tests (prompt building, file search), 8 integration tests (attachments in the prompt and in the history, the upgrade of an old file, clear, summarize), 4 e2e specs and three docs captures |
 | 9 | Model manager that builds confidence | Memory estimate before the load, a tokens-per-second benchmark measured in the app (22.8 t/s on Bonsai-4B), backend pick and warm-up badge — e2e spec and a docs capture |
 | 10 | Quick Ask grows up | History, pinned questions and "open in chat" — one e2e spec |
 | 11 | Window feel | Material sidebar and spring timings on every panel, no light flash on a dark-mode resize — one e2e spec |

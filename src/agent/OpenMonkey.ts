@@ -6,6 +6,7 @@ import { detectMood } from "../ui/mood-detector";
 import config, { allowedRoots } from "../utils/config";
 import storage from "../utils/storage";
 import logger from "../utils/logger";
+import { buildAttachmentPrompt, MAX_ATTACHMENTS_PER_MESSAGE } from "../utils/attachments";
 import { MOODS } from "../utils/types";
 import type {
   AgentStatus,
@@ -43,9 +44,6 @@ const titleFrom = (text: string): string => {
   const line = text.replace(/\s+/g, " ").trim();
   return line.length > 48 ? `${line.slice(0, 47)}…` : line || DEFAULT_TITLE;
 };
-
-const formatBytes = (bytes: number): string =>
-  bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 const classifyError = (message: string): ChatErrorCode => {
   if (/context|too many tokens|sequence length|n_ctx/i.test(message)) return "context-overflow";
@@ -159,6 +157,79 @@ export class OpenMonkey extends EventEmitter {
     return fallback;
   }
 
+  /**
+   * Clears the turns of a chat but keeps the chat itself. The model forgets the
+   * conversation too: an empty context is the only honest starting point.
+   */
+  clearConversation(id: string): number {
+    const conversation = storage.getConversation(id);
+    if (!conversation) throw new Error("That conversation no longer exists");
+    this.stopGeneration();
+    const removed = storage.clearConversationMessages(id);
+    if (this.activeConversationId === id) {
+      this.conversationHistory = [];
+      this.reseedModel();
+    }
+    return removed;
+  }
+
+  /**
+   * Summarizes the chat so far with the local model. The summary is returned as a
+   * normal answer, so it is saved in the history and can be quoted like any other.
+   */
+  async summarizeConversation(conversationId: string): Promise<Message | null> {
+    if (this.statusInfo.state !== "ready") {
+      throw new Error(this.statusInfo.message ?? "OpenMonkey is still loading its model");
+    }
+    if (this.controller) throw new Error("OpenMonkey is already answering. Stop that reply first.");
+    const conversation = storage.getConversation(conversationId);
+    if (!conversation) throw new Error("That conversation no longer exists");
+
+    const turns = storage
+      .getMessages(conversationId, 60)
+      .filter((message) => message.role === "user" || message.role === "assistant")
+      .filter((message) => message.content.trim());
+    if (!turns.length) throw new Error("There is nothing to summarize yet");
+
+    const transcript = turns
+      .map((message) => `${message.role === "user" ? "User" : "Assistant"}: ${message.content.trim()}`)
+      .join("\n\n")
+      .slice(0, 12_000);
+
+    if (this.activeConversationId !== conversationId) this.activateConversation(conversationId);
+
+    const controller = new AbortController();
+    this.controller = controller;
+    let summary = "";
+    try {
+      summary = await this.modelManager.generateResponse(
+        `Summarize this conversation in a few short bullet points: what was asked, what was decided, and what is still open. Keep every fact the user gave you.\n\n--- conversation ---\n${transcript}\n--- end of conversation ---`,
+        {
+          systemPrompt: this.buildSystemPrompt(),
+          history: undefined,
+          temperature: config.get("model").temperature,
+          maxTokens: 512,
+          signal: controller.signal,
+        }
+      );
+    } finally {
+      this.controller = null;
+    }
+
+    const text = summary.trim();
+    if (!text) throw new Error("The model returned an empty summary");
+    const message: Message = {
+      id: messageId(),
+      role: "assistant",
+      content: text,
+      timestamp: new Date(),
+      metadata: { mood: this.currentMood, taskType: "summary" },
+    };
+    storage.saveMessage(conversationId, message);
+    this.pushHistory({ role: "assistant", content: text });
+    return message;
+  }
+
   getMessages(conversationId?: string, limit = 80): Message[] {
     const id = conversationId ?? this.activeConversationId;
     return id ? storage.getMessages(id, limit) : [];
@@ -224,7 +295,7 @@ export class OpenMonkey extends EventEmitter {
   async processUserMessage(
     conversationId: string,
     message: string,
-    attachment?: Attachment,
+    attachments: Attachment[] = [],
     origin: "main" | "quick" = "main"
   ): Promise<Message | null> {
     if (this.statusInfo.state !== "ready") {
@@ -236,13 +307,12 @@ export class OpenMonkey extends EventEmitter {
     if (!conversation) throw new Error("That conversation no longer exists");
     if (this.activeConversationId !== conversationId) this.activateConversation(conversationId);
 
-    const display = message.trim() || (attachment ? `Attached ${attachment.name}` : "");
+    const files = attachments.slice(0, MAX_ATTACHMENTS_PER_MESSAGE);
+    const display = message.trim() || (files.length ? `Attached ${files.map((file) => file.name).join(", ")}` : "");
     if (!display) throw new Error("Empty message");
 
     this.detectMood(display);
-    const prompt = attachment
-      ? `The user attached a text file named "${attachment.name}" (${formatBytes(attachment.bytes)}). Use it as context.\n\n--- ${attachment.name} ---\n${attachment.text}\n--- end ${attachment.name} ---\n\n${message.trim()}`
-      : message.trim();
+    const prompt = buildAttachmentPrompt(message.trim(), files);
 
     const userMessage: Message = {
       id: messageId(),
@@ -251,7 +321,9 @@ export class OpenMonkey extends EventEmitter {
       timestamp: new Date(),
       metadata: {
         mood: this.currentMood,
-        attachment: attachment ? { name: attachment.name, bytes: attachment.bytes } : undefined,
+        attachments: files.length
+          ? files.map((file) => ({ name: file.name, bytes: file.bytes, kind: file.kind ?? "text" }))
+          : undefined,
       },
     };
     storage.saveMessage(conversationId, userMessage, prompt);

@@ -24,6 +24,7 @@ import type {
   ConversationSearchHit,
   MemoryFact,
   Message,
+  MessageAttachment,
   QuickAskThread,
   Task,
 } from "./types";
@@ -33,7 +34,7 @@ const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** Bumped when the table layout changes; an export carries it so a newer file is refused. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 interface MessageRow {
   id: string;
@@ -43,8 +44,8 @@ interface MessageRow {
   prompt: string | null;
   mood: string | null;
   task_type: string | null;
-  attachment_name: string | null;
-  attachment_bytes: number | null;
+  /** The files that came with the message, as a JSON array of name, bytes and kind. */
+  attachments: string | null;
   duration_ms: number | null;
   stopped: number | null;
   tokens: number | null;
@@ -85,6 +86,37 @@ const idFor = (prefix: string) =>
 
 const clean = (text: string, length: number) =>
   text.replace(/\s+/g, " ").trim().slice(0, length);
+
+/** The attachment list of a message, as stored: a JSON array or nothing. */
+const attachmentsColumn = (attachments?: MessageAttachment[]): string | null => {
+  if (!attachments?.length) return null;
+  return JSON.stringify(
+    attachments.map((item) => ({
+      name: clean(item.name, 160),
+      bytes: Number.isFinite(item.bytes) ? Math.max(0, Math.round(item.bytes)) : 0,
+      kind: item.kind === "image" ? "image" : "text",
+    }))
+  );
+};
+
+/** Reads the attachment list back; a row written by an older build has none. */
+export const parseAttachments = (raw: string | null | undefined): MessageAttachment[] => {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+      .map((item) => ({
+        name: clean(String(item.name ?? ""), 160),
+        bytes: typeof item.bytes === "number" && Number.isFinite(item.bytes) ? Math.max(0, item.bytes) : 0,
+        kind: item.kind === "image" ? ("image" as const) : ("text" as const),
+      }))
+      .filter((item) => item.name.length > 0);
+  } catch {
+    return [];
+  }
+};
 
 /**
  * Conversation and task history lives in a local SQLite file. Content is encrypted
@@ -147,8 +179,7 @@ export class Storage {
         prompt TEXT,
         mood TEXT,
         task_type TEXT,
-        attachment_name TEXT,
-        attachment_bytes INTEGER,
+        attachments TEXT,
         duration_ms INTEGER,
         stopped INTEGER,
         tokens INTEGER,
@@ -203,8 +234,22 @@ export class Storage {
     const columns = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
     const names = new Set(columns.map((column) => column.name));
     if (!names.has("conversation_id")) this.db.exec("ALTER TABLE messages ADD COLUMN conversation_id TEXT");
-    if (!names.has("attachment_name")) this.db.exec("ALTER TABLE messages ADD COLUMN attachment_name TEXT");
-    if (!names.has("attachment_bytes")) this.db.exec("ALTER TABLE messages ADD COLUMN attachment_bytes INTEGER");
+    if (!names.has("attachments")) {
+      this.db.exec("ALTER TABLE messages ADD COLUMN attachments TEXT");
+      // A message used to carry one file; it now carries a list.
+      const legacy = this.db
+        .prepare("SELECT id, attachment_name, attachment_bytes FROM messages WHERE attachment_name IS NOT NULL")
+        .all() as Array<{ id: string; attachment_name: string; attachment_bytes: number | null }>;
+      const write = this.db.prepare("UPDATE messages SET attachments = ? WHERE id = ?");
+      for (const row of legacy) {
+        write.run(
+          JSON.stringify([{ name: row.attachment_name, bytes: row.attachment_bytes ?? 0, kind: "text" }]),
+          row.id
+        );
+      }
+      this.db.exec("ALTER TABLE messages DROP COLUMN attachment_name");
+      this.db.exec("ALTER TABLE messages DROP COLUMN attachment_bytes");
+    }
     if (!names.has("prompt")) this.db.exec("ALTER TABLE messages ADD COLUMN prompt TEXT");
     if (!names.has("duration_ms")) this.db.exec("ALTER TABLE messages ADD COLUMN duration_ms INTEGER");
     if (!names.has("stopped")) this.db.exec("ALTER TABLE messages ADD COLUMN stopped INTEGER");
@@ -377,9 +422,9 @@ export class Storage {
           this.db!
             .prepare(
               `INSERT OR IGNORE INTO messages
-                (id, conversation_id, role, content, prompt, mood, task_type, attachment_name,
-                 attachment_bytes, duration_ms, stopped, tokens, variant_of, active, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                (id, conversation_id, role, content, prompt, mood, task_type, attachments,
+                 duration_ms, stopped, tokens, variant_of, active, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .run(
               message.id || idFor("msg"),
@@ -389,8 +434,7 @@ export class Storage {
               message.prompt ? this.seal(message.prompt) : null,
               message.metadata?.mood ?? null,
               message.metadata?.taskType ?? null,
-              message.metadata?.attachment?.name ?? null,
-              message.metadata?.attachment?.bytes ?? null,
+              attachmentsColumn(message.metadata?.attachments),
               message.metadata?.durationMs ?? null,
               message.metadata?.stopped ? 1 : null,
               message.metadata?.tokens ?? null,
@@ -631,9 +675,9 @@ export class Storage {
     this.db
       .prepare(
         `INSERT OR REPLACE INTO messages
-          (id, conversation_id, role, content, prompt, mood, task_type, attachment_name, attachment_bytes,
+          (id, conversation_id, role, content, prompt, mood, task_type, attachments,
            duration_ms, stopped, tokens, variant_of, active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
       )
       .run(
         message.id,
@@ -643,8 +687,7 @@ export class Storage {
         prompt ? this.seal(prompt) : null,
         message.metadata?.mood ?? null,
         message.metadata?.taskType ?? null,
-        message.metadata?.attachment?.name ?? null,
-        message.metadata?.attachment?.bytes ?? null,
+        attachmentsColumn(message.metadata?.attachments),
         message.metadata?.durationMs ?? null,
         message.metadata?.stopped ? 1 : null,
         message.metadata?.tokens ?? null,
@@ -715,14 +758,13 @@ export class Storage {
 
   /** Side columns that do not belong to the message body itself, for both reads and backups. */
   private metadataOf(row: MessageRow): Record<string, unknown> {
-    const attachment =
-      row.attachment_name != null ? { name: row.attachment_name, bytes: row.attachment_bytes ?? 0 } : undefined;
+    const attachments = parseAttachments(row.attachments);
     return {
       mood: row.mood ?? undefined,
       taskType: row.task_type ?? undefined,
       durationMs: row.duration_ms ?? undefined,
       stopped: row.stopped === 1 ? true : undefined,
-      attachment,
+      attachments: attachments.length ? attachments : undefined,
       tokens: row.tokens ?? undefined,
       variantOf: row.variant_of ?? undefined,
       variantCount: row.variant_count ?? undefined,
@@ -855,9 +897,9 @@ export class Storage {
         this.db!
           .prepare(
             `INSERT INTO messages
-              (id, conversation_id, role, content, prompt, mood, task_type, attachment_name, attachment_bytes,
+              (id, conversation_id, role, content, prompt, mood, task_type, attachments,
                duration_ms, stopped, tokens, variant_of, active, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?)`
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?)`
           )
           .run(
             idFor("msg"),
@@ -867,8 +909,7 @@ export class Storage {
             row.prompt,
             row.mood,
             row.task_type,
-            row.attachment_name,
-            row.attachment_bytes,
+            row.attachments,
             row.duration_ms,
             row.stopped,
             row.tokens,
@@ -963,6 +1004,17 @@ export class Storage {
     });
     remove();
     return this.latestConversation();
+  }
+
+  /**
+   * Clears the turns of a chat but keeps the chat itself, so /clear leaves an empty
+   * conversation in the sidebar instead of deleting it.
+   */
+  clearConversationMessages(id: string): number {
+    if (!this.db) return 0;
+    const removed = this.db.prepare("DELETE FROM messages WHERE conversation_id = ?").run(id);
+    this.touchConversation(id, Date.now());
+    return removed.changes;
   }
 
   /**

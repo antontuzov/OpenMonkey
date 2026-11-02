@@ -23,8 +23,8 @@ const on = <T>(channel: string, callback: (payload: T) => void): (() => void) =>
 };
 
 const api: ElectronAPI = {
-  processMessage: (conversationId, message, attachment) =>
-    ipcRenderer.invoke("process-message", conversationId, message, attachment),
+  processMessage: (conversationId, message, attachments) =>
+    ipcRenderer.invoke("process-message", conversationId, message, attachments),
   quickAsk: (message: string, threadId?: string) =>
     ipcRenderer.invoke("quick-ask", message, threadId),
   getQuickAskThreads: () => ipcRenderer.invoke("get-quick-asks"),
@@ -60,7 +60,12 @@ const api: ElectronAPI = {
     ipcRenderer.invoke("pin-conversation", id, pinned),
   deleteConversation: (id: string) => ipcRenderer.invoke("delete-conversation", id),
   searchConversations: (query: string) => ipcRenderer.invoke("search-conversations", query),
-  attachFile: () => ipcRenderer.invoke("attach-file"),
+  attachFiles: () => ipcRenderer.invoke("attach-files"),
+  searchFiles: (query: string) => ipcRenderer.invoke("search-files", query),
+  readFile: (filePath: string) => ipcRenderer.invoke("read-file", filePath),
+  clearConversation: (conversationId: string) => ipcRenderer.invoke("clear-conversation", conversationId),
+  summarizeConversation: (conversationId: string) =>
+    ipcRenderer.invoke("summarize-conversation", conversationId),
   getConfig: () => ipcRenderer.invoke("get-config"),
   getPrivacyStatus: () => ipcRenderer.invoke("get-privacy-status"),
   unlockHistory: (passphrase: string) => ipcRenderer.invoke("unlock-history", passphrase),

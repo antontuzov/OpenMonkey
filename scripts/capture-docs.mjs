@@ -1,5 +1,5 @@
 import { _electron as electron } from "playwright-core";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,6 +60,44 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(outDir, "chat.png") });
 
+  // The composer itself: a dropped file rides along with the message, @ offers
+  // the files of the folders the app may read, and / offers the commands it
+  // answers without troubling the model.
+  if (existsSync(modelPath) && (await waitForReady()) === "ready") {
+    const captureNote = path.join(os.homedir(), "Documents", "openmonkey-capture.txt");
+    writeFileSync(captureNote, "a file the composer can attach\n");
+    try {
+      const composer = page.getByRole("textbox", { name: "Message OpenMonkey" });
+      await composer.click();
+      // A real drop: the file lands on the composer and the drop zone answers.
+      await page.evaluate(() => {
+        const file = new File(["a file the composer can attach\n"], "openmonkey-capture.txt", {
+          type: "text/plain",
+        });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        const target = document.querySelector("[data-composer]");
+        for (const type of ["dragenter", "dragover", "drop"]) {
+          target.dispatchEvent(new DragEvent(type, { dataTransfer: transfer, bubbles: true, cancelable: true }));
+        }
+      });
+      await composer.fill("@openmonkey-capture");
+      await page
+        .locator("[data-composer] button")
+        .filter({ hasText: "openmonkey-capture.txt" })
+        .waitFor({ timeout: 30_000 });
+      await page.waitForTimeout(400);
+      await page.locator("[data-composer]").screenshot({ path: path.join(outDir, "chat-composer.png") });
+
+      await composer.fill("/");
+      await page.waitForTimeout(300);
+      await page.locator("[data-composer]").screenshot({ path: path.join(outDir, "chat-composer-commands.png") });
+      await composer.fill("");
+    } finally {
+      rmSync(captureNote, { force: true });
+    }
+  }
+
   // A seeded thread shows every markdown block the renderer knows; a live answer
   // from a 4B model could not be relied on to produce them all.
   const dbFile = path.join(profile, "data", "openmonkey.db");
@@ -110,6 +148,16 @@ try {
 
   await page.getByRole("button", { name: "Settings", exact: true }).first().click();
   await page.getByRole("navigation").first().waitFor();
+
+  // The key that sends is a setting, so the composer can be driven by the key
+  // the reader prefers.
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  const sendKey = page.getByText("Send key", { exact: true });
+  await sendKey.waitFor();
+  await sendKey.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(outDir, "settings-send-key.png") });
+
   await page.getByRole("button", { name: "Privacy", exact: true }).click();
   await page.getByRole("heading", { name: "Privacy" }).waitFor();
   await page.screenshot({ path: path.join(outDir, "settings-privacy.png") });

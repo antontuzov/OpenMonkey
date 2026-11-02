@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Check, Copy, FileText } from "lucide-react";
+import { Check, Copy, FileText, Image as ImageIcon } from "lucide-react";
 import type { Message } from "../../utils/types";
 import { t } from "../i18n";
 import { isDiff, parseInline, parseMarkdown } from "../markdown";
@@ -252,15 +252,23 @@ const BlockView: React.FC<{ block: Block }> = ({ block }) => {
 
 export const MessageContent: React.FC<{ message: Message }> = ({ message }) => {
   const blocks = useMemo(() => parseMarkdown(message.content), [message.content]);
-  const attachment = message.metadata?.attachment;
+  const attachments = message.metadata?.attachments ?? [];
 
   return (
     <div>
-      {attachment && (
-        <div className="flex items-center gap-1.5 mb-1.5 text-[10px] text-muted">
-          <FileText size={11} className="shrink-0" />
-          <span className="truncate max-w-[220px]">{attachment.name}</span>
-          <span className="text-faint">{Math.max(1, Math.round(attachment.bytes / 1024))} KB</span>
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-1.5 text-[10px] text-muted">
+          {attachments.map((attachment) => (
+            <span key={attachment.name} className="inline-flex items-center gap-1.5">
+              {attachment.kind === "image" ? (
+                <ImageIcon size={11} className="shrink-0" />
+              ) : (
+                <FileText size={11} className="shrink-0" />
+              )}
+              <span className="truncate max-w-[220px]">{attachment.name}</span>
+              <span className="text-faint">{Math.max(1, Math.round(attachment.bytes / 1024))} KB</span>
+            </span>
+          ))}
         </div>
       )}
       {blocks.map((block) => (

@@ -22,9 +22,13 @@ try {
   await build({
     entryPoints: [
       path.join(here, "storage.test.ts"),
+      path.join(here, "storage-migration.test.ts"),
+      // Not a suite: the migration test runs it in a child process.
+      path.join(here, "migrate-legacy.ts"),
       path.join(here, "paths.test.ts"),
       path.join(here, "approval.test.ts"),
       path.join(here, "agent-messages.test.ts"),
+      path.join(here, "agent-composer.test.ts"),
       path.join(here, "mlx-tokens.test.ts"),
       path.join(here, "logger.test.ts"),
       path.join(here, "settings.test.ts"),
@@ -43,9 +47,11 @@ try {
 
   const files = [
     "storage.test.cjs",
+    "storage-migration.test.cjs",
     "paths.test.cjs",
     "approval.test.cjs",
     "agent-messages.test.cjs",
+    "agent-composer.test.cjs",
     "mlx-tokens.test.cjs",
     "logger.test.cjs",
     // Last: it writes config sections other suites read, and the runs are sequential.

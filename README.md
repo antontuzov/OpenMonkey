@@ -33,6 +33,16 @@ long it took and how many tokens it used.
 
 ![Editing a question](docs/screenshots/chat-edit-message.png)
 
+The composer carries the work. Drop a file on it, paste an image, or type `@` and
+pick a file from the folders the app may read — up to eight files ride along with
+one message. `/clear` empties the chat and `/summarize` asks the local model for a
+digest, both without troubling the model with a request it would answer in prose.
+Enter or Cmd+Enter sends, whichever the reader prefers.
+
+![The composer with a dropped file and a file mention](docs/screenshots/chat-composer.png)
+
+![The slash commands the composer answers itself](docs/screenshots/chat-composer-commands.png)
+
 | Onboarding | Settings → Privacy | Settings → Desktop | Settings → Model |
 | --- | --- | --- | --- |
 | ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) | ![Model](docs/screenshots/settings-model.png) |
@@ -86,20 +96,22 @@ becomes active.
 
 ### Verification
 
-`npm test` runs 41 unit assertions and 25 integration assertions against a real SQLite
+`npm test` runs 75 unit assertions and 54 integration assertions against a real SQLite
 file under a throwaway profile: the task-fence parser, tool-argument validation, the
 backup envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
-retention, approval gating, path confinement (including a symlink escape) and log
-redaction/rotation.
-`npm run test:e2e` adds 17 Playwright tests on a throwaway profile: onboarding, the
+retention, approval gating, path confinement (including a symlink escape), log
+redaction/rotation, the attachment prompt, the composer's file search and the upgrade
+of a history file written by an older build.
+`npm run test:e2e` adds 29 Playwright tests on a throwaway profile: onboarding, the
 chat surface with a button/field/image/landmark audit, Privacy rows and switches,
 RU/EN, close-to-tray, the update channel, the vibrancy and spring timings, Quick Ask
-history, and the model manager's memory estimate plus a real tokens-per-second run
-against the loaded weights. Performance budgets are their own four tests (cold start
-under 2.5 s, no long tasks during a synthetic 320-token stream, idle memory under
-900 MB, Settings served as a lazy chunk). CI runs the same suites on both Mac
-architectures and packages tag builds on `v*` (signing and notarization run when the
-Apple secrets are present); see `.github/workflows/ci.yml`.
+history, the composer (send key, slash commands, file mentions, attachments), and the
+model manager's memory estimate plus a real tokens-per-second run against the loaded
+weights. Performance budgets are their own four tests (cold start under 2.5 s, no long
+tasks during a synthetic 320-token stream, idle memory under 900 MB, Settings served as
+a lazy chunk). CI runs the same suites on both Mac architectures and packages tag
+builds on `v*` (signing and notarization run when the Apple secrets are present); see
+`.github/workflows/ci.yml`.
 
 ## How it is laid out
 
@@ -154,6 +166,9 @@ manually.
   every six hours while the app runs. With history off, nothing is written to disk.
 - The filesystem tool refuses any path outside `Documents`, `Downloads`, `Desktop`
   and the app's own data directory, and it caps reads at 256 KB.
+- The composer reads the same folders: at most eight files per message, 256 KB each.
+  Key- and environment-looking files (`.env`, `*.pem`, `id_rsa`) are never offered to
+  the model, not even by name.
 - Tool actions need approval by default. Until **Run tool actions without asking**
   is switched on in Settings → Approvals, every call — file write, shell command, web
   fetch, calendar or email action — stops at a dialog showing the tool and its
@@ -191,6 +206,7 @@ userData if you prefer to change it directly.
 | `desktop.closeToTray` | platform default | Off on macOS, on elsewhere |
 | `desktop.updateChannel` | `stable` | `stable` or `beta` |
 | `ui.language` | `en` | `en` or `ru` |
+| `ui.sendKey` | `enter` | `enter` or `cmd-enter` |
 | `ui.currentMood` | `neutral` | |
 
 ## Troubleshooting

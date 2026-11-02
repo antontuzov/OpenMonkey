@@ -20,6 +20,10 @@ and approval-gated tools. Nothing here is a mock screen.
   regenerate with a switcher that keeps the previous answer, branch a chat from any
   message, copy and quote; every reply shows its duration and the tokens the model
   reported.
+- Composer: Enter or Cmd+Enter sends (a stored setting), `@` offers the files of the
+  folders the app may read, dropped and pasted files ride along with the message (up to
+  eight, 256 KB each), and `/clear`, `/summarize` and `/help` are answered by the app
+  itself rather than by the model.
 - Agent v2: schema-validated tool registry, Ask/Allow/Block per tool, session approvals,
   diff/shell/draft previews, encrypted audit log with export, symlink-safe workspace roots,
   live shell output with kill, Trash deletes.
@@ -38,7 +42,7 @@ and approval-gated tools. Nothing here is a mock screen.
 
 **Known gaps**
 
-- Slash commands, tables and true FTS are deferred (see Phase 2 notes).
+- Tables and true FTS are deferred (see Phase 2 notes).
 - MLX streaming is implemented but untested — MLX is not installed on this machine.
 - Memory digests are extractive (recent messages and last answers), not model-written rolling
   summaries. Workspace search is lexical and lives only in RAM — no sqlite-vec, no embedding
@@ -107,7 +111,9 @@ and approval-gated tools. Nothing here is a mock screen.
 11. ✅ **Composer upgrades (core)**: per-session drafts, drag-and-drop text attachments with
     extension allowlist, NUL-byte rejection and a 256 KB cap, native file picker through IPC,
     attachment chips, Enter sends, Shift+Enter newline. Slash commands are deferred to the
-    Agent v2 command surface. *(M)*
+    Agent v2 command surface. *(M)* — later raised to the premium composer: `/clear`,
+    `/summarize`, `/help`, `@file` mentions, several attachments per message and a
+    stored Enter / Cmd+Enter setting.
 12. ✅ **Failure UX (core)**: specific cards for model-not-ready, context overflow, offline and
     unknown errors, with retry / new chat / model settings actions; pre-send failures restore
     the draft and attachment and say the message was not sent. Tool-denied and corrupt-DB

@@ -10,6 +10,7 @@ import {
   FileText,
   FolderSearch,
   GitBranch,
+  Image as ImageIcon,
   Lightbulb,
   Loader,
   Paperclip,
@@ -28,6 +29,7 @@ import {
   type AgentStatus,
   type Attachment,
   type ChatErrorCode,
+  type FileCandidate,
   type Message,
   type Mood,
 } from "../../utils/types";
@@ -41,6 +43,7 @@ interface ChatInterfaceProps {
   mood: Mood;
   agentName: string;
   autoExecute: boolean;
+  sendKey: "enter" | "cmd-enter";
   conversationId: string | null;
   busyConversationId: string | null;
   starterPromptsHidden: boolean;
@@ -60,7 +63,16 @@ const STARTERS = [
 
 const MAX_ATTACHMENT_LABEL = "256 KB";
 const MAX_ATTACHMENT_BYTES = 256 * 1024;
-const ATTACHABLE_FILE = /\.(txt|md|markdown|json|csv|tsv|log|yaml|yml|toml|xml|html|css|js|jsx|ts|tsx|py|rb|go|rs|swift|sh|sql|c|h|cpp|java|env|ini|conf)$/i;
+const MAX_ATTACHMENTS = 8;
+const ATTACHABLE_FILE = /\.(txt|md|markdown|json|csv|tsv|log|yaml|yml|toml|xml|html|css|js|jsx|ts|tsx|py|rb|go|rs|swift|sh|sql|c|h|cpp|java|env|ini|conf|png|jpg|jpeg|gif|webp|bmp|svg)$/i;
+const IMAGE_FILE = /\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i;
+/** The commands the composer answers itself, without troubling the model. */
+const SLASH_COMMANDS = [
+  { command: "/clear", label: "chat.command.clear" },
+  { command: "/summarize", label: "chat.command.summarize" },
+  { command: "/help", label: "chat.command.help" },
+] as const;
+const SLASH_NAMES = SLASH_COMMANDS.map((entry) => entry.command);
 
 const FAILURE_COPY: Record<ChatErrorCode, { title: string; body: string }> = {
   "not-ready": {
@@ -498,6 +510,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   mood,
   agentName,
   autoExecute,
+  sendKey,
   conversationId,
   busyConversationId,
   starterPromptsHidden,
@@ -510,13 +523,16 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [stream, setStream] = useState<{ id: string; content: string } | null>(null);
   const [input, setInput] = useState("");
-  const [attachment, setAttachment] = useState<Attachment | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attaching, setAttaching] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [failure, setFailure] = useState<ChatFailure | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(true);
   const [dragging, setDragging] = useState(false);
+  const [dropOnComposer, setDropOnComposer] = useState(false);
+  const [mentions, setMentions] = useState<FileCandidate[]>([]);
+  const [mentionIndex, setMentionIndex] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickRef = useRef(true);
@@ -524,6 +540,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const dragDepth = useRef(0);
   const pendingTokens = useRef("");
   const tokenFrame = useRef(0);
+  const mentionRequest = useRef(0);
 
   // Tokens arrive faster than the display refreshes; batching them per frame
   // renders a long reply at screen rate instead of once per token.
@@ -557,7 +574,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setStream(null);
     setFailure(null);
     setNotice(null);
-    setAttachment(null);
+    setAttachments([]);
+    setMentions([]);
     setIsSending(false);
     setLoadingMessages(true);
     setInput(sessionStorage.getItem(draftKey(conversationId)) ?? "");
@@ -675,45 +693,169 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     textareaRef.current?.focus({ preventScroll: true });
   };
 
+  /**
+   * The commands the composer answers itself: /clear empties the chat, /summarize
+   * asks the local model for a digest, /help lists them.
+   */
+  const runCommand = useCallback(
+    async (command: string) => {
+      if (!conversationId) return;
+      updateInput("");
+      sessionStorage.removeItem(draftKey(conversationId));
+      setNotice(null);
+      if (command === "/help") {
+        setNotice(t("chat.commandHelp"));
+        return;
+      }
+      if (command === "/clear") {
+        try {
+          await window.electron?.clearConversation(conversationId);
+          setMessages([]);
+          toast(t("chat.cleared"));
+          onConversationsChanged();
+        } catch (caught) {
+          setNotice(caught instanceof Error ? caught.message : String(caught));
+        }
+        return;
+      }
+      if (command === "/summarize") {
+        setIsSending(true);
+        try {
+          const summary = await window.electron?.summarizeConversation(conversationId);
+          if (summary) {
+            setMessages((current) => [...current, summary]);
+            stickRef.current = true;
+          }
+        } catch (caught) {
+          setNotice(caught instanceof Error ? caught.message : String(caught));
+        } finally {
+          setIsSending(false);
+          onConversationsChanged();
+        }
+      }
+    },
+    [conversationId, onConversationsChanged]
+  );
+
+  /** Adds files to the composer, refusing the ones it cannot carry. */
+  const addAttachments = useCallback((incoming: Attachment[]) => {
+    if (!incoming.length) return;
+    setAttachments((current) => {
+      const merged = [...current];
+      for (const file of incoming) {
+        if (merged.length >= MAX_ATTACHMENTS) break;
+        if (merged.some((item) => item.name === file.name)) continue;
+        merged.push(file);
+      }
+      return merged;
+    });
+  }, []);
+
+  /** Reads the files the user dropped or pasted, the same way the picker does. */
+  const readDroppedFiles = useCallback(
+    async (files: File[]) => {
+      const accepted: Attachment[] = [];
+      let refused = 0;
+      for (const file of files) {
+        if (accepted.length >= MAX_ATTACHMENTS) break;
+        if (!ATTACHABLE_FILE.test(file.name)) {
+          refused += 1;
+          continue;
+        }
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+          refused += 1;
+          continue;
+        }
+        if (IMAGE_FILE.test(file.name) || file.type.startsWith("image/")) {
+          accepted.push({ name: file.name || "pasted-image.png", bytes: file.size, text: "", kind: "image" });
+          continue;
+        }
+        try {
+          const text = await file.text();
+          if (text.includes("\u0000")) {
+            refused += 1;
+            continue;
+          }
+          accepted.push({ name: file.name, bytes: file.size, text, kind: "text" });
+        } catch {
+          refused += 1;
+        }
+      }
+      if (refused) {
+        setNotice(
+          t("chat.filesRefused", {
+            count: refused,
+            size: MAX_ATTACHMENT_LABEL,
+          })
+        );
+      }
+      addAttachments(accepted);
+    },
+    [addAttachments]
+  );
+
+  const pickAttachments = async () => {
+    if (!ready) return;
+    setAttaching(true);
+    setNotice(null);
+    try {
+      const files = await window.electron?.attachFiles();
+      if (files?.length) addAttachments(files);
+    } catch (caught) {
+      setNotice(caught instanceof Error ? caught.message : "That file could not be attached");
+    } finally {
+      setAttaching(false);
+    }
+  };
+
   const send = useCallback(async () => {
     if (!conversationId || !ready || busy) return;
     const text = input.trim();
-    const file = attachment;
-    if (!text && !file) return;
+    const files = attachments;
+    if (!text && !files.length) return;
+
+    // A slash command is answered here, so the model is never asked to clear a chat.
+    if (!files.length && (SLASH_NAMES as readonly string[]).includes(text)) {
+      await runCommand(text);
+      return;
+    }
 
     const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const userMessage: Message = {
       id: localId,
       role: "user",
-      content: text || `Attached ${file!.name}`,
+      content: text || `Attached ${files.map((file) => file.name).join(", ")}`,
       timestamp: new Date(),
-      metadata: file ? { attachment: { name: file.name, bytes: file.bytes } } : undefined,
+      metadata: files.length
+        ? { attachments: files.map((file) => ({ name: file.name, bytes: file.bytes, kind: file.kind ?? "text" })) }
+        : undefined,
     };
 
     stickRef.current = true;
     setMessages((current) => [...current, userMessage]);
     setInput("");
     sessionStorage.removeItem(draftKey(conversationId));
-    setAttachment(null);
+    setAttachments([]);
+    setMentions([]);
     setFailure(null);
     setNotice(null);
     setIsSending(true);
 
     try {
-      await window.electron?.processMessage(conversationId, text, file ?? undefined);
+      await window.electron?.processMessage(conversationId, text, files);
     } catch (caught) {
       const detail = caught instanceof Error ? caught.message : String(caught);
       setMessages((current) => current.filter((message) => message.id !== localId));
       setInput(text);
       sessionStorage.setItem(draftKey(conversationId), text);
-      setAttachment(file);
+      setAttachments(files);
       setFailure({ code: classifyError(detail), text: detail, origin: "send" });
     } finally {
       setIsSending(false);
       onConversationsChanged();
       textareaRef.current?.focus();
     }
-  }, [attachment, busy, conversationId, input, onConversationsChanged, ready]);
+  }, [attachments, busy, conversationId, input, onConversationsChanged, ready, runCommand]);
 
   const regenerate = useCallback(async () => {
     if (!conversationId || !ready || busy) return;
@@ -826,47 +968,58 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     await window.electron?.stopGeneration();
   };
 
-  const pickAttachment = async () => {
-    if (!ready) return;
-    setAttaching(true);
-    setNotice(null);
-    try {
-      const file = await window.electron?.attachFile();
-      if (file) setAttachment(file);
-    } catch (caught) {
-      setNotice(caught instanceof Error ? caught.message : "That file could not be attached");
-    } finally {
-      setAttaching(false);
-    }
-  };
-
-  const acceptDroppedFile = async (file: File | undefined) => {
-    if (!file) return;
-    if (!ATTACHABLE_FILE.test(file.name)) {
-      setNotice("Drop a plain text or code file. Binaries and images are not sent to the model.");
-      return;
-    }
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      setNotice(`That file is ${Math.round(file.size / 1024)} KB. Attachments are capped at ${MAX_ATTACHMENT_LABEL}.`);
-      return;
-    }
-    try {
-      const text = await file.text();
-      if (text.includes("\u0000")) {
-        setNotice("That file looks binary, so it was not attached.");
-        return;
-      }
-      setAttachment({ name: file.name, bytes: file.size, text });
-      setNotice(null);
-      textareaRef.current?.focus();
-    } catch {
-      setNotice("That file could not be read.");
-    }
-  };
-
   const retryModel = () => {
     void window.electron?.reloadModel().catch(() => undefined);
   };
+
+  /** The @word the caret sits in, if any: the file the user is about to mention. */
+  const mentionAt = (value: string, caret: number): string | null => {
+    const match = /(^|\s)@([^\s@]*)$/.exec(value.slice(0, caret));
+    return match ? match[2] : null;
+  };
+
+  /** Puts the chosen file into the message and attaches its text. */
+  const acceptMention = useCallback(
+    async (file: FileCandidate) => {
+      const element = textareaRef.current;
+      const caret = element?.selectionStart ?? input.length;
+      const before = input.slice(0, caret);
+      const match = /(^|\s)@([^\s@]*)$/.exec(before);
+      if (!match) return;
+      const start = caret - match[2].length - 1;
+      const next = `${input.slice(0, start)}@${file.name} ${input.slice(caret)}`;
+      updateInput(next);
+      setMentions([]);
+      try {
+        const attachment = await window.electron?.readFile(file.path);
+        if (attachment) addAttachments([attachment]);
+      } catch (caught) {
+        setNotice(caught instanceof Error ? caught.message : String(caught));
+      }
+      textareaRef.current?.focus();
+    },
+    [addAttachments, input]
+  );
+
+  useEffect(() => {
+    const query = mentionAt(input, textareaRef.current?.selectionStart ?? input.length);
+    if (query == null) {
+      setMentions([]);
+      return;
+    }
+    const ticket = ++mentionRequest.current;
+    const timer = setTimeout(async () => {
+      try {
+        const found = await window.electron?.searchFiles(query);
+        if (mentionRequest.current !== ticket) return;
+        setMentions(found ?? []);
+        setMentionIndex(0);
+      } catch {
+        setMentions([]);
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [input]);
 
   const onScroll = () => {
     const element = scrollRef.current;
@@ -897,25 +1050,31 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         event.preventDefault();
         dragDepth.current += 1;
         setDragging(true);
+        setDropOnComposer(Boolean((event.target as HTMLElement).closest?.("[data-composer]")));
       }}
       onDragOver={(event) => {
         event.preventDefault();
         if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+        setDropOnComposer(Boolean((event.target as HTMLElement).closest?.("[data-composer]")));
       }}
       onDragLeave={(event) => {
         event.preventDefault();
         dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (dragDepth.current === 0) setDragging(false);
+        if (dragDepth.current === 0) {
+          setDragging(false);
+          setDropOnComposer(false);
+        }
       }}
       onDrop={(event) => {
         event.preventDefault();
         dragDepth.current = 0;
         setDragging(false);
+        setDropOnComposer(false);
         if (!ready) return;
-        void acceptDroppedFile(event.dataTransfer?.files?.[0]);
+        void readDroppedFiles(Array.from(event.dataTransfer?.files ?? []));
       }}
     >
-      {dragging && (
+      {dragging && !dropOnComposer && (
         <div className="pointer-events-none absolute inset-3 z-20 rounded-2xl border-2 border-dashed border-accent bg-accent-soft/95 flex flex-col items-center justify-center gap-2">
           <Paperclip size={26} className="text-accent-ink" />
           <p className="text-[13px] font-semibold text-accent-ink">{t("chat.dropTitle")}</p>
@@ -1065,20 +1224,67 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           )}
 
-          <div className="card p-2">
-            {attachment && (
-              <div className="flex items-center gap-2 mx-1 mt-1 mb-0.5 px-2 py-1.5 rounded-lg bg-card-2 border border-line text-[10.5px] text-muted">
-                <FileText size={12} className="shrink-0" />
-                <span className="truncate max-w-[260px] text-ink">{attachment.name}</span>
-                <span className="text-faint">{sizeOf(attachment.bytes)}</span>
-                <button
-                  onClick={() => setAttachment(null)}
-                  className="ml-auto icon-btn !w-5 !h-5"
-                  title={t("chat.removeAttachment")}
-                  aria-label={t("chat.removeAttachment")}
-                >
-                  <X size={11} />
-                </button>
+          <div
+            data-composer
+            className={`card p-2 transition-colors ${
+              dragging && dropOnComposer ? "border-accent ring-2 ring-accent/30" : ""
+            }`}
+          >
+            {mentions.length > 0 && (
+              <div className="mb-1 rounded-lg border border-line bg-card-2 overflow-hidden">
+                {mentions.map((file, index) => (
+                  <button
+                    key={file.path}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void acceptMention(file)}
+                    className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11.5px] ${
+                      index === mentionIndex ? "bg-accent-soft text-accent-ink" : "text-muted hover:bg-card"
+                    }`}
+                  >
+                    <FileText size={12} className="shrink-0" />
+                    <span className="truncate text-ink">{file.name}</span>
+                    <span className="truncate text-faint">{file.dir}</span>
+                    <span className="ml-auto text-faint">{sizeOf(file.bytes)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 mx-1 mt-1 mb-0.5">
+                {attachments.map((file) => (
+                  <span
+                    key={file.name}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-card-2 border border-line text-[10.5px] text-muted"
+                  >
+                    {file.kind === "image" ? <ImageIcon size={12} className="shrink-0" /> : <FileText size={12} className="shrink-0" />}
+                    <span className="truncate max-w-[180px] text-ink">{file.name}</span>
+                    <span className="text-faint">{sizeOf(file.bytes)}</span>
+                    <button
+                      onClick={() => setAttachments((current) => current.filter((item) => item.name !== file.name))}
+                      className="icon-btn !w-4 !h-4"
+                      title={t("chat.removeAttachment")}
+                      aria-label={t("chat.removeAttachment")}
+                    >
+                      <X size={10} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {input.startsWith("/") && (
+              <div className="flex flex-wrap items-center gap-1.5 mx-1 mt-1 mb-0.5">
+                {SLASH_COMMANDS.map((entry) => (
+                  <button
+                    key={entry.command}
+                    onClick={() => void runCommand(entry.command)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-card-2 border border-line text-[10.5px] text-muted hover:text-ink"
+                  >
+                    <span className="text-ink">{entry.command}</span>
+                    <span>{t(entry.label)}</span>
+                  </button>
+                ))}
               </div>
             )}
 
@@ -1086,9 +1292,38 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               ref={textareaRef}
               value={input}
               onChange={(event) => updateInput(event.target.value)}
+              onPaste={(event) => {
+                const files = Array.from(event.clipboardData?.files ?? []);
+                if (!files.length) return;
+                event.preventDefault();
+                void readDroppedFiles(files);
+              }}
               onKeyDown={(event) => {
+                if (mentions.length > 0) {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setMentionIndex((index) => (index + 1) % mentions.length);
+                    return;
+                  }
+                  if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setMentionIndex((index) => (index - 1 + mentions.length) % mentions.length);
+                    return;
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    setMentions([]);
+                    return;
+                  }
+                  if (event.key === "Enter" && !event.shiftKey && !event.metaKey) {
+                    event.preventDefault();
+                    void acceptMention(mentions[mentionIndex]);
+                    return;
+                  }
+                }
                 if (event.key !== "Enter") return;
-                if (event.shiftKey) return;
+                const sends = sendKey === "cmd-enter" ? event.metaKey || event.ctrlKey : !event.shiftKey;
+                if (!sends) return;
                 event.preventDefault();
                 void send();
               }}
@@ -1118,7 +1353,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <Plus size={16} />
               </button>
               <button
-                onClick={() => void pickAttachment()}
+                onClick={() => void pickAttachments()}
                 disabled={!ready || attaching || loadingMessages}
                 title={t("chat.attach", { size: MAX_ATTACHMENT_LABEL })}
                 aria-label={t("chat.attach", { size: MAX_ATTACHMENT_LABEL })}
@@ -1157,7 +1392,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 ) : (
                   <button
                     onClick={() => void send()}
-                    disabled={!ready || (!input.trim() && !attachment) || loadingMessages}
+                    disabled={!ready || (!input.trim() && !attachments.length) || loadingMessages}
                     className="btn btn-primary !w-8 !px-0 rounded-full"
                     title={t("chat.send")}
                     aria-label={t("chat.send")}

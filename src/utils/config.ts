@@ -23,6 +23,7 @@ const defaultConfig: Config = {
     reduceMotion: false,
     starterPromptsHidden: false,
     language: "en",
+    sendKey: "enter",
   },
   privacy: {
     saveHistory: true,
@@ -129,6 +130,7 @@ const PAGE_DEFAULTS: Partial<Record<SettingsPage, ConfigPatch>> = {
       density: defaultConfig.ui.density,
       reduceMotion: defaultConfig.ui.reduceMotion,
       language: defaultConfig.ui.language,
+      sendKey: defaultConfig.ui.sendKey,
     },
   },
   desktop: {

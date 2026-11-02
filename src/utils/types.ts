@@ -5,7 +5,8 @@ export interface MessageMetadata {
   /** Tokens the model actually generated for this reply. */
   tokens?: number;
   stopped?: boolean;
-  attachment?: { name: string; bytes: number };
+  /** Every file that came with the message; the body itself is not kept here. */
+  attachments?: MessageAttachment[];
   /** Set on every answer of a regenerated group; the first answer's own id. */
   variantOf?: string;
   /** Answers in this group, and which one the chat is showing (1-based). */
@@ -61,7 +62,25 @@ export interface ConversationSearchHit {
 export interface Attachment {
   name: string;
   bytes: number;
+  /** The file's text; empty for an image, whose pixels the model cannot read. */
   text: string;
+  /** An image is attached by name only: the local models here read text. */
+  kind?: "text" | "image";
+}
+
+/** What the history keeps about an attachment: the name and the size, not the body. */
+export interface MessageAttachment {
+  name: string;
+  bytes: number;
+  kind?: "text" | "image";
+}
+
+/** A file the composer offers when the user types @. */
+export interface FileCandidate {
+  path: string;
+  name: string;
+  dir: string;
+  bytes: number;
 }
 
 export interface MemoryFact {
@@ -428,6 +447,8 @@ export interface Config {
     /** The empty chat keeps its starter prompts until the user hides them. */
     starterPromptsHidden: boolean;
     language: AppLanguage;
+    /** Which key sends a message; the other one starts a new line. */
+    sendKey: "enter" | "cmd-enter";
   };
   privacy: {
     saveHistory: boolean;
@@ -555,7 +576,7 @@ export type MenuCommand =
   | "focus-composer";
 
 export interface ElectronAPI {
-  processMessage: (conversationId: string, message: string, attachment?: Attachment) => Promise<Message | null>;
+  processMessage: (conversationId: string, message: string, attachments?: Attachment[]) => Promise<Message | null>;
   /** Compact-window turn: a thread of its own, tagged so approvals show in the popover. */
   quickAsk: (message: string, threadId?: string) => Promise<QuickAskResult>;
   getQuickAskThreads: () => Promise<QuickAskThread[]>;
@@ -591,7 +612,16 @@ export interface ElectronAPI {
   setConversationPinned: (id: string, pinned: boolean) => Promise<void>;
   deleteConversation: (id: string) => Promise<Conversation | null>;
   searchConversations: (query: string) => Promise<ConversationSearchHit[]>;
-  attachFile: () => Promise<Attachment | null>;
+  /** Open a file picker; several files may be chosen at once. */
+  attachFiles: () => Promise<Attachment[]>;
+  /** The files whose name matches an @mention, from the folders the app may read. */
+  searchFiles: (query: string) => Promise<FileCandidate[]>;
+  /** Read one of those files so it can ride along with a message. */
+  readFile: (filePath: string) => Promise<Attachment>;
+  /** Drop every turn of a chat but keep the chat itself. */
+  clearConversation: (conversationId: string) => Promise<number>;
+  /** Ask the local model to summarize the chat so far. */
+  summarizeConversation: (conversationId: string) => Promise<Message | null>;
   getConfig: () => Promise<Config>;
   getPrivacyStatus: () => Promise<PrivacyStatus>;
   unlockHistory: (passphrase: string) => Promise<boolean>;
