@@ -33,7 +33,7 @@ const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** Bumped when the table layout changes; an export carries it so a newer file is refused. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 interface MessageRow {
   id: string;
@@ -47,7 +47,15 @@ interface MessageRow {
   attachment_bytes: number | null;
   duration_ms: number | null;
   stopped: number | null;
+  tokens: number | null;
+  /** The first answer of a regenerated group; null when nothing has replaced this row. */
+  variant_of: string | null;
+  /** Which answer of a group the chat shows. Only meaningful once a group exists. */
+  active: number | null;
   created_at: number;
+  /** Only present on reads that join the group; the switcher's "2 of 3". */
+  variant_count?: number | null;
+  variant_index?: number | null;
 }
 
 interface ConversationRow {
@@ -143,6 +151,9 @@ export class Storage {
         attachment_bytes INTEGER,
         duration_ms INTEGER,
         stopped INTEGER,
+        tokens INTEGER,
+        variant_of TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS tasks (
@@ -197,6 +208,9 @@ export class Storage {
     if (!names.has("prompt")) this.db.exec("ALTER TABLE messages ADD COLUMN prompt TEXT");
     if (!names.has("duration_ms")) this.db.exec("ALTER TABLE messages ADD COLUMN duration_ms INTEGER");
     if (!names.has("stopped")) this.db.exec("ALTER TABLE messages ADD COLUMN stopped INTEGER");
+    if (!names.has("tokens")) this.db.exec("ALTER TABLE messages ADD COLUMN tokens INTEGER");
+    if (!names.has("variant_of")) this.db.exec("ALTER TABLE messages ADD COLUMN variant_of TEXT");
+    if (!names.has("active")) this.db.exec("ALTER TABLE messages ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
 
     const conversationColumns = this.db.prepare("PRAGMA table_info(conversations)").all() as Array<{ name: string }>;
     const conversationNames = new Set(conversationColumns.map((column) => column.name));
@@ -347,17 +361,25 @@ export class Storage {
           );
         conversations += 1;
         let lastAnswer = "";
+        // A backup stores every variant of an answer, so a restored chat would show them
+        // stacked. Only the last one of each group is put on screen.
+        const shownVariant = new Map<string, string>();
+        for (const message of exported.messages) {
+          const root = message.metadata?.variantOf;
+          if (root) shownVariant.set(root, message.id);
+        }
         for (const message of exported.messages) {
           // An empty body means the row was unreadable where it was written; restoring
           // it would only add blank bubbles.
           if (!message.content.trim() && !message.prompt?.trim()) continue;
           const at = stamp(message.timestamp, Date.now());
+          const root = message.metadata?.variantOf;
           this.db!
             .prepare(
               `INSERT OR IGNORE INTO messages
                 (id, conversation_id, role, content, prompt, mood, task_type, attachment_name,
-                 attachment_bytes, duration_ms, stopped, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                 attachment_bytes, duration_ms, stopped, tokens, variant_of, active, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .run(
               message.id || idFor("msg"),
@@ -371,6 +393,9 @@ export class Storage {
               message.metadata?.attachment?.bytes ?? null,
               message.metadata?.durationMs ?? null,
               message.metadata?.stopped ? 1 : null,
+              message.metadata?.tokens ?? null,
+              root ?? null,
+              root ? (shownVariant.get(root) === message.id ? 1 : 0) : 1,
               at
             );
           messages += 1;
@@ -602,12 +627,13 @@ export class Storage {
 
   saveMessage(conversationId: string, message: Message, prompt?: string): void {
     if (!config.get("privacy").saveHistory || !this.db) return;
+    const variantOf = message.metadata?.variantOf;
     this.db
       .prepare(
         `INSERT OR REPLACE INTO messages
           (id, conversation_id, role, content, prompt, mood, task_type, attachment_name, attachment_bytes,
-           duration_ms, stopped, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           duration_ms, stopped, tokens, variant_of, active, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
       )
       .run(
         message.id,
@@ -621,9 +647,60 @@ export class Storage {
         message.metadata?.attachment?.bytes ?? null,
         message.metadata?.durationMs ?? null,
         message.metadata?.stopped ? 1 : null,
+        message.metadata?.tokens ?? null,
+        variantOf ?? null,
         message.timestamp.getTime()
       );
+    // A regenerated answer joins the group it replaced and becomes the one on screen.
+    if (variantOf) {
+      this.db
+        .prepare("UPDATE messages SET variant_of = id WHERE id = ? AND variant_of IS NULL")
+        .run(variantOf);
+      this.activateVariant(message.id, variantOf);
+    }
     this.touchConversation(conversationId, message.timestamp.getTime());
+  }
+
+  private activateVariant(shownId: string, groupRoot: string): void {
+    if (!this.db) return;
+    this.db
+      .prepare(
+        `UPDATE messages SET active = CASE WHEN id = ? THEN 1 ELSE 0 END
+          WHERE conversation_id = (SELECT conversation_id FROM messages WHERE id = ?)
+            AND COALESCE(variant_of, id) = ?`
+      )
+      .run(shownId, shownId, groupRoot);
+  }
+
+  /** The group a message belongs to, oldest answer first, whatever the chat is showing. */
+  listVariants(id: string): Message[] {
+    if (!this.db) return [];
+    const anchor = this.db
+      .prepare("SELECT conversation_id AS cid, COALESCE(variant_of, id) AS root FROM messages WHERE id = ?")
+      .get(id) as { cid: string | null; root: string } | undefined;
+    if (!anchor?.cid) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM messages
+          WHERE conversation_id = ? AND COALESCE(variant_of, id) = ?
+          ORDER BY created_at ASC, rowid ASC`
+      )
+      .all(anchor.cid, anchor.root) as MessageRow[];
+    const group = rows.map((row, index) => this.toMessage({ ...row, variant_count: rows.length, variant_index: index + 1 }));
+    return group;
+  }
+
+  /** Show one answer of a group instead of another; the model's context follows it. */
+  setActiveVariant(id: string): void {
+    if (!this.db) return;
+    const anchor = this.db
+      .prepare("SELECT COALESCE(variant_of, id) AS root FROM messages WHERE id = ?")
+      .get(id) as { root: string } | undefined;
+    if (!anchor) return;
+    this.db
+      .prepare("UPDATE messages SET variant_of = id WHERE id = ? AND variant_of IS NULL")
+      .run(anchor.root);
+    this.activateVariant(id, anchor.root);
   }
 
   private toMessage(row: MessageRow): Message {
@@ -646,6 +723,10 @@ export class Storage {
       durationMs: row.duration_ms ?? undefined,
       stopped: row.stopped === 1 ? true : undefined,
       attachment,
+      tokens: row.tokens ?? undefined,
+      variantOf: row.variant_of ?? undefined,
+      variantCount: row.variant_count ?? undefined,
+      variantIndex: row.variant_index ?? undefined,
     };
   }
 
@@ -654,10 +735,37 @@ export class Storage {
     if (!this.db) return [];
     const rows = this.db
       .prepare(
-        "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?"
+        `${this.messageSelect(
+          "WHERE m.conversation_id = ? AND (m.variant_of IS NULL OR m.active = 1)"
+        )} ORDER BY m.created_at DESC, m.rowid DESC LIMIT ?`
       )
       .all(conversationId, limit) as MessageRow[];
     return rows.reverse().map((row) => this.toMessage(row));
+  }
+
+  /** One message by id, so an edit can check what it is about to rewrite. */
+  getMessage(id: string): Message | null {
+    if (!this.db) return null;
+    const row = this.db.prepare(this.messageSelect("WHERE m.id = ?")).get(id) as
+      | MessageRow
+      | undefined;
+    return row ? this.toMessage(row) : null;
+  }
+
+  /**
+   * The group sizes a switcher needs, and the position of the row being read. Correlated
+   * subqueries keep one result per row; a chat's history is short by design.
+   */
+  private messageSelect(where: string): string {
+    return `SELECT m.*,
+      (SELECT COUNT(*) FROM messages v
+        WHERE v.conversation_id = m.conversation_id
+          AND COALESCE(v.variant_of, v.id) = COALESCE(m.variant_of, m.id)) AS variant_count,
+      (SELECT COUNT(*) FROM messages v
+        WHERE v.conversation_id = m.conversation_id
+          AND COALESCE(v.variant_of, v.id) = COALESCE(m.variant_of, m.id)
+          AND (v.created_at < m.created_at OR (v.created_at = m.created_at AND v.rowid <= m.rowid))) AS variant_index
+      FROM messages m ${where}`;
   }
 
   getLastUserMessage(conversationId: string): Message | null {
@@ -665,6 +773,28 @@ export class Storage {
     const row = this.db
       .prepare(
         "SELECT * FROM messages WHERE conversation_id = ? AND role = 'user' ORDER BY created_at DESC, rowid DESC LIMIT 1"
+      )
+      .get(conversationId) as MessageRow | undefined;
+    return row ? this.toMessage(row) : null;
+  }
+
+  /**
+   * The answer on screen, and only when it is the chat's last row: that is the answer
+   * regenerating groups a new variant onto.
+   */
+  getLastAssistantMessage(conversationId: string): Message | null {
+    if (!this.db) return null;
+    const row = this.db
+      .prepare(
+        `SELECT m.* FROM messages m
+          WHERE m.conversation_id = ? AND m.role = 'assistant'
+            AND (m.variant_of IS NULL OR m.active = 1)
+            AND NOT EXISTS (
+              SELECT 1 FROM messages n WHERE n.conversation_id = m.conversation_id
+                AND (n.created_at > m.created_at OR (n.created_at = m.created_at AND n.rowid > m.rowid))
+                AND (n.variant_of IS NULL OR n.active = 1)
+            )
+          ORDER BY m.created_at DESC, m.rowid DESC LIMIT 1`
       )
       .get(conversationId) as MessageRow | undefined;
     return row ? this.toMessage(row) : null;
@@ -681,17 +811,73 @@ export class Storage {
     return row?.prompt ? this.open(row.prompt) : null;
   }
 
-  /** Regenerate replaces the previous answer instead of stacking a second one. */
-  removeLastAssistantMessage(conversationId: string): void {
-    if (!this.db) return;
-    const row = this.db
+  /** Editing a turn means the turns after it never happened; they go with the old text. */
+  deleteFromMessage(conversationId: string, id: string): number {
+    if (!this.db) return 0;
+    const anchor = this.db
+      .prepare("SELECT created_at, rowid AS row FROM messages WHERE id = ? AND conversation_id = ?")
+      .get(id, conversationId) as { created_at: number; row: number } | undefined;
+    if (!anchor) return 0;
+    const removed = this.db
       .prepare(
-        "SELECT id, role FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1"
+        `DELETE FROM messages
+          WHERE conversation_id = ?
+            AND (created_at > ? OR (created_at = ? AND rowid >= ?))`
       )
-      .get(conversationId) as { id: string; role: Message["role"] } | undefined;
-    if (row?.role === "assistant") {
-      this.db.prepare("DELETE FROM messages WHERE id = ?").run(row.id);
-    }
+      .run(conversationId, anchor.created_at, anchor.created_at, anchor.row);
+    return removed.changes;
+  }
+
+  /**
+   * A branch carries the conversation as it looks right now: the turns up to and
+   * including one message, with the chosen variant of each answer and nothing else.
+   */
+  branchConversationFrom(conversationId: string, id: string, title: string): Conversation | null {
+    if (!this.db) return null;
+    const source = this.getConversation(conversationId);
+    const anchor = this.db
+      .prepare("SELECT created_at, rowid AS row FROM messages WHERE id = ? AND conversation_id = ?")
+      .get(id, conversationId) as { created_at: number; row: number } | undefined;
+    if (!source || !anchor) return null;
+
+    const copy = this.db.transaction(() => {
+      const branch = this.createConversation(clean(title, 80) || source.title, source.kind);
+      const rows = this.db!
+        .prepare(
+          `SELECT * FROM messages
+            WHERE conversation_id = ?
+              AND (variant_of IS NULL OR active = 1)
+              AND (created_at < ? OR (created_at = ? AND rowid <= ?))
+            ORDER BY created_at ASC, rowid ASC`
+        )
+        .all(conversationId, anchor.created_at, anchor.created_at, anchor.row) as MessageRow[];
+      for (const row of rows) {
+        this.db!
+          .prepare(
+            `INSERT INTO messages
+              (id, conversation_id, role, content, prompt, mood, task_type, attachment_name, attachment_bytes,
+               duration_ms, stopped, tokens, variant_of, active, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?)`
+          )
+          .run(
+            idFor("msg"),
+            branch.id,
+            row.role,
+            row.content,
+            row.prompt,
+            row.mood,
+            row.task_type,
+            row.attachment_name,
+            row.attachment_bytes,
+            row.duration_ms,
+            row.stopped,
+            row.tokens,
+            row.created_at
+          );
+      }
+      return branch;
+    });
+    return copy();
   }
 
   private toConversation(row: ConversationRow): Conversation {

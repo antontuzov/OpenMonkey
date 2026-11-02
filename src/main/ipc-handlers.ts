@@ -74,6 +74,11 @@ function conversationId(value: unknown): string {
   return value;
 }
 
+function messageId(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error("A message id is required");
+  return value;
+}
+
 function attachmentFrom(value: unknown): Attachment | undefined {
   if (value == null) return undefined;
   if (typeof value !== "object") throw new Error("Invalid attachment");
@@ -104,6 +109,25 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   });
 
   ipcMain.handle("regenerate", (_event, id: unknown) => agent().regenerate(conversationId(id)));
+
+  ipcMain.handle("edit-message", async (_event, id: unknown, target: unknown, message: unknown) => {
+    if (typeof message !== "string") throw new Error("Message must be text");
+    return await agent().editAndResend(conversationId(id), messageId(target), message);
+  });
+
+  ipcMain.handle("branch-conversation", (_event, id: unknown, target: unknown, title: unknown) => {
+    if (typeof title !== "string") throw new Error("Title must be text");
+    const branch = agent().branchConversation(conversationId(id), messageId(target), title);
+    if (!branch) throw new Error("That message is no longer in this chat");
+    deps.openConversation(branch.id);
+    return branch;
+  });
+
+  ipcMain.handle("list-variants", (_event, target: unknown) => agent().listVariants(messageId(target)));
+
+  ipcMain.handle("select-variant", (_event, id: unknown, target: unknown) => {
+    agent().selectVariant(conversationId(id), messageId(target));
+  });
 
   ipcMain.handle("quick-ask", async (_event, message: unknown, threadId: unknown) => {
     if (typeof message !== "string" || !message.trim()) throw new Error("Empty message");

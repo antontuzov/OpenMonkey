@@ -94,6 +94,8 @@ function normalizeMetadata(value: unknown): MessageMetadata | undefined {
     mood: str(value.mood, 40) || undefined,
     taskType: str(value.taskType, 40) || undefined,
     durationMs: num(value.durationMs),
+    tokens: num(value.tokens),
+    variantOf: str(value.variantOf, 120) || undefined,
     stopped: value.stopped === true ? true : undefined,
     attachment:
       attachment && typeof attachment.name === "string" && attachment.name

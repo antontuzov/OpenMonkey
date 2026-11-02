@@ -2,8 +2,15 @@ export interface MessageMetadata {
   mood?: string;
   taskType?: string;
   durationMs?: number;
+  /** Tokens the model actually generated for this reply. */
+  tokens?: number;
   stopped?: boolean;
   attachment?: { name: string; bytes: number };
+  /** Set on every answer of a regenerated group; the first answer's own id. */
+  variantOf?: string;
+  /** Answers in this group, and which one the chat is showing (1-based). */
+  variantCount?: number;
+  variantIndex?: number;
 }
 
 export interface Message {
@@ -562,6 +569,14 @@ export interface ElectronAPI {
   hideQuickAsk: () => Promise<void>;
   platform: string;
   regenerate: (conversationId: string) => Promise<Message | null>;
+  /** Rewrite a sent question: everything after it goes, and the answer runs again. */
+  editMessage: (conversationId: string, messageId: string, message: string) => Promise<Message | null>;
+  /** A copy of the chat up to one message, as a conversation of its own. */
+  branchConversation: (conversationId: string, messageId: string, title: string) => Promise<Conversation>;
+  /** Every answer a regenerated reply kept, oldest first. */
+  listVariants: (messageId: string) => Promise<Message[]>;
+  /** Show one of those answers, and let the model continue the chat from it. */
+  selectVariant: (conversationId: string, messageId: string) => Promise<void>;
   getCurrentMood: () => Promise<Mood>;
   setMood: (mood: Mood) => Promise<void>;
   cycleMood: () => Promise<Mood>;

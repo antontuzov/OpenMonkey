@@ -107,6 +107,7 @@ export class MLXServer {
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 2048,
         stream: true,
+        stream_options: { include_usage: true },
       }),
       signal: options.signal,
     });
@@ -117,21 +118,28 @@ export class MLXServer {
 
     const contentType = response.headers.get("content-type") ?? "";
     if (!contentType.includes("text/event-stream") || !response.body) {
-      const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+        usage?: { completion_tokens?: number };
+      };
       const content = data.choices?.[0]?.message?.content;
       if (typeof content !== "string") throw new Error("MLX server returned no completion");
       options.onTextChunk?.(content);
+      if (data.usage?.completion_tokens != null) options.onTokens?.(data.usage.completion_tokens);
       return content;
     }
 
     let content = "";
+    let tokens: number | null = null;
     await this.readStream(response, (frame) => {
       if (frame.delta) {
         content += frame.delta;
         options.onTextChunk?.(frame.delta);
       }
+      if (frame.usage?.completion_tokens != null) tokens = frame.usage.completion_tokens;
       return !frame.finishReason;
     });
+    if (tokens !== null) options.onTokens?.(tokens);
 
     if (!content) throw new Error("MLX server returned no completion");
     return content;

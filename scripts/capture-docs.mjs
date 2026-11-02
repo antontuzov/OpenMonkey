@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { seedMarkdownThread } from "../test/fixtures/markdown-answer.mjs";
+import { seedMessageThread } from "../test/fixtures/message-actions.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(root, "docs", "screenshots");
@@ -18,6 +19,16 @@ const app = await electron.launch({
 
 try {
   const page = await app.firstWindow();
+  const waitForReady = async () => {
+    const deadline = Date.now() + 180_000;
+    let state = "starting";
+    while (Date.now() < deadline && state !== "ready" && state !== "error") {
+      state = (await page.evaluate(() => window.electron.getAgentStatus())).state;
+      if (state !== "ready") await page.waitForTimeout(300);
+    }
+    return state;
+  };
+
   await page.waitForLoadState("domcontentloaded");
   await page.setViewportSize({ width: 1280, height: 820 });
   await page.getByRole("button", { name: "Skip setup" }).waitFor();
@@ -27,12 +38,7 @@ try {
   await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
 
   if (existsSync(modelPath)) {
-    const deadline = Date.now() + 180_000;
-    let state = "starting";
-    while (Date.now() < deadline && state !== "ready" && state !== "error") {
-      state = (await page.evaluate(() => window.electron.getAgentStatus())).state;
-      if (state !== "ready") await page.waitForTimeout(300);
-    }
+    const state = await waitForReady();
     if (state === "ready") {
       await page.getByRole("textbox", { name: "Message OpenMonkey" }).fill("Greet me in one sentence and say that you run locally. Do not use tools.");
       await page.getByRole("textbox", { name: "Message OpenMonkey" }).press("Enter");
@@ -72,6 +78,34 @@ try {
     await page.setViewportSize({ width: 1280, height: 820 });
   } else {
     console.warn("no database at", dbFile, "— chat-markdown.png is skipped");
+  }
+
+  // The actions around a reply: how long it took, how many tokens it used, and
+  // the other answers to the same question.
+  if (existsSync(dbFile)) {
+    seedMessageThread(dbFile);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.reload();
+    await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
+    await page.getByRole("button", { name: /Answer probe/ }).click();
+    const turn = page.locator(".message-enter").last();
+    await turn.locator(".message-assistant").waitFor();
+    await turn.hover();
+    await page.waitForTimeout(400);
+    await turn.screenshot({ path: path.join(outDir, "chat-message-actions.png") });
+
+    // Editing a question rewrites it in place, with the answer below it dropped.
+    if ((await waitForReady()) === "ready") {
+      const question = page.locator(".message-enter").first();
+      await question.getByRole("button", { name: "Edit message" }).click();
+      await question.locator("textarea").waitFor();
+      await page.waitForTimeout(300);
+      await question.screenshot({ path: path.join(outDir, "chat-edit-message.png") });
+      await question.getByRole("button", { name: "Cancel" }).click();
+    }
+    await page.setViewportSize({ width: 1280, height: 820 });
+  } else {
+    console.warn("no database at", dbFile, "— chat-message-actions.png is skipped");
   }
 
   await page.getByRole("button", { name: "Settings", exact: true }).first().click();

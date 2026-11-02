@@ -24,6 +24,15 @@ highlighted code with a copy button and diffs render as themselves.
 
 ![A markdown answer in the chat](docs/screenshots/chat-markdown.png)
 
+A reply can be rewritten, rerun or branched. Edit a question and the answer below
+it goes with it; regenerate keeps the previous answer in a switcher; a branch
+copies the chat up to any message into a chat of its own. Every reply shows how
+long it took and how many tokens it used.
+
+![Message actions in the chat](docs/screenshots/chat-message-actions.png)
+
+![Editing a question](docs/screenshots/chat-edit-message.png)
+
 | Onboarding | Settings → Privacy | Settings → Desktop | Settings → Model |
 | --- | --- | --- | --- |
 | ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) | ![Model](docs/screenshots/settings-model.png) |

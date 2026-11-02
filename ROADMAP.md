@@ -16,6 +16,10 @@ and approval-gated tools. Nothing here is a mock screen.
 - Chat: token streaming over IPC, stop with partial persistence, regenerate, per-session encrypted
   history, multi-session sidebar with auto-title, rename, pin, delete and search, text attachments,
   failure states with recovery actions, per-session drafts.
+- Chat actions: edit a question and resend it (the answer below it goes with it),
+  regenerate with a switcher that keeps the previous answer, branch a chat from any
+  message, copy and quote; every reply shows its duration and the tokens the model
+  reported.
 - Agent v2: schema-validated tool registry, Ask/Allow/Block per tool, session approvals,
   diff/shell/draft previews, encrypted audit log with export, symlink-safe workspace roots,
   live shell output with kill, Trash deletes.
@@ -34,7 +38,7 @@ and approval-gated tools. Nothing here is a mock screen.
 
 **Known gaps**
 
-- Edit-and-resend, slash commands, tables and true FTS are deferred (see Phase 2 notes).
+- Slash commands, tables and true FTS are deferred (see Phase 2 notes).
 - MLX streaming is implemented but untested — MLX is not installed on this machine.
 - Memory digests are extractive (recent messages and last answers), not model-written rolling
   summaries. Workspace search is lexical and lives only in RAM — no sqlite-vec, no embedding

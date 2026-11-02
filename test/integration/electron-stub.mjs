@@ -11,6 +11,7 @@ export const app = {
     if (name === "home") return path.join(root(), "home");
     return root();
   },
+  getAppPath: () => root(),
   getVersion: () => "0.9.0-test",
   getName: () => "openmonkey",
   isPackaged: false,

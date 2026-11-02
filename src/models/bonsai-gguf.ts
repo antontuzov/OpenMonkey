@@ -21,6 +21,8 @@ export interface GenerateOptions {
   systemPrompt?: string;
   signal?: AbortSignal;
   onTextChunk?: (text: string) => void;
+  /** How many tokens the model produced, reported once the turn is over. */
+  onTokens?: (tokens: number) => void;
 }
 
 type LlamaCppModule = typeof import("node-llama-cpp");
@@ -156,12 +158,21 @@ export class BonsaiGGUF {
     const systemPrompt = options.systemPrompt ?? "";
     this.syncSystemPrompt(systemPrompt);
 
-    return await this.runPrompt(session, prompt, {
-      temperature: options.temperature ?? 0.7,
-      maxTokens: options.maxTokens ?? 2048,
-      signal: options.signal,
-      onTextChunk: options.onTextChunk,
-    });
+    let generated = 0;
+    try {
+      return await this.runPrompt(session, prompt, {
+        temperature: options.temperature ?? 0.7,
+        maxTokens: options.maxTokens ?? 2048,
+        signal: options.signal,
+        onTextChunk: options.onTextChunk,
+        onToken: (batch) => {
+          generated += batch.length;
+        },
+      });
+    } finally {
+      // A stopped turn still produced tokens, and the chat shows a count for it too.
+      options.onTokens?.(generated);
+    }
   }
 
   /** Seed the KV cache when the user opens an older conversation. */

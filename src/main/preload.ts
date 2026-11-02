@@ -38,6 +38,13 @@ const api: ElectronAPI = {
   hideQuickAsk: () => ipcRenderer.invoke("hide-quick-ask"),
   platform: process.platform,
   regenerate: (conversationId) => ipcRenderer.invoke("regenerate", conversationId),
+  editMessage: (conversationId, messageId, message) =>
+    ipcRenderer.invoke("edit-message", conversationId, messageId, message),
+  branchConversation: (conversationId, messageId, title) =>
+    ipcRenderer.invoke("branch-conversation", conversationId, messageId, title),
+  listVariants: (messageId: string) => ipcRenderer.invoke("list-variants", messageId),
+  selectVariant: (conversationId: string, messageId: string) =>
+    ipcRenderer.invoke("select-variant", conversationId, messageId),
   getCurrentMood: () => ipcRenderer.invoke("get-current-mood"),
   setMood: (mood: Mood) => ipcRenderer.invoke("set-mood", mood),
   cycleMood: () => ipcRenderer.invoke("cycle-mood"),

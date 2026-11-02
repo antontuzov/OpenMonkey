@@ -62,6 +62,21 @@ What a trial user judges before they decide to pay.
 | 33 | **Legal shelf** | EULA, privacy page (exists), security-report path (exists), refund and export-control statements linked from the app and site | S |
 | 34 | **Founding-user program** | Beta channel entitlement, changelog feed in-app, and a named early-adopter perk | S |
 
+## Shipped so far
+
+Each item below carries the evidence the list asks for — a test, a capture, or a
+recorded number — not a claim.
+
+| # | Upgrade | Evidence |
+| --- | --- | --- |
+| 3 | An empty state worth looking at | Four starter prompts that prefill the composer, and a dismissal that sticks across a reload — two e2e specs |
+| 4 | Markdown that matches model output | 14 unit tests (parser, tokenizer, offset stability while streaming), an e2e spec per block, a region baseline and a docs capture |
+| 5 | Message-level actions | 14 integration tests (variant groups, truncation, branching, token accounting), an e2e spec that walks the switcher, quotes, copies and branches, two docs captures; the reply on screen shows 3.4 s and 128 tokens |
+| 9 | Model manager that builds confidence | Memory estimate before the load, a tokens-per-second benchmark measured in the app (22.8 t/s on Bonsai-4B), backend pick and warm-up badge — e2e spec and a docs capture |
+| 10 | Quick Ask grows up | History, pinned questions and "open in chat" — one e2e spec |
+| 11 | Window feel | Material sidebar and spring timings on every panel, no light flash on a dark-mode resize — one e2e spec |
+| 12 | Settings that answer questions | Cross-page search that types all 62 rendered row titles, reset-this-page, and a privacy dashboard that answers from the main process — three e2e specs and four docs captures |
+
 ## Do not rebuild
 
 These are already the premium signal and should be protected, not replaced: the

@@ -3,14 +3,19 @@ import {
   ArrowUp,
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   Copy,
   FileText,
   FolderSearch,
+  GitBranch,
   Lightbulb,
   Loader,
   Paperclip,
+  Pencil,
   Plus,
+  Quote,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
@@ -111,13 +116,63 @@ function replaceMessage(messages: Message[], next: Message): Message[] {
 const ChatMessage: React.FC<{
   message: Message;
   logoFile: string;
+  canEdit: boolean;
   canRegenerate: boolean;
+  busy: boolean;
   onRegenerate: () => void;
+  onEdit: (text: string) => void;
+  onQuote: () => void;
+  onBranch: () => void;
+  onVariant: (from: Message, next: Message) => void;
   regenerating: boolean;
-}> = ({ message, logoFile, canRegenerate, onRegenerate, regenerating }) => {
+}> = ({
+  message,
+  logoFile,
+  canEdit,
+  canRegenerate,
+  busy,
+  onRegenerate,
+  onEdit,
+  onQuote,
+  onBranch,
+  onVariant,
+  regenerating,
+}) => {
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
+  const [variants, setVariants] = useState<Message[] | null>(null);
+  const editRef = useRef<HTMLTextAreaElement>(null);
   const isUser = message.role === "user";
   const duration = message.metadata?.durationMs;
+  const tokens = message.metadata?.tokens;
+  const variantCount = message.metadata?.variantCount ?? 1;
+
+  useEffect(() => {
+    // Only an answer that was regenerated has siblings worth fetching.
+    if (isUser || variantCount < 2) return;
+    let cancelled = false;
+    void window.electron
+      ?.listVariants(message.id)
+      .then((group) => {
+        if (!cancelled) setVariants(group);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isUser, message.id, variantCount]);
+
+  const group = variants && variants.length > 1 ? variants : null;
+  const position = group ? group.findIndex((item) => item.id === message.id) : -1;
+
+  useEffect(() => {
+    if (!editing) return;
+    const element = editRef.current;
+    if (!element) return;
+    element.focus();
+    element.setSelectionRange(element.value.length, element.value.length);
+  }, [editing]);
 
   const copy = async () => {
     try {
@@ -130,21 +185,82 @@ const ChatMessage: React.FC<{
     }
   };
 
+  const save = () => {
+    const text = draft.trim();
+    setEditing(false);
+    if (!text || text === message.content) {
+      setDraft(message.content);
+      return;
+    }
+    onEdit(text);
+  };
+
+  const step = (delta: number) => {
+    if (!group || position < 0) return;
+    const next = group[position + delta];
+    if (next) onVariant(message, next);
+  };
+
   return (
     <div className={`message-enter flex items-end gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
       {!isUser && (
         <img src={logoUrl(logoFile)} alt="" className="w-[26px] h-[26px] rounded-full mb-5 shrink-0" />
       )}
       <div className={`group/message flex flex-col ${isUser ? "items-end" : "items-start"} max-w-[78%]`}>
-        <div className={`${isUser ? "message-user" : "message-assistant"} px-4 py-2.5 w-full`}>
-          <MessageContent message={message} />
-        </div>
+        {editing ? (
+          <div className="message-user px-4 py-2.5 w-full">
+            <textarea
+              ref={editRef}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setDraft(message.content);
+                  setEditing(false);
+                }
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  save();
+                }
+              }}
+              className="w-full min-h-[72px] bg-transparent text-[13px] leading-relaxed outline-none resize-y"
+              aria-label={t("chat.edit")}
+            />
+            <p className="text-faint text-[10px] leading-snug mt-1">{t("chat.editHint")}</p>
+            <div className="flex items-center justify-end gap-1.5 mt-2">
+              <button
+                onClick={() => {
+                  setDraft(message.content);
+                  setEditing(false);
+                }}
+                className="btn"
+                disabled={busy}
+              >
+                {t("chat.editCancel")}
+              </button>
+              <button onClick={save} className="btn btn-primary" disabled={busy || !draft.trim()}>
+                <Check size={11} />
+                {t("chat.editSave")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className={`${isUser ? "message-user" : "message-assistant"} px-4 py-2.5 w-full`}>
+            <MessageContent message={message} />
+          </div>
+        )}
         <div className="flex items-center gap-1.5 mt-1.5 px-0.5 text-[10px] text-faint">
           <span>{timeOf(message.timestamp)}</span>
           {!isUser && duration != null && (
             <>
               <span>·</span>
               <span>{Math.max(0.1, duration / 1000).toFixed(1)}s</span>
+            </>
+          )}
+          {!isUser && tokens != null && (
+            <>
+              <span>·</span>
+              <span>{t("chat.tokens", { count: tokens })}</span>
             </>
           )}
           {message.metadata?.stopped && (
@@ -156,6 +272,31 @@ const ChatMessage: React.FC<{
               </span>
             </>
           )}
+          {group && position >= 0 && (
+            <span className="inline-flex items-center gap-0.5 ml-0.5">
+              <button
+                onClick={() => step(-1)}
+                disabled={position === 0 || busy}
+                className="icon-btn !w-5 !h-5 disabled:opacity-30"
+                title={t("chat.variantPrevious")}
+                aria-label={t("chat.variantPrevious")}
+              >
+                <ChevronLeft size={11} />
+              </button>
+              <span className="tabular-nums" title={t("chat.variant", { index: position + 1, count: group.length })}>
+                {position + 1}/{group.length}
+              </span>
+              <button
+                onClick={() => step(1)}
+                disabled={position >= group.length - 1 || busy}
+                className="icon-btn !w-5 !h-5 disabled:opacity-30"
+                title={t("chat.variantNext")}
+                aria-label={t("chat.variantNext")}
+              >
+                <ChevronRight size={11} />
+              </button>
+            </span>
+          )}
           <span
             className={`flex items-center gap-0.5 transition-opacity ${
               copied ? "opacity-100" : "opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100"
@@ -163,6 +304,35 @@ const ChatMessage: React.FC<{
           >
             <button onClick={() => void copy()} className="icon-btn !w-5 !h-5" title={t("chat.copy")} aria-label={t("chat.copy")}>
               {copied ? <Check size={11} className="text-accent-ink" /> : <Copy size={11} />}
+            </button>
+            {isUser && canEdit && (
+              <button
+                onClick={() => setEditing(true)}
+                className="icon-btn !w-5 !h-5"
+                title={t("chat.edit")}
+                aria-label={t("chat.edit")}
+              >
+                <Pencil size={11} />
+              </button>
+            )}
+            {!isUser && (
+              <button
+                onClick={onQuote}
+                className="icon-btn !w-5 !h-5"
+                title={t("chat.quote")}
+                aria-label={t("chat.quote")}
+              >
+                <Quote size={11} />
+              </button>
+            )}
+            <button
+              onClick={onBranch}
+              disabled={busy}
+              className="icon-btn !w-5 !h-5"
+              title={t("chat.branch")}
+              aria-label={t("chat.branch")}
+            >
+              <GitBranch size={11} />
             </button>
             {!isUser && canRegenerate && (
               <button
@@ -566,6 +736,92 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [busy, conversationId, onConversationsChanged, ready]);
 
+  /**
+   * Rewrite a sent question. The chat drops that turn and everything after it at once,
+   * so the answer arriving below replaces the whole tail rather than stacking on it.
+   */
+  const editAndResend = useCallback(
+    async (messageId: string, text: string) => {
+      if (!conversationId || !ready || busy) return;
+      const index = messages.findIndex((message) => message.id === messageId);
+      if (index < 0) return;
+
+      const userMessage: Message = {
+        id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        role: "user",
+        content: text,
+        timestamp: new Date(),
+      };
+      stickRef.current = true;
+      setMessages([...messages.slice(0, index), userMessage]);
+      setFailure(null);
+      setNotice(null);
+      setIsSending(true);
+
+      try {
+        await window.electron?.editMessage(conversationId, messageId, text);
+      } catch (caught) {
+        // The main process refuses before it deletes anything, so its copy of the
+        // conversation is the truthful one to fall back to.
+        const detail = caught instanceof Error ? caught.message : String(caught);
+        const stored = await window.electron?.getMessages(conversationId).catch(() => null);
+        if (stored) setMessages(stored.filter((m) => m.role === "user" || m.role === "assistant"));
+        setFailure({ code: classifyError(detail), text: detail, origin: "send" });
+      } finally {
+        setIsSending(false);
+        onConversationsChanged();
+      }
+    },
+    [busy, conversationId, messages, onConversationsChanged, ready]
+  );
+
+  const showVariant = useCallback(
+    async (from: Message, next: Message) => {
+      if (!conversationId) return;
+      try {
+        await window.electron?.selectVariant(conversationId, next.id);
+      } catch {
+        return;
+      }
+      setMessages((current) => current.map((message) => (message.id === from.id ? next : message)));
+    },
+    [conversationId]
+  );
+
+  const quote = useCallback(
+    (text: string) => {
+      const block = text
+        .split("\n")
+        .map((line) => (line.trim() ? `> ${line}` : line))
+        .join("\n");
+      updateInput(input.trim() ? `${input.trim()}\n\n${block}\n\n` : `${block}\n\n`);
+      textareaRef.current?.focus();
+    },
+    [input]
+  );
+
+  const branch = useCallback(
+    async (messageId: string) => {
+      if (!conversationId) return;
+      const chat = await window.electron
+        ?.getConversations()
+        .then((list) => list.find((item) => item.id === conversationId)?.title ?? "");
+      try {
+        await window.electron?.branchConversation(
+          conversationId,
+          messageId,
+          t("chat.branchOf", { title: chat ?? "" })
+        );
+        toast(t("chat.branched"));
+      } catch (caught) {
+        const detail = caught instanceof Error ? caught.message : String(caught);
+        setNotice(detail);
+      }
+      onConversationsChanged();
+    },
+    [conversationId, onConversationsChanged]
+  );
+
   const stop = async () => {
     await window.electron?.stopGeneration();
   };
@@ -765,8 +1021,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 key={message.id}
                 message={message}
                 logoFile={logo.file}
+                canEdit={message.role === "user" && ready && !busy}
                 canRegenerate={index === lastAssistantIndex && index === messages.length - 1 && ready && !busy}
+                busy={busy}
                 onRegenerate={() => void regenerate()}
+                onEdit={(text) => void editAndResend(message.id, text)}
+                onQuote={() => quote(message.content)}
+                onBranch={() => void branch(message.id)}
+                onVariant={(from, next) => void showVariant(from, next)}
                 regenerating={busy && index === lastAssistantIndex}
               />
             ))}

@@ -65,9 +65,9 @@ export class OpenMonkey extends EventEmitter {
   private controller: AbortController | null = null;
   private pendingReseed = false;
 
-  constructor() {
+  constructor(modelManager?: ModelManager) {
     super();
-    this.modelManager = new ModelManager();
+    this.modelManager = modelManager ?? new ModelManager();
     this.taskManager = new TaskManager(this);
     this.logoManager = new LogoManager((mood) => this.emit("mood-change", mood));
   }
@@ -262,7 +262,7 @@ export class OpenMonkey extends EventEmitter {
     return await this.generateReply(conversationId, modelPrompt, display, retrieval, origin);
   }
 
-  /** Drop the previous answer and run the last user turn again. */
+  /** Run the last question again, keeping the answer it replaces as a variant. */
   async regenerate(conversationId: string): Promise<Message | null> {
     if (this.statusInfo.state !== "ready") {
       throw new Error(this.statusInfo.message ?? "OpenMonkey is still loading its model");
@@ -273,10 +273,15 @@ export class OpenMonkey extends EventEmitter {
     const lastUser = storage.getLastUserMessage(conversationId);
     if (!lastUser) return null;
     const prompt = storage.getLastUserPrompt(conversationId) ?? lastUser.content;
+    const shown = storage.getLastAssistantMessage(conversationId);
+    const variantOf = shown ? shown.metadata?.variantOf ?? shown.id : undefined;
 
     if (this.activeConversationId !== conversationId) this.activateConversation(conversationId);
-    storage.removeLastAssistantMessage(conversationId);
-    this.conversationHistory = this.historyFor(conversationId);
+    // The answer being replaced stays on disk for the switcher, but the model must not
+    // see it twice, so the rebuilt context stops at the question.
+    const stored = this.historyFor(conversationId);
+    this.conversationHistory =
+      stored[stored.length - 1]?.role === "assistant" ? stored.slice(0, -1) : stored;
 
     // The GGUF session already holds the user turn when the history includes it; seed
     // only the turns before it so prompt() adds the question exactly once.
@@ -289,7 +294,52 @@ export class OpenMonkey extends EventEmitter {
 
     const retrieval = await this.taskManager.getMemoryManager().contextFor(prompt);
     const modelPrompt = retrieval ? `${retrieval}\n\n${prompt}` : prompt;
-    return await this.generateReply(conversationId, modelPrompt, lastUser.content, retrieval);
+    return await this.generateReply(conversationId, modelPrompt, lastUser.content, retrieval, "main", variantOf);
+  }
+
+  /**
+   * Rewrite a question that was already sent. The answer and every turn after it are
+   * dropped, and the new wording is sent in their place.
+   */
+  async editAndResend(conversationId: string, messageId: string, message: string): Promise<Message | null> {
+    if (this.statusInfo.state !== "ready") {
+      throw new Error(this.statusInfo.message ?? "OpenMonkey is still loading its model");
+    }
+    if (this.controller) throw new Error("OpenMonkey is already answering. Stop that reply first.");
+    const conversation = storage.getConversation(conversationId);
+    if (!conversation) throw new Error("That conversation no longer exists");
+    const target = storage.getMessage(messageId);
+    if (!target || target.role !== "user") throw new Error("Only a question you sent can be edited");
+    const text = message.trim();
+    if (!text) throw new Error("Empty message");
+
+    storage.deleteFromMessage(conversationId, messageId);
+    if (this.activeConversationId === conversationId) {
+      this.conversationHistory = this.historyFor(conversationId);
+      this.reseedModel();
+    } else {
+      this.activateConversation(conversationId);
+    }
+    return await this.processUserMessage(conversationId, text);
+  }
+
+  /** Everything up to one message, copied into a conversation of its own. */
+  branchConversation(conversationId: string, messageId: string, title: string): Conversation | null {
+    if (!storage.getConversation(conversationId)) throw new Error("That conversation no longer exists");
+    return storage.branchConversationFrom(conversationId, messageId, title);
+  }
+
+  listVariants(messageId: string): Message[] {
+    return storage.listVariants(messageId);
+  }
+
+  /** Show another answer of a group, and let the model continue the chat from it. */
+  selectVariant(conversationId: string, messageId: string): void {
+    if (this.controller) throw new Error("OpenMonkey is already answering. Stop that reply first.");
+    storage.setActiveVariant(messageId);
+    if (this.activeConversationId !== conversationId) return;
+    this.conversationHistory = this.historyFor(conversationId);
+    this.reseedModel();
   }
 
   private async generateReply(
@@ -297,12 +347,14 @@ export class OpenMonkey extends EventEmitter {
     prompt: string,
     titleCandidate: string,
     retrieval?: string,
-    origin: "main" | "quick" = "main"
+    origin: "main" | "quick" = "main",
+    variantOf?: string
   ): Promise<Message | null> {
     if (retrieval) logger.info("memory.context.injected", { conversationId, chars: retrieval.length });
     const systemPrompt = this.buildSystemPrompt();
     const assistantId = messageId();
     const startedAt = Date.now();
+    let generatedTokens = 0;
     const controller = new AbortController();
     this.controller = controller;
 
@@ -347,6 +399,9 @@ export class OpenMonkey extends EventEmitter {
         maxTokens: config.get("model").maxTokens,
         signal: controller.signal,
         onTextChunk,
+        onTokens: (count) => {
+          generatedTokens = count;
+        },
       });
       accumulated = response;
       if (!toolSeen) {
@@ -396,11 +451,22 @@ export class OpenMonkey extends EventEmitter {
         role: "assistant",
         content: finalText || "(no text)",
         timestamp: new Date(),
-        metadata: { durationMs: Date.now() - startedAt, mood: this.currentMood },
+        metadata: {
+          durationMs: Date.now() - startedAt,
+          tokens: generatedTokens || undefined,
+          mood: this.currentMood,
+          variantOf,
+        },
       };
       storage.saveMessage(conversationId, message);
       if (this.activeConversationId === conversationId) {
         this.pushHistory({ role: "assistant", content: finalText || "(no text)" });
+      }
+      if (variantOf) {
+        // The group only exists once this row is stored, so the switcher's position in it
+        // is read back rather than guessed.
+        const stored = storage.listVariants(message.id).find((item) => item.id === message.id);
+        if (stored?.metadata) message.metadata = stored.metadata;
       }
 
       let title: string | undefined;
@@ -423,7 +489,13 @@ export class OpenMonkey extends EventEmitter {
           role: "assistant",
           content: visible,
           timestamp: new Date(),
-          metadata: { stopped: true, durationMs, mood: this.currentMood },
+          metadata: {
+            stopped: true,
+            durationMs,
+            tokens: generatedTokens || undefined,
+            mood: this.currentMood,
+            variantOf,
+          },
         };
         if (visible) {
           storage.saveMessage(conversationId, message);
@@ -447,7 +519,13 @@ export class OpenMonkey extends EventEmitter {
           role: "assistant",
           content: visible,
           timestamp: new Date(),
-          metadata: { stopped: true, durationMs, mood: this.currentMood },
+          metadata: {
+            stopped: true,
+            durationMs,
+            tokens: generatedTokens || undefined,
+            mood: this.currentMood,
+            variantOf,
+          },
         };
         storage.saveMessage(conversationId, partial);
         if (this.activeConversationId === conversationId) {

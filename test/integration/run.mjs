@@ -24,6 +24,8 @@ try {
       path.join(here, "storage.test.ts"),
       path.join(here, "paths.test.ts"),
       path.join(here, "approval.test.ts"),
+      path.join(here, "agent-messages.test.ts"),
+      path.join(here, "mlx-tokens.test.ts"),
       path.join(here, "logger.test.ts"),
       path.join(here, "settings.test.ts"),
     ],
@@ -43,6 +45,8 @@ try {
     "storage.test.cjs",
     "paths.test.cjs",
     "approval.test.cjs",
+    "agent-messages.test.cjs",
+    "mlx-tokens.test.cjs",
     "logger.test.cjs",
     // Last: it writes config sections other suites read, and the runs are sequential.
     "settings.test.cjs",
