@@ -9,11 +9,17 @@ import { LockScreen } from "./components/LockScreen";
 import { useAppearance } from "./theme";
 import { logoUrl } from "./assets";
 import { moodLabel, setLanguage, t } from "./i18n";
+import type { PaletteCommand } from "./command-palette";
 
 // Settings carries the model manager, extensions and diagnostics; loading it on
 // first open keeps it out of the cold-start bundle.
 const SettingsView = lazy(() =>
   import("./components/SettingsView").then((module) => ({ default: module.SettingsView }))
+);
+// The palette is only wanted once someone reaches for it, so it waits for an idle
+// moment instead of riding along on the first paint.
+const CommandPalette = lazy(() =>
+  import("./components/CommandPalette").then((module) => ({ default: module.CommandPalette }))
 );
 import {
   MOOD_LOGOS,
@@ -62,6 +68,10 @@ export default function App() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [busyConversationId, setBusyConversationId] = useState<string | null>(null);
   const [privacyStatus, setPrivacyStatus] = useState<PrivacyStatus | null>(null);
+  /** The command palette: one box for the chats, the settings and the commands. */
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  /** Where the palette sends the user inside the settings. */
+  const [settingsJump, setSettingsJump] = useState<{ page: SettingsPage; label?: string } | null>(null);
   /** Bumped when the history is locked or erased, so the chat list reloads. */
   const [historyVersion, setHistoryVersion] = useState(0);
 
@@ -115,6 +125,14 @@ export default function App() {
     void api.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
 
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
+  }, []);
+
+  // The palette is fetched while the app is idle, so the first Cmd+K opens at once.
+  useEffect(() => {
+    const idle = window.requestIdleCallback(() => {
+      void import("./components/CommandPalette");
+    });
+    return () => window.cancelIdleCallback(idle);
   }, []);
 
   useAppearance(config);
@@ -280,6 +298,26 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [config]);
 
+  // Cmd+K opens the palette from anywhere in the app.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (config && !config.onboarding.completed) return;
+      if (privacyStatus?.locked) return;
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      // Opening, not toggling: the menu accelerator can deliver the same key.
+      setPaletteOpen(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [config, privacyStatus?.locked]);
+
+  const openSettingsAt = useCallback((page: SettingsPage, label?: string) => {
+    setSettingsJump(label ? { page, label } : { page });
+    setPaletteOpen(false);
+    setView("settings");
+  }, []);
+
   const respond = useCallback(
     async (approved: boolean, remember = false) => {
       if (!approval) return;
@@ -313,6 +351,36 @@ export default function App() {
       .catch(() => undefined);
   }, []);
 
+  const runPaletteCommand = useCallback(
+    (command: PaletteCommand) => {
+      setPaletteOpen(false);
+      switch (command) {
+        case "new-chat":
+          void newChat();
+          break;
+        case "toggle-panel":
+          setPanelOpen((open) => !open);
+          break;
+        case "cycle-mood":
+          cycleMood();
+          break;
+        case "clear-chat":
+          window.dispatchEvent(new Event("om:clear-chat"));
+          break;
+        case "summarize-chat":
+          window.dispatchEvent(new Event("om:summarize-chat"));
+          break;
+        case "stop":
+          void window.electron?.stopGeneration();
+          break;
+        case "focus-composer":
+          window.dispatchEvent(new Event("om:focus-composer"));
+          break;
+      }
+    },
+    [cycleMood, newChat]
+  );
+
   useEffect(() => {
     const api = window.electron;
     if (!api) return;
@@ -335,9 +403,9 @@ export default function App() {
         case "cycle-mood":
           cycleMood();
           break;
-        case "search-chats":
+        case "command-palette":
           setView("chat");
-          window.requestAnimationFrame(() => window.dispatchEvent(new Event("om:focus-search")));
+          setPaletteOpen(true);
           break;
         case "focus-composer":
           setView("chat");
@@ -352,6 +420,20 @@ export default function App() {
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId);
   const activeTitle = activeConversation?.title ?? "New chat";
   const activeBusy = busyConversationId != null && busyConversationId === activeConversationId;
+
+  const palette = paletteOpen ? (
+    <Suspense fallback={null}>
+      <CommandPalette
+        language={config?.ui.language ?? "en"}
+        conversations={conversations}
+        onClose={() => setPaletteOpen(false)}
+        onSelectConversation={(id) => void selectConversation(id)}
+        onOpenSettings={openSettingsAt}
+        onCommand={runPaletteCommand}
+        onSearchConversations={searchConversations}
+      />
+    </Suspense>
+  ) : null;
 
   if (!config) {
     return (
@@ -396,6 +478,7 @@ export default function App() {
             status={status}
             mood={mood}
             config={config}
+            jump={settingsJump}
             onPatch={patchConfig}
             onResetSection={resetSection}
             onClose={() => setView("chat")}
@@ -403,6 +486,7 @@ export default function App() {
           />
         </Suspense>
         {approval && <ApprovalDialog approval={approval} agentName={agentName} onResolve={respond} />}
+        {palette}
       </>
     );
   }
@@ -486,6 +570,8 @@ export default function App() {
       </div>
 
       {approval && <ApprovalDialog approval={approval} agentName={agentName} onResolve={respond} />}
+
+      {palette}
     </div>
   );
 }

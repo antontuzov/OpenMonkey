@@ -24,6 +24,9 @@ and approval-gated tools. Nothing here is a mock screen.
   folders the app may read, dropped and pasted files ride along with the message (up to
   eight, 256 KB each), and `/clear`, `/summarize` and `/help` are answered by the app
   itself rather than by the model.
+- Command palette: Cmd+K opens one box that searches the chats, the settings pages and
+  the commands with a single fuzzy matcher, opens the setting row it named, and is driven
+  from the keyboard alone; the whole flow needs no mouse.
 - Agent v2: schema-validated tool registry, Ask/Allow/Block per tool, session approvals,
   diff/shell/draft previews, encrypted audit log with export, symlink-safe workspace roots,
   live shell output with kill, Trash deletes.
@@ -234,8 +237,9 @@ default config is memory on, workspace search off.
     each surface renders only its own approvals. "Open chat" hands focus to the composer. *(M)*
 23. ✅ **Desktop citizenship**: window bounds/maximization restored through a separate
     `openmonkey-window` store, with a saved position reused only while it still overlaps a
-    connected display; native menu whose items send real `menu-command`s (new chat ⌘N, search
-    ⌘K, Quick Ask, activity ⌘\, composer ⌘L, stop ⌘., settings ⌘,, mood, GitHub, data folder)
+    connected display; native menu whose items send real `menu-command`s (new chat ⌘N, command
+    palette ⌘K, Quick Ask, activity ⌘\, composer ⌘L, stop ⌘., settings ⌘,, mood, GitHub, data
+    folder)
     and re-installs on language change; macOS notifications for awaiting-approval and for an
     approved action finishing, skipped while the owning surface is visible and focused; Dock
     badging from the count of awaiting approvals; close-to-tray and launch-at-login toggles

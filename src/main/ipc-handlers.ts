@@ -59,7 +59,7 @@ const MENU_COMMANDS = new Set<MenuCommand>([
   "toggle-activity",
   "stop",
   "cycle-mood",
-  "search-chats",
+  "command-palette",
   "focus-composer",
 ]);
 

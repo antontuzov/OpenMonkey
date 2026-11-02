@@ -43,6 +43,16 @@ Enter or Cmd+Enter sends, whichever the reader prefers.
 
 ![The slash commands the composer answers itself](docs/screenshots/chat-composer-commands.png)
 
+Everything the app can do is one keystroke away. **Cmd+K** opens a command palette that
+searches the chats, the settings pages and the commands with one fuzzy matcher: type a word
+nobody sees on screen — "keychain" — and the setting that answers to it comes up first.
+It opens on the recent chats, it is driven from the keyboard alone, and it lands on the row
+it named.
+
+| Cmd+K | Cmd+K and a word |
+| --- | --- |
+| ![The command palette](docs/screenshots/command-palette.png) | ![The palette searching chats, settings and actions](docs/screenshots/command-palette-search.png) |
+
 | Onboarding | Settings → Privacy | Settings → Desktop | Settings → Model |
 | --- | --- | --- | --- |
 | ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) | ![Model](docs/screenshots/settings-model.png) |
@@ -96,22 +106,23 @@ becomes active.
 
 ### Verification
 
-`npm test` runs 75 unit assertions and 54 integration assertions against a real SQLite
+`npm test` runs 86 unit assertions and 54 integration assertions against a real SQLite
 file under a throwaway profile: the task-fence parser, tool-argument validation, the
 backup envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
 retention, approval gating, path confinement (including a symlink escape), log
-redaction/rotation, the attachment prompt, the composer's file search and the upgrade
-of a history file written by an older build.
-`npm run test:e2e` adds 29 Playwright tests on a throwaway profile: onboarding, the
+redaction/rotation, the attachment prompt, the composer's file search, the palette's
+fuzzy matcher and the upgrade of a history file written by an older build.
+`npm run test:e2e` adds 33 Playwright tests on a throwaway profile: onboarding, the
 chat surface with a button/field/image/landmark audit, Privacy rows and switches,
 RU/EN, close-to-tray, the update channel, the vibrancy and spring timings, Quick Ask
-history, the composer (send key, slash commands, file mentions, attachments), and the
-model manager's memory estimate plus a real tokens-per-second run against the loaded
-weights. Performance budgets are their own four tests (cold start under 2.5 s, no long
-tasks during a synthetic 320-token stream, idle memory under 900 MB, Settings served as
-a lazy chunk). CI runs the same suites on both Mac architectures and packages tag
-builds on `v*` (signing and notarization run when the Apple secrets are present); see
-`.github/workflows/ci.yml`.
+history, the composer (send key, slash commands, file mentions, attachments), the
+command palette (Cmd+K, a setting found by a hidden word, keyboard-only navigation, the
+Russian palette), and the model manager's memory estimate plus a real tokens-per-second
+run against the loaded weights. Performance budgets are their own four tests (cold start
+under 2.5 s, no long tasks during a synthetic 320-token stream, idle memory under
+900 MB, Settings served as a lazy chunk). CI runs the same suites on both Mac
+architectures and packages tag builds on `v*` (signing and notarization run when the
+Apple secrets are present); see `.github/workflows/ci.yml`.
 
 ## How it is laid out
 

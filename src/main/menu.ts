@@ -4,7 +4,7 @@ import type { AppLanguage, MenuCommand } from "../utils/types";
 interface MenuCopy {
   file: string;
   newChat: string;
-  searchChats: string;
+  commandPalette: string;
   quickAsk: string;
   settings: string;
   view: string;
@@ -22,7 +22,7 @@ const COPY: Record<AppLanguage, MenuCopy> = {
   en: {
     file: "File",
     newChat: "New Chat",
-    searchChats: "Search Chats",
+    commandPalette: "Command Palette",
     quickAsk: "Quick Ask",
     settings: "Settings…",
     view: "View",
@@ -38,7 +38,7 @@ const COPY: Record<AppLanguage, MenuCopy> = {
   ru: {
     file: "Файл",
     newChat: "Новый чат",
-    searchChats: "Поиск по чатам",
+    commandPalette: "Палитра команд",
     quickAsk: "Быстрый вопрос",
     settings: "Настройки…",
     view: "Вид",
@@ -68,7 +68,7 @@ export function installAppMenu(
       label: copy.file,
       submenu: [
         { label: copy.newChat, accelerator: "CmdOrCtrl+N", click: () => send("new-chat") },
-        { label: copy.searchChats, accelerator: "CmdOrCtrl+K", click: () => send("search-chats") },
+        { label: copy.commandPalette, accelerator: "CmdOrCtrl+K", click: () => send("command-palette") },
         { type: "separator" },
         {
           label: copy.quickAsk,

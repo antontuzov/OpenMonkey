@@ -72,6 +72,8 @@ interface SettingsViewProps {
   status: AgentStatus;
   mood: Mood;
   config: Config;
+  /** Open at a page, and mark one row, when the command palette sends the user there. */
+  jump?: { page: SettingsPage; label?: string } | null;
   onPatch: (patch: ConfigPatch) => Promise<void>;
   /** Restore one page's own settings; the defaults live in the main process. */
   onResetSection: (page: SettingsPage) => Promise<void>;
@@ -272,6 +274,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   status,
   mood,
   config,
+  jump,
   onPatch,
   onResetSection,
   onClose,
@@ -854,6 +857,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setQuery("");
   };
 
+  // The command palette sends the user to a page, and to the row it names.
+  useEffect(() => {
+    if (!jump) return;
+    setSection(jump.page);
+    setHighlight(jump.label ?? null);
+  }, [jump]);
+
   const patchUi = (changes: Partial<Config["ui"]>) => void onPatch({ ui: changes });
   const patchDesktop = (changes: Partial<Config["desktop"]>) => void onPatch({ desktop: changes });
 
@@ -1267,7 +1277,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="card">
                     {[
                       ["⌘ N", t("nav.newChat")],
-                      ["⌘ K", t("nav.searchChats")],
+                      ["⌘ K", t("palette.title")],
                       ["⌘ ,", t("settings.title")],
                       ["⌘ \\", t("shortcuts.activity")],
                       ["⌘ L", t("shortcuts.focus")],

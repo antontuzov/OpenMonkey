@@ -572,7 +572,7 @@ export type MenuCommand =
   | "toggle-activity"
   | "stop"
   | "cycle-mood"
-  | "search-chats"
+  | "command-palette"
   | "focus-composer";
 
 export interface ElectronAPI {

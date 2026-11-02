@@ -1,5 +1,6 @@
 import { ACCENTS } from "./constants";
 import { t, type StringKey } from "./i18n";
+import { stemHit } from "./text-match";
 import type { SettingsPage } from "../utils/types";
 import { BONSAI_4B } from "../models/catalog";
 
@@ -54,7 +55,7 @@ const ENTRIES: SettingEntry[] = [
   { page: "desktop", key: "desktop.updateChannel", keywords: ["beta", "prerelease", "auto update", "new version"] },
   { page: "desktop", key: "desktop.quickAskToggle", keywords: ["option space", "popover", "global shortcut", "hotkey"] },
   { page: "desktop", key: "nav.newChat", keywords: ["shortcut", "command n", "keyboard"] },
-  { page: "desktop", key: "nav.searchChats", keywords: ["shortcut", "command k", "palette", "keyboard"] },
+  { page: "desktop", key: "palette.title", keywords: ["shortcut", "command k", "search chats", "keyboard"] },
   { page: "desktop", key: "settings.title", keywords: ["shortcut", "command comma", "keyboard"] },
   { page: "desktop", key: "shortcuts.activity", keywords: ["shortcut", "panel", "task monitor"] },
   { page: "desktop", key: "shortcuts.focus", keywords: ["shortcut", "composer", "input"] },
@@ -120,26 +121,16 @@ const ENTRIES: SettingEntry[] = [
 const haystack = (entry: SettingEntry, label: string): string =>
   [label, ...(entry.keywords ?? [])].join(" ").toLowerCase();
 
-const words = (text: string): string[] => text.split(/[^\p{L}\p{N}]+/u).filter(Boolean);
-
 /**
- * A Russian row is titled in the nominative ("история") while the word a person types
- * carries a case ending ("историю"), and neither contains the other. Two words match when
- * they share all but their last two letters, which is enough for Russian, English plurals,
- * and "encrypt"/"encryption", while "beta" still cannot reach "better".
+ * Every row the settings pages render, with the words that also reach it. The command
+ * palette ranks the same rows, so the two searches never drift apart.
  */
-function stemMatches(a: string, b: string): boolean {
-  const shorter = Math.min(a.length, b.length);
-  if (shorter < 5) return false;
-  let shared = 0;
-  while (shared < shorter && a[shared] === b[shared]) shared += 1;
-  return shared >= 4 && shared >= shorter - 2;
-}
-
-/** A single word is allowed to arrive at a row by its stem; a phrase must appear whole. */
-function stemHit(text: string, needle: string): boolean {
-  if (needle.includes(" ")) return false;
-  return words(text).some((word) => stemMatches(word, needle));
+export function settingEntries(): Array<{ page: SettingsPage; label: string; keywords: string[] }> {
+  return ENTRIES.map((entry) => ({
+    page: entry.page,
+    label: entry.key ? t(entry.key) : (entry.label ?? ""),
+    keywords: entry.keywords ?? [],
+  }));
 }
 
 /** Best match first: a row named for the words, then one that merely mentions them. */

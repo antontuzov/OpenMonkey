@@ -737,6 +737,18 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     [conversationId, onConversationsChanged]
   );
 
+  // The command palette runs the same commands the composer does.
+  useEffect(() => {
+    const clear = () => void runCommand("/clear");
+    const summarize = () => void runCommand("/summarize");
+    window.addEventListener("om:clear-chat", clear);
+    window.addEventListener("om:summarize-chat", summarize);
+    return () => {
+      window.removeEventListener("om:clear-chat", clear);
+      window.removeEventListener("om:summarize-chat", summarize);
+    };
+  }, [runCommand]);
+
   /** Adds files to the composer, refusing the ones it cannot carry. */
   const addAttachments = useCallback((incoming: Attachment[]) => {
     if (!incoming.length) return;

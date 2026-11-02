@@ -146,6 +146,18 @@ try {
     console.warn("no database at", dbFile, "— chat-message-actions.png is skipped");
   }
 
+  // The palette: one box for the chats, the settings and the commands. It opens
+  // with Cmd+K and is driven from the keyboard alone.
+  await page.keyboard.press("Meta+k");
+  const paletteBox = page.getByRole("combobox");
+  await paletteBox.waitFor();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(outDir, "command-palette.png") });
+  await paletteBox.fill("answer");
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: path.join(outDir, "command-palette-search.png") });
+  await page.keyboard.press("Escape");
+
   await page.getByRole("button", { name: "Settings", exact: true }).first().click();
   await page.getByRole("navigation").first().waitFor();
 
