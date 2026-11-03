@@ -75,7 +75,22 @@ const CitationChip: React.FC<{ label: string }> = ({ label }) => {
                   {preview.startLine ? `:${preview.startLine}-${preview.endLine}` : ""}
                 </span>
               )}
-              <span className="block mt-1.5 whitespace-pre-wrap break-words">{preview.text}</span>
+              {preview.citedLine && preview.startLine ? (
+                <span className="block mt-1.5 whitespace-pre-wrap break-words">
+                  {preview.text.split("\n").map((line, index) => {
+                    const number = preview.startLine! + index;
+                    return number === preview.citedLine ? (
+                      <span key={index} className="citation-line">
+                        {line}
+                      </span>
+                    ) : (
+                      <span key={index}>{line}</span>
+                    );
+                  })}
+                </span>
+              ) : (
+                <span className="block mt-1.5 whitespace-pre-wrap break-words">{preview.text}</span>
+              )}
               {!preview.found && (
                 <span className="block mt-1.5 text-warn">This source is gone or was never there.</span>
               )}

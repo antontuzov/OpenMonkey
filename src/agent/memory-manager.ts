@@ -5,14 +5,17 @@ import { allowedRoots, config } from "../utils/config";
 import storage from "../utils/storage";
 import logger from "../utils/logger";
 import { parseCitation } from "../utils/citations";
+import { compileIgnoreRules, isIgnored, normalizeIgnoreRules } from "../utils/ignore";
 import { resolveInWorkspace } from "./tools/paths";
 import type {
   CitationPreview,
   MemoryFact,
   MemorySnapshot,
   MemorySummary,
+  WorkspaceChunk,
   WorkspaceHit,
   WorkspaceIndexStatus,
+  WorkspaceSource,
 } from "../utils/types";
 
 const MAX_FACTS = 50;
@@ -141,8 +144,11 @@ const countTokens = (text: string): Map<string, number> => {
  */
 export class MemoryManager {
   private chunks: Chunk[] = [];
+  private sourceFiles = new Map<string, WorkspaceSource>();
   private files = 0;
   private bytes = 0;
+  private skipped = 0;
+  private skippedPaths = new Set<string>();
   private builtAt?: Date;
   private error?: string;
   private building: Promise<void> | null = null;
@@ -309,6 +315,26 @@ export class MemoryManager {
 
     try {
       const resolved = await resolveInWorkspace(citation.path);
+      // The indexed passage is the exact text the model read, so it comes first.
+      const chunk = this.chunks.find(
+        (entry) =>
+          entry.path === resolved &&
+          citation.line >= entry.startLine &&
+          citation.line <= entry.endLine
+      );
+      if (chunk) {
+        return {
+          kind: "file",
+          label,
+          title: path.basename(resolved),
+          text: chunk.text,
+          path: resolved,
+          startLine: chunk.startLine,
+          endLine: chunk.endLine,
+          citedLine: citation.line,
+          found: true,
+        };
+      }
       const lines = (await fs.readFile(resolved, "utf8")).split(/\r?\n/);
       const start = Math.max(0, citation.line - 1 - CITATION_CONTEXT_LINES);
       const end = Math.min(lines.length, citation.line + CITATION_CONTEXT_LINES);
@@ -320,6 +346,7 @@ export class MemoryManager {
         path: resolved,
         startLine: start + 1,
         endLine: end,
+        citedLine: citation.line,
         found: true,
       };
     } catch (error) {
@@ -374,7 +401,61 @@ export class MemoryManager {
       bytes: this.bytes,
       builtAt: this.builtAt,
       error: this.error,
+      ignoreRules: this.ignoreRules(),
+      skipped: this.skipped,
     };
+  }
+
+  /** The files the index holds, so the user can see what the agent can reach. */
+  sources(): WorkspaceSource[] {
+    return [...this.sourceFiles.values()].sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  /** The passages the index holds for one file. */
+  preview(target: string): WorkspaceChunk[] {
+    const file = path.resolve(target);
+    return this.chunks
+      .filter((chunk) => chunk.path === file)
+      .map((chunk) => ({
+        path: chunk.path,
+        startLine: chunk.startLine,
+        endLine: chunk.endLine,
+        text: chunk.text,
+      }));
+  }
+
+  /** The rules the user wrote, as they are stored. */
+  ignoreRules(): string[] {
+    return [...(config.get("memory")?.workspaceIgnore ?? [])];
+  }
+
+  /**
+   * Replaces the rules and rebuilds the index, so the number of files the rules
+   * keep out is the number the user can check.
+   */
+  async setIgnoreRules(rules: string[]): Promise<WorkspaceIndexStatus> {
+    const cleaned = normalizeIgnoreRules(Array.isArray(rules) ? rules : []);
+    config.set("memory", { ...config.get("memory"), workspaceIgnore: cleaned });
+    logger.info("memory.index.rules", { rules: cleaned.length });
+    await this.rebuild();
+    return this.status();
+  }
+
+  /** Reads one file again and swaps its passages for the new ones. */
+  async reindexSource(target: string): Promise<WorkspaceIndexStatus> {
+    if (!this.enabled || !config.get("memory")?.workspaceSearch) return this.status();
+    const file = path.resolve(target);
+    const root = this.rootFor(file);
+    if (!root) throw new Error("That file is not in a folder the agent may read");
+    if (this.ignoreMatchers().length && isIgnored(this.ignoreMatchers(), path.relative(root, file))) {
+      this.removeSource(file);
+      logger.info("memory.index.source.ignored", { path: file });
+      return this.status();
+    }
+    this.removeSource(file);
+    await this.indexFile(file, this.generation);
+    logger.info("memory.index.source.reindexed", { path: file });
+    return this.status();
   }
 
   snapshot(): MemorySnapshot {
@@ -388,8 +469,11 @@ export class MemoryManager {
   clearIndex(): WorkspaceIndexStatus {
     this.generation++;
     this.chunks = [];
+    this.sourceFiles.clear();
     this.files = 0;
     this.bytes = 0;
+    this.skipped = 0;
+    this.skippedPaths.clear();
     this.builtAt = undefined;
     this.error = undefined;
     return this.status();
@@ -404,8 +488,11 @@ export class MemoryManager {
 
     const generation = ++this.generation;
     this.chunks = [];
+    this.sourceFiles.clear();
     this.files = 0;
     this.bytes = 0;
+    this.skipped = 0;
+    this.skippedPaths.clear();
     this.builtAt = undefined;
     this.error = undefined;
     this.building = this.walkRoots(generation);
@@ -519,6 +606,35 @@ export class MemoryManager {
     return Boolean(config.get("memory")?.enabled);
   }
 
+  private ignoreMatchers(): RegExp[] {
+    return compileIgnoreRules(this.ignoreRules());
+  }
+
+  /** The root a file sits under, so its path can be read relative to that root. */
+  private rootFor(file: string): string | null {
+    const roots = [
+      ...new Set([
+        ...(config.get("agent").workspaceRoots ?? []).map((root) => path.resolve(root)),
+        ...allowedRoots(),
+      ]),
+    ];
+    for (const root of roots) {
+      const relative = path.relative(root, file);
+      if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) return root;
+    }
+    return null;
+  }
+
+  /** Drops a file and its passages from the index. */
+  private removeSource(file: string): void {
+    const existing = this.sourceFiles.get(file);
+    if (!existing) return;
+    this.sourceFiles.delete(file);
+    this.files = this.sourceFiles.size;
+    this.bytes -= existing.bytes;
+    this.chunks = this.chunks.filter((chunk) => chunk.path !== file);
+  }
+
   private async walkRoots(generation: number): Promise<void> {
     // Explicit workspace folders come first so the size caps cannot crowd them out.
     const roots = [
@@ -528,14 +644,21 @@ export class MemoryManager {
       ]),
     ];
     const seen = new Set<string>();
+    const ignore = this.ignoreMatchers();
     for (const root of roots) {
       if (generation !== this.generation) return;
-      await this.walk(root, seen, generation);
+      await this.walk(root, root, seen, generation, ignore);
       if (this.chunks.length >= MAX_CHUNKS || this.files >= MAX_FILES || this.bytes >= MAX_TOTAL_BYTES) break;
     }
   }
 
-  private async walk(dir: string, seen: Set<string>, generation: number): Promise<void> {
+  private async walk(
+    dir: string,
+    root: string,
+    seen: Set<string>,
+    generation: number,
+    ignore: RegExp[]
+  ): Promise<void> {
     if (generation !== this.generation) return;
     let entries: Dirent[];
     try {
@@ -549,8 +672,19 @@ export class MemoryManager {
       if (this.chunks.length >= MAX_CHUNKS || this.files >= MAX_FILES || this.bytes >= MAX_TOTAL_BYTES) return;
       if (entry.isSymbolicLink()) continue;
       const full = path.join(dir, entry.name);
+      const relative = path.relative(root, full).split(path.sep).join("/");
+      if (isIgnored(ignore, relative)) {
+        // The same folder can be reachable through two roots, so count it once.
+        if (!this.skippedPaths.has(full)) {
+          this.skippedPaths.add(full);
+          this.skipped += 1;
+        }
+        continue;
+      }
       if (entry.isDirectory()) {
-        if (!entry.name.startsWith(".") && !SKIP_DIRS.has(entry.name)) await this.walk(full, seen, generation);
+        if (!entry.name.startsWith(".") && !SKIP_DIRS.has(entry.name)) {
+          await this.walk(full, root, seen, generation, ignore);
+        }
         continue;
       }
       if (!entry.isFile() || seen.has(full)) continue;
@@ -562,6 +696,7 @@ export class MemoryManager {
   }
 
   private async indexFile(file: string, generation: number): Promise<void> {
+    this.removeSource(file);
     let stat;
     try {
       stat = await fs.stat(file);
@@ -582,6 +717,7 @@ export class MemoryManager {
 
     const lines = text.split(/\r?\n/);
     let added = false;
+    let chunkCount = 0;
     for (let start = 0; start < lines.length; start += CHUNK_LINES - OVERLAP_LINES) {
       if (generation !== this.generation) return;
       if (this.chunks.length >= MAX_CHUNKS) break;
@@ -599,13 +735,20 @@ export class MemoryManager {
             tokenCount: [...tokens.values()].reduce((sum, count) => sum + count, 0),
           });
           added = true;
+          chunkCount += 1;
         }
       }
       if (end === lines.length) break;
     }
 
     if (added) {
-      this.files++;
+      this.sourceFiles.set(file, {
+        path: file,
+        bytes: stat.size,
+        lines: lines.length,
+        chunks: chunkCount,
+      });
+      this.files = this.sourceFiles.size;
       this.bytes += stat.size;
     }
   }

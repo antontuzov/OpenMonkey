@@ -37,6 +37,8 @@ const defaultConfig: Config = {
   memory: {
     enabled: true,
     workspaceSearch: false,
+    /** The rules that keep files out of the workspace index. */
+    workspaceIgnore: [],
   },
   desktop: {
     launchAtLogin: false,
@@ -150,7 +152,11 @@ const PAGE_DEFAULTS: Partial<Record<SettingsPage, ConfigPatch>> = {
     },
   },
   memory: {
-    memory: { enabled: defaultConfig.memory.enabled, workspaceSearch: defaultConfig.memory.workspaceSearch },
+    memory: {
+      enabled: defaultConfig.memory.enabled,
+      workspaceSearch: defaultConfig.memory.workspaceSearch,
+      workspaceIgnore: [...defaultConfig.memory.workspaceIgnore],
+    },
   },
   workspace: { agent: { workspaceRoots: [] } },
   privacy: {

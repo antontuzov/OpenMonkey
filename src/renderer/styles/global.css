@@ -520,6 +520,14 @@ html[data-vibrant="true"] body {
     line-height: 1.6;
   }
 
+  .citation-line {
+    display: block;
+    background: var(--color-accent-soft);
+    color: var(--color-accent-ink);
+    border-left: 2px solid var(--color-accent);
+    padding-left: 6px;
+  }
+
   .swatch {
     position: relative;
     width: 30px;

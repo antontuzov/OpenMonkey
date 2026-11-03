@@ -270,6 +270,65 @@ try {
   rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
+// The source manager: the files the index holds, the passages it cut from them
+// and the rules that keep other files out. It runs in its own throwaway home so
+// the shot shows the fixture folder and nothing of the reader's own files.
+{
+  const home = mkdtempSync(path.join(os.tmpdir(), "openmonkey-docs-home-"));
+  const notes = path.join(home, "Documents", "notes");
+  mkdirSync(notes, { recursive: true });
+  writeFileSync(
+    path.join(notes, "release-plan.md"),
+    "# Release plan\n\nWe ship on Friday.\n\nThe model check runs first.\n"
+  );
+  writeFileSync(
+    path.join(notes, "checklist.md"),
+    "# Checklist\n\n- The digest is verified\n- The first answer is on screen\n"
+  );
+  writeFileSync(path.join(notes, "server.log"), "the server started\nthe server stopped\n");
+
+  const sourceProfile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-docs-sources-"));
+  writeFileSync(
+    path.join(sourceProfile, "openmonkey-config.json"),
+    JSON.stringify({
+      onboarding: { completed: true },
+      model: { provider: "bonsai" },
+      memory: { enabled: true, workspaceSearch: true, workspaceIgnore: ["*.log"] },
+      agent: { workspaceRoots: [notes] },
+    })
+  );
+
+  const sourceApp = await electron.launch({
+    args: [root],
+    env: { ...process.env, HOME: home, OPENMONKEY_USER_DATA: sourceProfile, OPENMONKEY_DEBUG_PORT: "" },
+  });
+  try {
+    const page = await sourceApp.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    await page.setViewportSize({ width: 1440, height: 980 });
+    await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await page.getByRole("navigation").first().waitFor();
+    await page.getByRole("button", { name: "Memory", exact: true }).click();
+    await page.getByLabel("Search memory").waitFor();
+
+    await page.getByRole("button", { name: "Rebuild" }).click();
+    await page.getByRole("button", { name: /^release-plan\.md/ }).waitFor();
+    await page.getByRole("button", { name: /^release-plan\.md/ }).click();
+    await page.getByText(/^lines 1/).waitFor();
+    await page.waitForTimeout(500);
+
+    const sources = page.locator("section", { hasText: "Indexed sources" }).first();
+    await sources.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await sources.screenshot({ path: path.join(outDir, "settings-sources.png") });
+  } finally {
+    await sourceApp.evaluate(({ app }) => app.quit()).catch(() => undefined);
+    rmSync(sourceProfile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+}
+
 // The first run now ends with a reply, and it only happens once per profile, so this
 // shot is taken in its own throwaway profile after every other capture has skipped it.
 if (existsSync(modelPath)) {

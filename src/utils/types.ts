@@ -134,6 +134,8 @@ export interface CitationPreview {
   path?: string;
   startLine?: number;
   endLine?: number;
+  /** The line the citation names, so the panel can point at it inside the passage. */
+  citedLine?: number;
   /** false when the source is gone or was never there. */
   found: boolean;
 }
@@ -146,6 +148,22 @@ export interface WorkspaceHit {
   score: number;
 }
 
+/** One file the index holds, so the user can see what the agent can reach. */
+export interface WorkspaceSource {
+  path: string;
+  bytes: number;
+  lines: number;
+  chunks: number;
+}
+
+/** One passage the index holds for a file. */
+export interface WorkspaceChunk {
+  path: string;
+  startLine: number;
+  endLine: number;
+  text: string;
+}
+
 export interface WorkspaceIndexStatus {
   state: "idle" | "building" | "ready" | "error";
   enabled: boolean;
@@ -154,6 +172,10 @@ export interface WorkspaceIndexStatus {
   bytes: number;
   builtAt?: Date;
   error?: string;
+  /** The rules the user wrote to keep files out of the index. */
+  ignoreRules: string[];
+  /** How many files the rules kept out of the last build. */
+  skipped: number;
 }
 
 export interface MemorySnapshot {
@@ -542,6 +564,8 @@ export interface Config {
     enabled: boolean;
     /** Opt-in: scan workspaces into a memory-only lexical index. */
     workspaceSearch: boolean;
+    /** The rules that keep files out of the workspace index. */
+    workspaceIgnore: string[];
   };
   desktop: {
     launchAtLogin: boolean;
@@ -735,6 +759,10 @@ export interface ElectronAPI {
   resolveCitation: (label: string) => Promise<CitationPreview>;
   rebuildWorkspaceIndex: () => Promise<WorkspaceIndexStatus>;
   clearWorkspaceIndex: () => Promise<WorkspaceIndexStatus>;
+  getWorkspaceSources: () => Promise<WorkspaceSource[]>;
+  getWorkspacePreview: (path: string) => Promise<WorkspaceChunk[]>;
+  reindexWorkspaceSource: (path: string) => Promise<WorkspaceIndexStatus>;
+  setWorkspaceIgnoreRules: (rules: string[]) => Promise<WorkspaceIndexStatus>;
   searchWorkspaceMemory: (query: string) => Promise<WorkspaceHit[]>;
   stopGeneration: () => Promise<void>;
   switchProvider: (provider: ModelPreference) => Promise<void>;

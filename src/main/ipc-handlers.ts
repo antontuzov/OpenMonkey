@@ -463,6 +463,20 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   });
   ipcMain.handle("rebuild-workspace-index", () => agent().rebuildWorkspaceIndex());
   ipcMain.handle("clear-workspace-index", () => agent().clearWorkspaceIndex());
+  ipcMain.handle("get-workspace-sources", () => agent().getWorkspaceSources());
+  ipcMain.handle("get-workspace-preview", (_event, path: unknown) => {
+    if (typeof path !== "string" || !path.trim()) throw new Error("A file path is required");
+    return agent().getWorkspacePreview(path);
+  });
+  ipcMain.handle("reindex-workspace-source", (_event, path: unknown) => {
+    if (typeof path !== "string" || !path.trim()) throw new Error("A file path is required");
+    return agent().reindexWorkspaceSource(path);
+  });
+  ipcMain.handle("set-workspace-ignore-rules", (_event, rules: unknown) => {
+    if (!Array.isArray(rules)) throw new Error("Ignore rules must be a list");
+    if (rules.some((rule) => typeof rule !== "string")) throw new Error("Ignore rules must be text");
+    return agent().setWorkspaceIgnoreRules(rules as string[]);
+  });
   ipcMain.handle("search-workspace-memory", (_event, query: unknown) => {
     if (typeof query !== "string" || !query.trim()) throw new Error("A search query is required");
     return agent().searchWorkspaceMemory(query);

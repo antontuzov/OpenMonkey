@@ -121,7 +121,7 @@ becomes active.
 
 ### Verification
 
-`npm test` runs 106 unit assertions and 91 integration assertions against a real SQLite
+`npm test` runs 113 unit assertions and 102 integration assertions against a real SQLite
 file under a throwaway profile: the task-fence parser, tool-argument validation, the
 diff engine and its context window, the task stage maths and duration format, the backup
 envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
@@ -141,14 +141,16 @@ drops both, and a citation resolves to the fact, the summary or the exact file l
 The teardown is
 covered too, because a quit that frees the process under a running llama.cpp worker is
 what used to abort it.
-`npm run test:e2e` adds 41 Playwright tests on a throwaway profile: onboarding, the
+`npm run test:e2e` adds 42 Playwright tests on a throwaway profile: onboarding, the
 first run ending with a real answer from the local weights, the
 chat surface with a button/field/image/landmark audit, Privacy rows and switches,
 RU/EN, close-to-tray, the update channel, the vibrancy and spring timings, Quick Ask
 history, the composer (send key, slash commands, file mentions, attachments), the
 command palette (Cmd+K, a setting found by a hidden word, keyboard-only navigation, the
 Russian palette), the memory browser in Settings (a fact and a chat changed in place, a
-citation chip opening the source behind it), the task rail on a real model turn (each stage timed, the write's lines
+citation chip opening the source behind it), the source manager (the files the index
+holds, the passages of one file, an ignore rule keeping a file out and a file read
+again on its own), the task rail on a real model turn (each stage timed, the write's lines
 diffed, a denied action keeping its approval stage and asking again on Retry, the Russian
 rail), and the model manager's memory estimate plus a real tokens-per-second
 run against the loaded weights. Two of them are about leaving: quitting while the

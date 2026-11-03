@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { ModelDownloadCard } from "./ModelDownloadCard";
 import { MemoryBrowser } from "./MemoryBrowser";
+import { SourceManager } from "./SourceManager";
 import { SettingRow, Toggle } from "./controls";
 import { ACCENTS } from "../constants";
 import { checkAccent } from "../theme";
@@ -667,6 +668,27 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     } finally {
       setMemoryBusy(false);
       await refreshMemory();
+    }
+  };
+
+  const loadWorkspaceSources = async () => (await window.electron?.getWorkspaceSources()) ?? [];
+
+  const loadWorkspacePreview = async (path: string) =>
+    (await window.electron?.getWorkspacePreview(path)) ?? [];
+
+  const reindexWorkspaceSource = async (path: string) => {
+    await window.electron?.reindexWorkspaceSource(path);
+    await refreshMemory();
+  };
+
+  const saveWorkspaceIgnoreRules = async (rules: string[]) => {
+    setMemoryBusy(true);
+    setMemoryNotice("");
+    try {
+      await window.electron?.setWorkspaceIgnoreRules(rules);
+      await refreshMemory();
+    } finally {
+      setMemoryBusy(false);
     }
   };
 
@@ -1772,6 +1794,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     build.
                   </p>
                 </section>
+
+                <SourceManager
+                  status={workspace}
+                  enabled={memoryConfig.enabled && memoryConfig.workspaceSearch}
+                  busy={memoryBusy}
+                  onLoadSources={loadWorkspaceSources}
+                  onLoadPreview={loadWorkspacePreview}
+                  onReindex={reindexWorkspaceSource}
+                  onSaveRules={saveWorkspaceIgnoreRules}
+                />
 
                 <div className="card p-4 flex items-start gap-2.5">
                   <Info size={14} className="text-faint mt-0.5 shrink-0" />

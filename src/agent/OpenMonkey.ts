@@ -28,8 +28,10 @@ import type {
   QuickAskResult,
   QuickAskThread,
   Task,
+  WorkspaceChunk,
   WorkspaceHit,
   WorkspaceIndexStatus,
+  WorkspaceSource,
 } from "../utils/types";
 import { describeBuiltInTools } from "./tool-registry";
 
@@ -908,6 +910,22 @@ Always maintain a helpful, professional tone while being approachable.`;
 
   clearWorkspaceIndex(): WorkspaceIndexStatus {
     return this.taskManager.getMemoryManager().clearIndex();
+  }
+
+  getWorkspaceSources(): WorkspaceSource[] {
+    return this.taskManager.getMemoryManager().sources();
+  }
+
+  getWorkspacePreview(path: string): WorkspaceChunk[] {
+    return this.taskManager.getMemoryManager().preview(path);
+  }
+
+  async reindexWorkspaceSource(path: string): Promise<WorkspaceIndexStatus> {
+    return await this.taskManager.getMemoryManager().reindexSource(path);
+  }
+
+  async setWorkspaceIgnoreRules(rules: string[]): Promise<WorkspaceIndexStatus> {
+    return await this.taskManager.getMemoryManager().setIgnoreRules(rules);
   }
 
   async searchWorkspaceMemory(query: string): Promise<WorkspaceHit[]> {

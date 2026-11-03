@@ -104,6 +104,11 @@ const api: ElectronAPI = {
   resolveCitation: (label: string) => ipcRenderer.invoke("resolve-citation", label),
   rebuildWorkspaceIndex: () => ipcRenderer.invoke("rebuild-workspace-index"),
   clearWorkspaceIndex: () => ipcRenderer.invoke("clear-workspace-index"),
+  getWorkspaceSources: () => ipcRenderer.invoke("get-workspace-sources"),
+  getWorkspacePreview: (path: string) => ipcRenderer.invoke("get-workspace-preview", path),
+  reindexWorkspaceSource: (path: string) => ipcRenderer.invoke("reindex-workspace-source", path),
+  setWorkspaceIgnoreRules: (rules: string[]) =>
+    ipcRenderer.invoke("set-workspace-ignore-rules", rules),
   searchWorkspaceMemory: (query: string) => ipcRenderer.invoke("search-workspace-memory", query),
   stopGeneration: () => ipcRenderer.invoke("stop-generation"),
   switchProvider: (provider: "auto" | "mlx" | "bonsai") =>
