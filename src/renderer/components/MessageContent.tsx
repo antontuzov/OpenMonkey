@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { Check, Copy, FileText, Image as ImageIcon } from "lucide-react";
-import type { Message } from "../../utils/types";
+import { Check, Copy, FileText, Image as ImageIcon, Quote } from "lucide-react";
+import type { CitationPreview, Message } from "../../utils/types";
 import { t } from "../i18n";
 import { isDiff, parseInline, parseMarkdown } from "../markdown";
 import type { Block, InlineSpan, ListItem } from "../markdown";
@@ -26,6 +26,66 @@ const linkButton = (href: string, children: ReactNode): ReactNode => (
     {children}
   </button>
 );
+
+/**
+ * A citation the model used. Clicking it asks the main process what it points at
+ * and shows the source, so the answer can be checked without leaving the chat.
+ */
+const CitationChip: React.FC<{ label: string }> = ({ label }) => {
+  const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState<CitationPreview | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const toggle = async () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    setError("");
+    setLoading(true);
+    try {
+      const result = await window.electron?.resolveCitation(label);
+      if (result) setPreview(result);
+      else setError("This citation could not be resolved.");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <button onClick={() => void toggle()} className="citation-chip" title={label} type="button">
+        <Quote size={9} className="shrink-0" />
+        {label}
+      </button>
+      {open && (
+        <span className="citation-panel">
+          {loading && <span className="text-faint">Looking up the source…</span>}
+          {!loading && error && <span className="text-danger">{error}</span>}
+          {!loading && preview && (
+            <>
+              <span className="block text-ink font-semibold">{preview.title}</span>
+              {preview.path && (
+                <span className="block text-[10px] font-mono text-faint mt-0.5 break-all">
+                  {preview.path}
+                  {preview.startLine ? `:${preview.startLine}-${preview.endLine}` : ""}
+                </span>
+              )}
+              <span className="block mt-1.5 whitespace-pre-wrap break-words">{preview.text}</span>
+              {!preview.found && (
+                <span className="block mt-1.5 text-warn">This source is gone or was never there.</span>
+              )}
+            </>
+          )}
+        </span>
+      )}
+    </>
+  );
+};
 
 function spanNode(span: InlineSpan, key: string): ReactNode {
   switch (span.kind) {
@@ -55,6 +115,8 @@ function spanNode(span: InlineSpan, key: string): ReactNode {
       );
     case "link":
       return linkButton(span.href, span.text || span.href);
+    case "citation":
+      return <CitationChip key={key} label={span.text} />;
     default:
       return span.text;
   }

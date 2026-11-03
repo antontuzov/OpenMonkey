@@ -37,7 +37,7 @@ const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** Bumped when the table layout changes; an export carries it so a newer file is refused. */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 interface MessageRow {
   id: string;
@@ -86,6 +86,7 @@ interface ConversationRow {
   pinned: number;
   archived: number;
   kind: string;
+  recall: number;
   message_count: number;
   last_content: string | null;
 }
@@ -289,6 +290,12 @@ export class Storage {
         content TEXT NOT NULL,
         created_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS memory_summaries (
+        id TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS quick_asks (
         id TEXT PRIMARY KEY,
         conversation_id TEXT NOT NULL,
@@ -331,6 +338,9 @@ export class Storage {
     if (!conversationNames.has("kind")) {
       this.db.exec("ALTER TABLE conversations ADD COLUMN kind TEXT NOT NULL DEFAULT 'chat'");
     }
+    if (!conversationNames.has("recall")) {
+      this.db.exec("ALTER TABLE conversations ADD COLUMN recall INTEGER NOT NULL DEFAULT 1");
+    }
 
     const taskColumns = this.db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
     const taskNames = new Set(taskColumns.map((column) => column.name));
@@ -344,6 +354,7 @@ export class Storage {
       CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations (updated_at);
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit (created_at);
       CREATE INDEX IF NOT EXISTS idx_memory_facts_created ON memory_facts (created_at);
+      CREATE INDEX IF NOT EXISTS idx_memory_summaries_updated ON memory_summaries (updated_at);
       CREATE INDEX IF NOT EXISTS idx_quick_asks_updated ON quick_asks (updated_at);
     `);
 
@@ -398,8 +409,13 @@ export class Storage {
   exportBundle(): ExportBundle {
     if (!this.db) throw new Error("History is locked");
     const chats = this.db
-      .prepare("SELECT id, title, created_at, updated_at, pinned, archived, kind FROM conversations ORDER BY updated_at DESC")
-      .all() as Array<Pick<ConversationRow, "id" | "title" | "created_at" | "updated_at" | "pinned" | "archived" | "kind">>;
+      .prepare("SELECT id, title, created_at, updated_at, pinned, archived, kind, recall FROM conversations ORDER BY updated_at DESC")
+      .all() as Array<
+      Pick<
+        ConversationRow,
+        "id" | "title" | "created_at" | "updated_at" | "pinned" | "archived" | "kind" | "recall"
+      >
+    >;
     const messages = this.db
       .prepare("SELECT * FROM messages ORDER BY created_at ASC, rowid ASC")
       .all() as MessageRow[];
@@ -431,12 +447,18 @@ export class Storage {
         pinned: row.pinned === 1,
         archived: row.archived === 1,
         kind: row.kind === "quick" ? "quick" : "chat",
+        recall: row.recall !== 0,
         messages: byChat.get(row.id) ?? [],
       })),
       facts: this.getMemoryFacts(2_000).map((fact) => ({
         id: fact.id,
         content: fact.content,
         createdAt: fact.createdAt.toISOString(),
+      })),
+      summaries: this.getMemorySummaries().map((summary) => ({
+        conversationId: summary.conversationId,
+        content: summary.content,
+        updatedAt: summary.updatedAt.toISOString(),
       })),
     };
   }
@@ -465,7 +487,7 @@ export class Storage {
         if (this.db!.prepare("SELECT 1 FROM conversations WHERE id = ?").get(exported.id)) continue;
         const createdAt = stamp(exported.createdAt, Date.now());
         this.db!
-          .prepare("INSERT INTO conversations (id, title, created_at, updated_at, pinned, archived, kind) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .prepare("INSERT INTO conversations (id, title, created_at, updated_at, pinned, archived, kind, recall) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
           .run(
             exported.id,
             clean(exported.title, 80) || DEFAULT_TITLE,
@@ -473,7 +495,8 @@ export class Storage {
             Math.max(createdAt, stamp(exported.updatedAt, createdAt)),
             exported.pinned ? 1 : 0,
             exported.archived ? 1 : 0,
-            exported.kind === "quick" ? "quick" : "chat"
+            exported.kind === "quick" ? "quick" : "chat",
+            exported.recall === false ? 0 : 1
           );
         conversations += 1;
         let lastAnswer = "";
@@ -542,6 +565,18 @@ export class Storage {
           .run(fact.id || idFor("fact"), this.seal(content), stamp(fact.createdAt, Date.now()));
         known.add(content);
         facts += 1;
+      }
+
+      // A summary belongs to a conversation, so it only lands when that chat did.
+      for (const summary of bundle.summaries ?? []) {
+        const content = summary.content.trim();
+        if (!content || !summary.conversationId) continue;
+        if (!this.db!.prepare("SELECT 1 FROM conversations WHERE id = ?").get(summary.conversationId)) continue;
+        if (this.db!.prepare("SELECT 1 FROM memory_summaries WHERE id = ?").get(summary.conversationId)) continue;
+        const at = stamp(summary.updatedAt, Date.now());
+        this.db!
+          .prepare("INSERT INTO memory_summaries (id, content, created_at, updated_at) VALUES (?, ?, ?, ?)")
+          .run(summary.conversationId, this.seal(content), at, at);
       }
     });
     merge();
@@ -678,6 +713,7 @@ export class Storage {
       ["tasks", ["result", "error", "cwd"]],
       ["audit", ["arguments", "result", "error"]],
       ["memory_facts", ["content"]],
+      ["memory_summaries", ["content"]],
       ["quick_asks", ["question", "answer"]],
     ];
     const recode = this.db.transaction(() => {
@@ -1003,6 +1039,7 @@ export class Storage {
       kind: row.kind === "quick" ? "quick" : "chat",
       messageCount: row.message_count,
       preview: clean(this.open(row.last_content ?? ""), 90),
+      recall: row.recall !== 0,
     };
   }
 
@@ -1061,6 +1098,12 @@ export class Storage {
     this.db.prepare("UPDATE conversations SET pinned = ? WHERE id = ?").run(pinned ? 1 : 0, id);
   }
 
+  /** Turns memory recall off or on for one conversation; nothing else changes. */
+  setConversationRecall(id: string, recall: boolean): void {
+    if (!this.db) return;
+    this.db.prepare("UPDATE conversations SET recall = ? WHERE id = ?").run(recall ? 1 : 0, id);
+  }
+
   touchConversation(id: string, at = Date.now()): void {
     if (!this.db) return;
     this.db.prepare("UPDATE conversations SET updated_at = MAX(updated_at, ?) WHERE id = ?").run(at, id);
@@ -1072,6 +1115,7 @@ export class Storage {
       this.db!.prepare("DELETE FROM messages WHERE conversation_id = ?").run(id);
       this.db!.prepare("DELETE FROM conversations WHERE id = ?").run(id);
       this.db!.prepare("DELETE FROM quick_asks WHERE conversation_id = ?").run(id);
+      this.db!.prepare("DELETE FROM memory_summaries WHERE id = ?").run(id);
     });
     remove();
     return this.latestConversation();
@@ -1289,8 +1333,47 @@ export class Storage {
     this.db?.prepare("DELETE FROM memory_facts WHERE id = ?").run(id);
   }
 
+  /** Rewrites a fact in place, so its id and the citations that name it stay valid. */
+  updateMemoryFact(id: string, content: string): MemoryFact | null {
+    if (!this.db) return null;
+    const row = this.db.prepare("SELECT * FROM memory_facts WHERE id = ?").get(id) as
+      | { id: string; content: string; created_at: number }
+      | undefined;
+    if (!row) return null;
+    this.db.prepare("UPDATE memory_facts SET content = ? WHERE id = ?").run(this.seal(content), id);
+    return { id: row.id, content, createdAt: new Date(row.created_at) };
+  }
+
   clearMemoryFacts(): void {
     this.db?.prepare("DELETE FROM memory_facts").run();
+  }
+
+  /** The summaries the user wrote, keyed by the conversation they belong to. */
+  getMemorySummaries(): Array<{ conversationId: string; content: string; updatedAt: Date }> {
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare("SELECT * FROM memory_summaries ORDER BY updated_at DESC")
+      .all() as Array<{ id: string; content: string; updated_at: number }>;
+    return rows.map((row) => ({
+      conversationId: row.id,
+      content: this.open(row.content),
+      updatedAt: new Date(row.updated_at),
+    }));
+  }
+
+  upsertMemorySummary(conversationId: string, content: string): void {
+    if (!this.db) return;
+    const now = Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO memory_summaries (id, content, created_at, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`
+      )
+      .run(conversationId, this.seal(content), now, now);
+  }
+
+  deleteMemorySummary(conversationId: string): void {
+    this.db?.prepare("DELETE FROM memory_summaries WHERE id = ?").run(conversationId);
   }
 
   saveAudit(entry: AuditEntry): void {

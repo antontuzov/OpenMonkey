@@ -26,7 +26,6 @@ import {
   MessageSquare,
   Monitor,
   Palette,
-  Pin,
   Plug,
   Plus,
   RefreshCw,
@@ -40,6 +39,8 @@ import {
   X,
 } from "lucide-react";
 import { ModelDownloadCard } from "./ModelDownloadCard";
+import { MemoryBrowser } from "./MemoryBrowser";
+import { SettingRow, Toggle } from "./controls";
 import { ACCENTS } from "../constants";
 import { checkAccent } from "../theme";
 import { logoUrl } from "../assets";
@@ -197,7 +198,7 @@ const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede?: string
   },
   memory: {
     titleKey: "settings.memory",
-    lede: "What OpenMonkey recalls across chats. Facts and digests stay local, and workspace search is opt-in.",
+    lede: "What OpenMonkey recalls across chats. Facts and summaries stay local, and workspace search is opt-in.",
   },
   workspace: {
     titleKey: "settings.workspace",
@@ -220,36 +221,6 @@ const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede?: string
     lede: "OpenMonkey answers with weights that live on this machine. Pick the backend and how it generates.",
   },
 };
-
-const SettingRow: React.FC<{ title: string; copy?: string; children: React.ReactNode }> = ({
-  title,
-  copy,
-  children,
-}) => (
-  <div className="row">
-    <div>
-      <p className="row-title">{title}</p>
-      {copy && <p className="row-copy">{copy}</p>}
-    </div>
-    <div className="flex items-center gap-2.5 shrink-0">{children}</div>
-  </div>
-);
-
-const Toggle: React.FC<{ on: boolean; label: string; onChange: () => void; disabled?: boolean }> = ({
-  on,
-  label,
-  onChange,
-  disabled,
-}) => (
-  <button
-    role="switch"
-    aria-checked={on}
-    aria-label={label}
-    disabled={disabled}
-    onClick={onChange}
-    className={`toggle ${on ? "toggle-on" : ""} ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
-  />
-);
 
 const Segmented: React.FC<{
   options: Array<{ value: string; label: string; disabled?: boolean }>;
@@ -302,10 +273,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [expandedServer, setExpandedServer] = useState<string | null>(null);
   const [memory, setMemory] = useState<MemorySnapshot | null>(null);
-  const [factDraft, setFactDraft] = useState("");
   const [memoryNotice, setMemoryNotice] = useState("");
   const [memoryBusy, setMemoryBusy] = useState(false);
-  const [confirmClearFacts, setConfirmClearFacts] = useState(false);
   const [workspaceQuery, setWorkspaceQuery] = useState("");
   const [workspaceHits, setWorkspaceHits] = useState<WorkspaceHit[] | null>(null);
   const [privacyStatus, setPrivacyStatus] = useState<PrivacyStatus | null>(null);
@@ -355,8 +324,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const policies = { ...DEFAULT_POLICIES, ...(agent.approvalPolicies ?? {}) };
   const workspaceRoots = agent.workspaceRoots ?? [];
   const servers = config.mcp?.servers ?? [];
-  const facts = memory?.facts ?? [];
-  const digests = memory?.digests ?? [];
   const workspace = memory?.workspace;
   const accent = config.ui.accent ?? ACCENTS[0].value;
   const accentName = ACCENTS.find((item) => item.value === accent)?.name ?? "Custom";
@@ -620,50 +587,44 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (snapshot) setMemory(snapshot);
   };
 
-  const addFact = async () => {
-    if (!factDraft.trim() || memoryBusy) return;
-    setMemoryBusy(true);
-    setMemoryNotice("");
-    try {
-      const snapshot = await window.electron?.addMemoryFact(factDraft);
-      if (snapshot) setMemory(snapshot);
-      setFactDraft("");
-      setMemoryNotice("Fact saved and injected into the next prompt.");
-      toast(t("toast.factSaved"));
-    } catch (error) {
-      setMemoryNotice(error instanceof Error ? error.message : String(error));
-    } finally {
-      setMemoryBusy(false);
-    }
+  const addFact = async (content: string) => {
+    const snapshot = await window.electron?.addMemoryFact(content);
+    if (snapshot) setMemory(snapshot);
+    setMemoryNotice("Fact saved and injected into the next prompt.");
+    toast(t("toast.factSaved"));
+  };
+
+  const editFact = async (id: string, content: string) => {
+    const snapshot = await window.electron?.editMemoryFact(id, content);
+    if (snapshot) setMemory(snapshot);
   };
 
   const removeFact = async (id: string) => {
-    setMemoryNotice("");
-    try {
-      const snapshot = await window.electron?.deleteMemoryFact(id);
-      if (snapshot) setMemory(snapshot);
-      setMemoryNotice("Fact removed.");
-      toast(t("toast.factRemoved"));
-    } catch (error) {
-      setMemoryNotice(error instanceof Error ? error.message : String(error));
-    }
+    const snapshot = await window.electron?.deleteMemoryFact(id);
+    if (snapshot) setMemory(snapshot);
+    setMemoryNotice("Fact removed.");
+    toast(t("toast.factRemoved"));
   };
 
   const clearAllFacts = async () => {
-    if (!confirmClearFacts) {
-      setConfirmClearFacts(true);
-      setMemoryNotice("Click again to delete every pinned fact.");
-      window.setTimeout(() => setConfirmClearFacts(false), 4_000);
-      return;
-    }
-    setConfirmClearFacts(false);
-    try {
-      const snapshot = await window.electron?.clearMemoryFacts();
-      if (snapshot) setMemory(snapshot);
-      setMemoryNotice("All pinned facts deleted.");
-    } catch (error) {
-      setMemoryNotice(error instanceof Error ? error.message : String(error));
-    }
+    const snapshot = await window.electron?.clearMemoryFacts();
+    if (snapshot) setMemory(snapshot);
+    setMemoryNotice("All pinned facts deleted.");
+  };
+
+  const saveSummary = async (conversationId: string, content: string) => {
+    const snapshot = await window.electron?.editMemorySummary(conversationId, content);
+    if (snapshot) setMemory(snapshot);
+  };
+
+  const forgetSummary = async (conversationId: string) => {
+    const snapshot = await window.electron?.forgetMemorySummary(conversationId);
+    if (snapshot) setMemory(snapshot);
+  };
+
+  const setRecall = async (conversationId: string, recall: boolean) => {
+    const snapshot = await window.electron?.setConversationRecall(conversationId, recall);
+    if (snapshot) setMemory(snapshot);
   };
 
   const toggleMemory = async (changes: Partial<Config["memory"]>) => {
@@ -1061,7 +1022,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       <main className="relative flex-1 min-w-0 overflow-y-auto">
         <div className="deco-lines" />
-        <div className="relative max-w-[780px] px-10 py-10">
+        <div
+          className={`relative px-10 py-10 ${section === "memory" ? "max-w-[1080px]" : "max-w-[780px]"}`}
+        >
           <div className="flex items-start justify-between gap-6 mb-8">
             <div>
               <h1 className="page-title">{t(head.titleKey)}</h1>
@@ -1684,7 +1647,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="card">
                     <SettingRow
                       title="Local memory"
-                      copy="Pinned facts and recent conversation digests are added to the system prompt with citation labels. Nothing leaves this Mac."
+                      copy="Pinned facts and conversation summaries are added to the system prompt with citation labels. Nothing leaves this Mac."
                     >
                       <Toggle
                         on={memoryConfig.enabled}
@@ -1705,123 +1668,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </SettingRow>
                   </div>
                   <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
-                    Facts are sealed with AES-256-GCM. Digests are computed from stored messages when the prompt is
-                    built. Turning workspace search off clears its index immediately; pinned facts stay until you
-                    delete them.
+                    Facts and summaries are sealed with AES-256-GCM. A summary is derived from stored messages when
+                    the prompt is built, unless you write your own in the browser below. Turning workspace search off
+                    clears its index immediately; pinned facts stay until you delete them.
                   </p>
                 </section>
 
-                <section>
-                  <div className="flex items-center justify-between gap-4 mb-2">
-                    <p className="section-label !mb-0">Pinned facts</p>
-                    <span className="chip">{facts.length} / 50</span>
-                  </div>
-                  <div className="card">
-                    {facts.length === 0 ? (
-                      <div className="p-6 text-center">
-                        <Pin size={18} className="mx-auto text-faint" />
-                        <p className="text-[11.5px] text-muted mt-2">
-                          No pinned facts yet. Add something the agent should remember across chats.
-                        </p>
-                      </div>
-                    ) : (
-                      facts.map((fact) => {
-                        const created = new Date(fact.createdAt);
-                        return (
-                          <div key={fact.id} className="row">
-                            <div className="min-w-0">
-                              <p className="row-title leading-relaxed">{fact.content}</p>
-                              <p className="row-copy font-mono">
-                                [fact:{fact.id.slice(-6)}] ·{" "}
-                                {created.toLocaleDateString([], { month: "short", day: "numeric" })}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => void removeFact(fact.id)}
-                              aria-label="Delete fact"
-                              className="icon-btn"
-                            >
-                              <X size={12} />
-                            </button>
-                          </div>
-                        );
-                      })
-                    )}
-                    <div className="p-3 border-t border-line flex flex-wrap gap-2">
-                      <input
-                        value={factDraft}
-                        onChange={(event) => setFactDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void addFact();
-                          }
-                        }}
-                        maxLength={500}
-                        disabled={!memoryConfig.enabled}
-                        placeholder={memoryConfig.enabled ? "e.g. I write TypeScript and prefer pnpm" : "Turn memory on to save facts"}
-                        className="field flex-1 min-w-[220px]"
-                      />
-                      <button
-                        onClick={() => void addFact()}
-                        disabled={!memoryConfig.enabled || memoryBusy || !factDraft.trim()}
-                        className="btn btn-primary"
-                      >
-                        <Plus size={11} />
-                        Add fact
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 mt-2 px-1">
-                    <p className="text-[10.5px] text-muted leading-relaxed">
-                      {memoryConfig.enabled
-                        ? "Only what you pin here is guaranteed to be recalled; the 12 most recent facts are injected. Digests are short extracts, not model-written summaries."
-                        : "Memory is off, so these facts are not injected. They stay here until you delete them."}
-                    </p>
-                    {facts.length > 0 && (
-                      <button
-                        onClick={() => void clearAllFacts()}
-                        className={`btn !h-7 !px-2.5 shrink-0 ${confirmClearFacts ? "!text-danger" : ""}`}
-                      >
-                        <Trash2 size={11} />
-                        {confirmClearFacts ? "Confirm" : "Clear all"}
-                      </button>
-                    )}
-                  </div>
-                </section>
-
-                <section>
-                  <p className="section-label">Recent conversations</p>
-                  <div className="card">
-                    {digests.length === 0 ? (
-                      <div className="p-6 text-center">
-                        <MessageSquare size={18} className="mx-auto text-faint" />
-                        <p className="text-[11.5px] text-muted mt-2">
-                          Chats with at least two messages appear here as short digests. The active chat is excluded.
-                        </p>
-                      </div>
-                    ) : (
-                      digests.map((digest) => {
-                        const updated = new Date(digest.updatedAt);
-                        return (
-                          <div key={digest.conversationId} className="row !items-start">
-                            <div className="min-w-0">
-                              <p className="row-title">{digest.title}</p>
-                              <p className="row-copy leading-relaxed">{digest.digest}</p>
-                              <p className="text-[10px] text-faint mt-1 font-mono">
-                                {`[chat "${digest.title}"] · ${digest.messageCount} messages · ${updated.toLocaleDateString([], { month: "short", day: "numeric" })}`}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                  <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
-                    Digests give the model continuity without sending another request. They combine the first and
-                    latest asks with the last answer, and cite the conversation title.
-                  </p>
-                </section>
+                <MemoryBrowser
+                  snapshot={memory}
+                  enabled={memoryConfig.enabled}
+                  onAddFact={addFact}
+                  onEditFact={editFact}
+                  onDeleteFact={removeFact}
+                  onClearFacts={clearAllFacts}
+                  onSaveSummary={saveSummary}
+                  onForgetSummary={forgetSummary}
+                  onSetRecall={setRecall}
+                />
 
                 <section>
                   <div className="flex items-center justify-between gap-4 mb-2">

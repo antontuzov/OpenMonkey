@@ -26,6 +26,8 @@ export interface ExportedConversation {
   archived: boolean;
   /** A quick ask keeps its own kind so the popover history survives a backup. */
   kind: "chat" | "quick";
+  /** false when the user turned memory recall off for this chat. */
+  recall?: boolean;
   messages: ExportedMessage[];
 }
 
@@ -33,6 +35,13 @@ export interface ExportedFact {
   id: string;
   content: string;
   createdAt: string;
+}
+
+/** A summary the user wrote for one conversation. */
+export interface ExportedSummary {
+  conversationId: string;
+  content: string;
+  updatedAt: string;
 }
 
 export interface ExportBundle {
@@ -44,6 +53,8 @@ export interface ExportBundle {
   settings: Config;
   conversations: ExportedConversation[];
   facts: ExportedFact[];
+  /** Optional: a bundle written before the memory browser has none. */
+  summaries?: ExportedSummary[];
 }
 
 function derive(passphrase: string, salt: Buffer): Buffer {
@@ -155,6 +166,7 @@ export function validateBundle(value: unknown, currentSchemaVersion: number): Ex
       pinned: entry.pinned === true,
       archived: entry.archived === true,
       kind: entry.kind === "quick" ? "quick" : "chat",
+      recall: entry.recall !== false,
       messages,
     } satisfies ExportedConversation;
   });
@@ -170,6 +182,17 @@ export function validateBundle(value: unknown, currentSchemaVersion: number): Ex
       })
     : [];
 
+  const summaries = Array.isArray(value.summaries)
+    ? value.summaries.slice(0, 2_000).map((entry) => {
+        if (!isRecord(entry)) throw new Error("A memory summary in that backup is unreadable");
+        return {
+          conversationId: str(entry.conversationId, 120),
+          content: str(entry.content, 4_000),
+          updatedAt: str(entry.updatedAt, 40) || new Date().toISOString(),
+        } satisfies ExportedSummary;
+      })
+    : [];
+
   return {
     format: BUNDLE_FORMAT,
     version: BUNDLE_VERSION,
@@ -178,6 +201,7 @@ export function validateBundle(value: unknown, currentSchemaVersion: number): Ex
     settings: value.settings as unknown as Config,
     conversations,
     facts,
+    summaries,
   };
 }
 

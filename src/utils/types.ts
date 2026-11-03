@@ -33,6 +33,8 @@ export interface Conversation {
   kind: ConversationKind;
   messageCount: number;
   preview: string;
+  /** false when the user turned memory recall off for this conversation. */
+  recall: boolean;
 }
 
 export type ConversationKind = "chat" | "quick";
@@ -89,13 +91,51 @@ export interface MemoryFact {
   createdAt: Date;
 }
 
-/** Extractive cross-chat digest; no second model call is made. */
-export interface MemoryDigest {
+/**
+ * What the model remembers about one conversation. The derived digest is computed
+ * from the stored messages; the content is what actually gets injected, which is
+ * the edited summary when the user wrote one.
+ */
+export interface MemorySummary {
   conversationId: string;
   title: string;
   messageCount: number;
-  digest: string;
+  /** The extractive digest, always shown so the user can see what was derived. */
+  derived: string;
+  /** The text the model receives: the edited summary, or the derived digest. */
+  content: string;
+  /** true when the user wrote the summary themselves. */
+  edited: boolean;
+  /** false when the user turned recall off for this conversation. */
+  recall: boolean;
   updatedAt: Date;
+}
+
+/** One row of the memory browser: a pinned fact or a conversation summary. */
+export interface MemoryEntry {
+  /** "fact:<id>" or "chat:<conversationId>" — stable, so the list can keep its selection. */
+  id: string;
+  kind: "fact" | "chat";
+  title: string;
+  content: string;
+  subtitle: string;
+  updatedAt: Date;
+  recall?: boolean;
+  edited?: boolean;
+}
+
+/** What a citation points at, resolved so the user can check the model. */
+export interface CitationPreview {
+  kind: "fact" | "file" | "chat";
+  /** The citation as it appears in the answer. */
+  label: string;
+  title: string;
+  text: string;
+  path?: string;
+  startLine?: number;
+  endLine?: number;
+  /** false when the source is gone or was never there. */
+  found: boolean;
 }
 
 export interface WorkspaceHit {
@@ -118,7 +158,7 @@ export interface WorkspaceIndexStatus {
 
 export interface MemorySnapshot {
   facts: MemoryFact[];
-  digests: MemoryDigest[];
+  summaries: MemorySummary[];
   workspace: WorkspaceIndexStatus;
 }
 
@@ -686,8 +726,13 @@ export interface ElectronAPI {
   restartMcpServer: (id: string) => Promise<McpServerStatus[]>;
   getMemorySnapshot: () => Promise<MemorySnapshot>;
   addMemoryFact: (content: string) => Promise<MemorySnapshot>;
+  editMemoryFact: (id: string, content: string) => Promise<MemorySnapshot>;
   deleteMemoryFact: (id: string) => Promise<MemorySnapshot>;
   clearMemoryFacts: () => Promise<MemorySnapshot>;
+  editMemorySummary: (conversationId: string, content: string) => Promise<MemorySnapshot>;
+  forgetMemorySummary: (conversationId: string) => Promise<MemorySnapshot>;
+  setConversationRecall: (conversationId: string, recall: boolean) => Promise<MemorySnapshot>;
+  resolveCitation: (label: string) => Promise<CitationPreview>;
   rebuildWorkspaceIndex: () => Promise<WorkspaceIndexStatus>;
   clearWorkspaceIndex: () => Promise<WorkspaceIndexStatus>;
   searchWorkspaceMemory: (query: string) => Promise<WorkspaceHit[]>;

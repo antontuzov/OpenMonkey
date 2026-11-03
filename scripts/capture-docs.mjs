@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { seedMarkdownThread } from "../test/fixtures/markdown-answer.mjs";
 import { seedMessageThread } from "../test/fixtures/message-actions.mjs";
+import { seedMemoryChat } from "../test/fixtures/memory-browser.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(root, "docs", "screenshots");
@@ -240,6 +241,30 @@ try {
     .locator("section", { hasText: "Generation speed" })
     .locator(".card")
     .screenshot({ path: path.join(outDir, "settings-model-benchmark.png") });
+
+  // The memory browser: the facts the model may use and the chats it may recall,
+  // each one editable in place. The chat is seeded, so the browser shows both
+  // kinds of memory without a model in the loop.
+  if (existsSync(dbFile)) {
+    seedMemoryChat(dbFile, { answer: "We ship on Friday; the model check runs first." });
+    await page.setViewportSize({ width: 1440, height: 980 });
+    await page.getByRole("button", { name: "Memory", exact: true }).click();
+    await page.getByLabel("Pin a fact").waitFor();
+
+    await page.getByLabel("Pin a fact").fill("The staging host is called fox");
+    await page.getByRole("button", { name: "Add fact" }).click();
+    await page.getByRole("button", { name: "The staging host is called fox" }).waitFor();
+
+    await page.getByRole("button", { name: "Release checklist" }).click();
+    await page.getByLabel("Your summary").waitFor();
+    await page.getByLabel("Your summary").fill("We ship on Friday; the model check runs first.");
+    await page.getByRole("button", { name: "Save summary" }).click();
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: path.join(outDir, "settings-memory.png") });
+    await page.setViewportSize({ width: 1280, height: 820 });
+  } else {
+    console.warn("no database at", dbFile, "— settings-memory.png is skipped");
+  }
 } finally {
   await app.evaluate(({ app }) => app.quit()).catch(() => undefined);
   rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

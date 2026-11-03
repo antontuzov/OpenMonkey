@@ -33,6 +33,7 @@ try {
       path.join(here, "model-teardown.test.ts"),
       path.join(here, "agent-messages.test.ts"),
       path.join(here, "agent-composer.test.ts"),
+      path.join(here, "memory-browser.test.ts"),
       path.join(here, "mlx-tokens.test.ts"),
       path.join(here, "logger.test.ts"),
       path.join(here, "settings.test.ts"),
@@ -60,6 +61,7 @@ try {
     "model-teardown.test.cjs",
     "agent-messages.test.cjs",
     "agent-composer.test.cjs",
+    "memory-browser.test.cjs",
     "mlx-tokens.test.cjs",
     "logger.test.cjs",
     // Last: it writes config sections other suites read, and the runs are sequential.

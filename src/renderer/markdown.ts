@@ -5,13 +5,16 @@
  * streaming answer from re-rendering text that has already finished.
  */
 
+import { CITATION_PATTERN } from "../utils/citations";
+
 export type InlineSpan =
   | { kind: "text"; text: string }
   | { kind: "strong"; text: string }
   | { kind: "em"; text: string }
   | { kind: "strike"; text: string }
   | { kind: "code"; text: string }
-  | { kind: "link"; text: string; href: string };
+  | { kind: "link"; text: string; href: string }
+  | { kind: "citation"; text: string };
 
 export interface ListItem {
   spans: InlineSpan[];
@@ -42,8 +45,10 @@ const TABLE_DELIMITER = /^[ \t]*\|?[ \t]*:?-{1,}:?[ \t]*(?:\|[ \t]*:?-{1,}:?[ \t
 /** Inline code, then emphasis, then links; anything else stays literal text. */
 export function parseInline(text: string): InlineSpan[] {
   const spans: InlineSpan[] = [];
-  const pattern =
-    /(`[^`\n]+`)|(\*\*[^*\n]+\*\*|__[^_\n]+__)|(\*[^*\n]+\*|_[^_\n]+_)|(~~[^~\n]+~~)|(\[[^[\]\n]*\]\((https?:\/\/[^)\s]+|mailto:[^)\s]+)\))|(<(https?:\/\/[^>\s]+)>)/g;
+  const pattern = new RegExp(
+    `(${CITATION_PATTERN.source})|(\`[^\`\n]+\`)|(\\*\\*[^*\\n]+\\*\\*|__[^_\\n]+__)|(\\*[^*\\n]+\\*|_[^_\\n]+_)|(~~[^~\\n]+~~)|(\\[[^[\\]\\n]*\\]\\((https?:\\/\\/[^)\\s]+|mailto:[^)\\s]+)\\))|(<(https?:\\/\\/[^>\\s]+)>)`,
+    "g"
+  );
   let last = 0;
   let match: RegExpExecArray | null;
 
@@ -54,14 +59,15 @@ export function parseInline(text: string): InlineSpan[] {
   while ((match = pattern.exec(text))) {
     push(text.slice(last, match.index));
     const token = match[0];
-    if (match[1]) spans.push({ kind: "code", text: token.slice(1, -1) });
-    else if (match[2]) spans.push({ kind: "strong", text: token.slice(2, -2) });
-    else if (match[3]) spans.push({ kind: "em", text: token.slice(1, -1) });
-    else if (match[4]) spans.push({ kind: "strike", text: token.slice(2, -2) });
-    else if (match[5]) {
+    if (match[1]) spans.push({ kind: "citation", text: token });
+    else if (match[2]) spans.push({ kind: "code", text: token.slice(1, -1) });
+    else if (match[3]) spans.push({ kind: "strong", text: token.slice(2, -2) });
+    else if (match[4]) spans.push({ kind: "em", text: token.slice(1, -1) });
+    else if (match[5]) spans.push({ kind: "strike", text: token.slice(2, -2) });
+    else if (match[6]) {
       const link = /^\[([^\]]*)\]\(([^)\s]+)\)$/.exec(token);
       if (link) spans.push({ kind: "link", text: link[1], href: link[2] });
-    } else if (match[7]) spans.push({ kind: "link", text: token.slice(1, -1), href: token.slice(1, -1) });
+    } else if (match[8]) spans.push({ kind: "link", text: token.slice(1, -1), href: token.slice(1, -1) });
     last = pattern.lastIndex;
   }
   push(text.slice(last));

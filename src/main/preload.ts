@@ -92,8 +92,16 @@ const api: ElectronAPI = {
   restartMcpServer: (id: string) => ipcRenderer.invoke("restart-mcp-server", id),
   getMemorySnapshot: () => ipcRenderer.invoke("get-memory-snapshot"),
   addMemoryFact: (content: string) => ipcRenderer.invoke("add-memory-fact", content),
+  editMemoryFact: (id: string, content: string) => ipcRenderer.invoke("edit-memory-fact", id, content),
   deleteMemoryFact: (id: string) => ipcRenderer.invoke("delete-memory-fact", id),
   clearMemoryFacts: () => ipcRenderer.invoke("clear-memory-facts"),
+  editMemorySummary: (conversationId: string, content: string) =>
+    ipcRenderer.invoke("edit-memory-summary", conversationId, content),
+  forgetMemorySummary: (conversationId: string) =>
+    ipcRenderer.invoke("forget-memory-summary", conversationId),
+  setConversationRecall: (conversationId: string, recall: boolean) =>
+    ipcRenderer.invoke("set-conversation-recall", conversationId, recall),
+  resolveCitation: (label: string) => ipcRenderer.invoke("resolve-citation", label),
   rebuildWorkspaceIndex: () => ipcRenderer.invoke("rebuild-workspace-index"),
   clearWorkspaceIndex: () => ipcRenderer.invoke("clear-workspace-index"),
   searchWorkspaceMemory: (query: string) => ipcRenderer.invoke("search-workspace-memory", query),

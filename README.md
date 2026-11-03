@@ -121,7 +121,7 @@ becomes active.
 
 ### Verification
 
-`npm test` runs 100 unit assertions and 78 integration assertions against a real SQLite
+`npm test` runs 106 unit assertions and 91 integration assertions against a real SQLite
 file under a throwaway profile: the task-fence parser, tool-argument validation, the
 diff engine and its context window, the task stage maths and duration format, the backup
 envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
@@ -129,19 +129,26 @@ retention, approval gating, a file write reporting the lines it changed and its 
 change surviving a restart, a failed task rerunning from its own audit row, path
 confinement (including a symlink escape), log
 redaction/rotation, the attachment prompt, the composer's file search, the palette's
-fuzzy matcher and the upgrade of a history file written by an older build. The model
+fuzzy matcher, the citation pattern the markdown parser and the resolver share, and the
+upgrade of a history file written by an older build. The model
 download is exercised against a local server that speaks Range: a resumed download, a
 wrong SHA-256, an import of a GGUF the user already has, a file that is not a GGUF, and
-a download refused before it starts because the volume is too small. The teardown is
+a download refused before it starts because the volume is too small. The memory browser
+is covered on the storage side too: a fact rewritten in place keeps its id so the
+citations that name it stay valid, a summary replaces the digest the model reads while
+the digest stays visible, recall changes the prompt and not the note, forgetting a chat
+drops both, and a citation resolves to the fact, the summary or the exact file lines.
+The teardown is
 covered too, because a quit that frees the process under a running llama.cpp worker is
 what used to abort it.
-`npm run test:e2e` adds 39 Playwright tests on a throwaway profile: onboarding, the
+`npm run test:e2e` adds 41 Playwright tests on a throwaway profile: onboarding, the
 first run ending with a real answer from the local weights, the
 chat surface with a button/field/image/landmark audit, Privacy rows and switches,
 RU/EN, close-to-tray, the update channel, the vibrancy and spring timings, Quick Ask
 history, the composer (send key, slash commands, file mentions, attachments), the
 command palette (Cmd+K, a setting found by a hidden word, keyboard-only navigation, the
-Russian palette), the task rail on a real model turn (each stage timed, the write's lines
+Russian palette), the memory browser in Settings (a fact and a chat changed in place, a
+citation chip opening the source behind it), the task rail on a real model turn (each stage timed, the write's lines
 diffed, a denied action keeping its approval stage and asking again on Retry, the Russian
 rail), and the model manager's memory estimate plus a real tokens-per-second
 run against the loaded weights. Two of them are about leaving: quitting while the
@@ -191,7 +198,8 @@ manually.
 
 ## Privacy and approvals
 
-- Chat history, tasks, audit rows and memory facts live in `data/openmonkey.db`
+- Chat history, tasks, audit rows, memory facts and the summaries you write for a
+  chat live in `data/openmonkey.db`
   (SQLite) inside the app's userData directory: `~/Library/Application Support/openmonkey`
   in development and `~/Library/Application Support/OpenMonkey` once packaged.
 - Message bodies are sealed with AES-256-GCM. The key sits in the macOS Keychain

@@ -4,10 +4,13 @@ import * as path from "node:path";
 import { allowedRoots, config } from "../utils/config";
 import storage from "../utils/storage";
 import logger from "../utils/logger";
+import { parseCitation } from "../utils/citations";
+import { resolveInWorkspace } from "./tools/paths";
 import type {
-  MemoryDigest,
+  CitationPreview,
   MemoryFact,
   MemorySnapshot,
+  MemorySummary,
   WorkspaceHit,
   WorkspaceIndexStatus,
 } from "../utils/types";
@@ -16,6 +19,9 @@ const MAX_FACTS = 50;
 const MAX_FACT_CHARS = 500;
 const PROMPT_FACTS = 12;
 const PROMPT_FACTS_CHARS = 3_000;
+const MAX_SUMMARY_CHARS = 600;
+const PROMPT_DIGESTS = 4;
+const CITATION_CONTEXT_LINES = 6;
 const MAX_FILES = 1_200;
 const MAX_CHUNKS = 3_000;
 const MAX_FILE_BYTES = 256 * 1024;
@@ -163,38 +169,170 @@ export class MemoryManager {
     logger.info("memory.fact.deleted", { id });
   }
 
+  /** Rewrites a fact in place; its id and the citations that name it stay valid. */
+  editFact(id: string, content: string): MemoryFact {
+    const text = normalizeFact(content);
+    if (!text) throw new Error("Write a fact before saving it");
+    if (text.length > MAX_FACT_CHARS) throw new Error(`Facts are limited to ${MAX_FACT_CHARS} characters`);
+    const fact = storage.updateMemoryFact(id, text);
+    if (!fact) throw new Error("That fact is no longer there");
+    logger.info("memory.fact.edited", { id });
+    return fact;
+  }
+
   clearFacts(): void {
     storage.clearMemoryFacts();
     logger.info("memory.facts.cleared");
   }
 
-  digests(activeConversationId: string | null, limit = 4): MemoryDigest[] {
-    const conversations = storage
+  /**
+   * What the model remembers about each conversation. The digest is derived from the
+   * stored messages; the summary the user wrote wins over it, so a curated note
+   * replaces the extract rather than sitting beside it.
+   */
+  summaries(): MemorySummary[] {
+    const written = new Map(storage.getMemorySummaries().map((summary) => [summary.conversationId, summary]));
+    return storage
       .listConversations()
-      .filter((conversation) => conversation.id !== activeConversationId && conversation.messageCount >= 2)
-      .slice(0, limit);
+      .filter((conversation) => conversation.messageCount >= 2)
+      .map((conversation) => {
+        const derived = this.deriveDigest(conversation.id, conversation.messageCount);
+        const edited = written.get(conversation.id);
+        return {
+          conversationId: conversation.id,
+          title: conversation.title,
+          messageCount: conversation.messageCount,
+          derived,
+          content: edited?.content ?? derived,
+          edited: Boolean(edited?.content),
+          recall: conversation.recall,
+          updatedAt: edited?.updatedAt ?? conversation.updatedAt,
+        };
+      });
+  }
 
-    return conversations.map((conversation) => {
-      const messages = storage.getMessages(conversation.id, 10);
-      const users = messages.filter((message) => message.role === "user");
-      const first = users[0];
-      const latest = users.slice(-2);
-      const lastAnswer = [...messages].reverse().find((message) => message.role === "assistant");
-      const parts: string[] = [];
-      if (first) parts.push(`Earlier: "${clip(normalizeFact(first.content), 120)}"`);
-      if (latest.length) {
-        parts.push(`Recently: ${latest.map((message) => `"${clip(normalizeFact(message.content), 90)}"`).join(" / ")}`);
+  /** Stores the user's own summary for a conversation; it replaces the derived digest. */
+  editSummary(conversationId: string, content: string): void {
+    const text = normalizeFact(content);
+    if (!text) throw new Error("Write a summary before saving it");
+    if (text.length > MAX_SUMMARY_CHARS) {
+      throw new Error(`Summaries are limited to ${MAX_SUMMARY_CHARS} characters`);
+    }
+    if (!storage.getConversation(conversationId)) throw new Error("That conversation is no longer there");
+    storage.upsertMemorySummary(conversationId, text);
+    logger.info("memory.summary.edited", { conversationId });
+  }
+
+  /** Forgets a conversation: the written summary goes and recall is turned off. */
+  forgetSummary(conversationId: string): void {
+    storage.deleteMemorySummary(conversationId);
+    storage.setConversationRecall(conversationId, false);
+    logger.info("memory.summary.forgotten", { conversationId });
+  }
+
+  /** Turns recall on or off for one conversation; the summary stays where it is. */
+  setRecall(conversationId: string, recall: boolean): void {
+    storage.setConversationRecall(conversationId, recall);
+    logger.info("memory.recall.set", { conversationId, recall });
+  }
+
+  private deriveDigest(conversationId: string, messageCount: number): string {
+    const messages = storage.getMessages(conversationId, 10);
+    const users = messages.filter((message) => message.role === "user");
+    const first = users[0];
+    const latest = users.slice(-2);
+    const lastAnswer = [...messages].reverse().find((message) => message.role === "assistant");
+    const parts: string[] = [];
+    if (first) parts.push(`Earlier: "${clip(normalizeFact(first.content), 120)}"`);
+    if (latest.length) {
+      parts.push(
+        `Recently: ${latest.map((message) => `"${clip(normalizeFact(message.content), 90)}"`).join(" / ")}`
+      );
+    }
+    if (lastAnswer) parts.push(`Last answer: "${clip(normalizeFact(lastAnswer.content), 120)}"`);
+    if (!parts.length) parts.push(`${messageCount} messages`);
+    return parts.join(" · ").slice(0, 460);
+  }
+
+  /**
+   * Resolves a citation to the source behind it, so the user can check what the
+   * model leaned on. A file is read from disk and confined to the allowed folders;
+   * a path the model made up resolves to nothing rather than to the real file.
+   */
+  async citationPreview(label: string): Promise<CitationPreview> {
+    const citation = parseCitation(label);
+    if (!citation) {
+      return { kind: "fact", label, title: "Not a citation", text: "", found: false };
+    }
+
+    if (citation.kind === "fact") {
+      const fact = storage
+        .getMemoryFacts(200)
+        .find((entry) => entry.id === citation.id || entry.id.endsWith(citation.id));
+      if (!fact) {
+        return {
+          kind: "fact",
+          label,
+          title: "Fact not found",
+          text: "That fact was deleted, or the answer cited one that never existed.",
+          found: false,
+        };
       }
-      if (lastAnswer) parts.push(`Last answer: "${clip(normalizeFact(lastAnswer.content), 120)}"`);
-      if (!parts.length) parts.push(`${conversation.messageCount} messages`);
       return {
-        conversationId: conversation.id,
-        title: conversation.title,
-        messageCount: conversation.messageCount,
-        digest: parts.join(" · ").slice(0, 460),
-        updatedAt: conversation.updatedAt,
+        kind: "fact",
+        label,
+        title: `Pinned fact · ${fact.createdAt.toISOString().slice(0, 10)}`,
+        text: fact.content,
+        found: true,
       };
-    });
+    }
+
+    if (citation.kind === "chat") {
+      const summary = this.summaries().find((entry) => entry.title === citation.title);
+      if (!summary) {
+        return {
+          kind: "chat",
+          label,
+          title: citation.title,
+          text: "That conversation is gone, so there is nothing left to recall.",
+          found: false,
+        };
+      }
+      return {
+        kind: "chat",
+        label,
+        title: summary.title,
+        text: summary.content,
+        found: true,
+      };
+    }
+
+    try {
+      const resolved = await resolveInWorkspace(citation.path);
+      const lines = (await fs.readFile(resolved, "utf8")).split(/\r?\n/);
+      const start = Math.max(0, citation.line - 1 - CITATION_CONTEXT_LINES);
+      const end = Math.min(lines.length, citation.line + CITATION_CONTEXT_LINES);
+      return {
+        kind: "file",
+        label,
+        title: path.basename(resolved),
+        text: lines.slice(start, end).join("\n"),
+        path: resolved,
+        startLine: start + 1,
+        endLine: end,
+        found: true,
+      };
+    } catch (error) {
+      logger.warn("memory.citation.unreadable", { path: citation.path, error });
+      return {
+        kind: "file",
+        label,
+        title: path.basename(citation.path),
+        text: "That passage could not be read. It may be outside the folders the agent may read, or the file has changed.",
+        path: citation.path,
+        found: false,
+      };
+    }
   }
 
   /** Facts and cross-chat digests are stable during a conversation unless the user edits them. */
@@ -215,11 +353,11 @@ export class MemoryManager {
       sections.push(`Pinned facts from the user (cite as [fact:<id>]):\n${lines.join("\n")}`);
     }
 
-    const digests = this.digests(activeConversationId);
+    const digests = this.summaries()
+      .filter((summary) => summary.recall && summary.conversationId !== activeConversationId)
+      .slice(0, PROMPT_DIGESTS);
     if (digests.length) {
-      const lines = digests.map(
-        (digest) => `- [chat "${digest.title}"] ${digest.digest}`
-      );
+      const lines = digests.map((digest) => `- [chat "${digest.title}"] ${digest.content}`);
       sections.push(`Recent conversation digests (cite as [chat "<title>"]):\n${lines.join("\n")}`);
     }
 
@@ -239,10 +377,10 @@ export class MemoryManager {
     };
   }
 
-  snapshot(activeConversationId: string | null): MemorySnapshot {
+  snapshot(): MemorySnapshot {
     return {
       facts: this.getFacts(),
-      digests: this.digests(activeConversationId),
+      summaries: this.summaries(),
       workspace: this.status(),
     };
   }

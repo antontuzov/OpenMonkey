@@ -427,11 +427,40 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     if (typeof content !== "string") throw new Error("A fact is required");
     return agent().addMemoryFact(content);
   });
+  ipcMain.handle("edit-memory-fact", (_event, id: unknown, content: unknown) => {
+    if (typeof id !== "string" || !id.trim()) throw new Error("A fact id is required");
+    if (typeof content !== "string") throw new Error("A fact is required");
+    return agent().editMemoryFact(id, content);
+  });
   ipcMain.handle("delete-memory-fact", (_event, id: unknown) => {
     if (typeof id !== "string" || !id.trim()) throw new Error("A fact id is required");
     return agent().deleteMemoryFact(id);
   });
   ipcMain.handle("clear-memory-facts", () => agent().clearMemoryFacts());
+  ipcMain.handle("edit-memory-summary", (_event, conversationId: unknown, content: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId.trim()) {
+      throw new Error("A conversation id is required");
+    }
+    if (typeof content !== "string") throw new Error("A summary is required");
+    return agent().editMemorySummary(conversationId, content);
+  });
+  ipcMain.handle("forget-memory-summary", (_event, conversationId: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId.trim()) {
+      throw new Error("A conversation id is required");
+    }
+    return agent().forgetMemorySummary(conversationId);
+  });
+  ipcMain.handle("set-conversation-recall", (_event, conversationId: unknown, recall: unknown) => {
+    if (typeof conversationId !== "string" || !conversationId.trim()) {
+      throw new Error("A conversation id is required");
+    }
+    if (typeof recall !== "boolean") throw new Error("Recall must be on or off");
+    return agent().setConversationRecall(conversationId, recall);
+  });
+  ipcMain.handle("resolve-citation", async (_event, label: unknown) => {
+    if (typeof label !== "string" || !label.trim()) throw new Error("A citation is required");
+    return await agent().resolveCitation(label);
+  });
   ipcMain.handle("rebuild-workspace-index", () => agent().rebuildWorkspaceIndex());
   ipcMain.handle("clear-workspace-index", () => agent().clearWorkspaceIndex());
   ipcMain.handle("search-workspace-memory", (_event, query: unknown) => {

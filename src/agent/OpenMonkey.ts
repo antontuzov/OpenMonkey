@@ -14,6 +14,7 @@ import type {
   AuditEntry,
   ChatErrorCode,
   ChatEvent,
+  CitationPreview,
   Conversation,
   ConversationSearchHit,
   McpServerStatus,
@@ -851,12 +852,18 @@ Always maintain a helpful, professional tone while being approachable.`;
   }
 
   getMemorySnapshot(): MemorySnapshot {
-    return this.taskManager.getMemoryManager().snapshot(this.activeConversationId);
+    return this.taskManager.getMemoryManager().snapshot();
   }
 
   addMemoryFact(content: string): MemorySnapshot {
     const fact: MemoryFact = this.taskManager.getMemoryManager().addFact(content);
     logger.info("memory.fact.saved", { id: fact.id });
+    this.reseedModel();
+    return this.getMemorySnapshot();
+  }
+
+  editMemoryFact(id: string, content: string): MemorySnapshot {
+    this.taskManager.getMemoryManager().editFact(id, content);
     this.reseedModel();
     return this.getMemorySnapshot();
   }
@@ -871,6 +878,28 @@ Always maintain a helpful, professional tone while being approachable.`;
     this.taskManager.getMemoryManager().clearFacts();
     this.reseedModel();
     return this.getMemorySnapshot();
+  }
+
+  editMemorySummary(conversationId: string, content: string): MemorySnapshot {
+    this.taskManager.getMemoryManager().editSummary(conversationId, content);
+    this.reseedModel();
+    return this.getMemorySnapshot();
+  }
+
+  forgetMemorySummary(conversationId: string): MemorySnapshot {
+    this.taskManager.getMemoryManager().forgetSummary(conversationId);
+    this.reseedModel();
+    return this.getMemorySnapshot();
+  }
+
+  setConversationRecall(conversationId: string, recall: boolean): MemorySnapshot {
+    this.taskManager.getMemoryManager().setRecall(conversationId, recall);
+    this.reseedModel();
+    return this.getMemorySnapshot();
+  }
+
+  async resolveCitation(label: string): Promise<CitationPreview> {
+    return await this.taskManager.getMemoryManager().citationPreview(label);
   }
 
   async rebuildWorkspaceIndex(): Promise<WorkspaceIndexStatus> {
