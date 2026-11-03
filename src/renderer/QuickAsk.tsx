@@ -14,6 +14,7 @@ import {
 import { useAppearance } from "./theme";
 import { logoUrl } from "./assets";
 import { locale, setLanguage, t } from "./i18n";
+import { ToolPreviewCard } from "./components/ToolPreviewCard";
 import {
   MOOD_LOGOS,
   type AgentStatus,
@@ -497,9 +498,9 @@ export const QuickAsk: React.FC = () => {
                     </p>
                   </div>
                 </div>
-                <pre className="mt-2 max-h-24 overflow-auto rounded-lg border border-line bg-card-2 p-2 text-[10px] text-muted whitespace-pre-wrap break-words">
-                  {approval.preview}
-                </pre>
+                <div className="mt-2">
+                  <ToolPreviewCard preview={approval.preview} compact />
+                </div>
                 <div className="flex justify-end gap-1.5 mt-2.5">
                   <button onClick={() => void resolve(false)} className="btn !h-7 !text-[10.5px]">
                     {t("approval.deny")}

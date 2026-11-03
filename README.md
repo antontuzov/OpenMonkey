@@ -61,6 +61,14 @@ one. Approvals are keyboard-first: the dialog opens with Deny reachable and Esca
 
 ![The task rail with a timeline and a diff](docs/screenshots/task-monitor.png)
 
+Before anything runs, the approval is a card that says what will happen. A command reads
+itself back in words and says what it could cost; a write shows the lines it replaces,
+from the same diff the rail shows, so the two cannot disagree.
+
+| A command that explains itself | A write that shows its lines |
+| --- | --- |
+| ![A shell command in the approval](docs/screenshots/approval-command.png) | ![A file write in the approval](docs/screenshots/approval-write.png) |
+
 | Onboarding | Settings → Privacy | Settings → Desktop | Settings → Model |
 | --- | --- | --- | --- |
 | ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) | ![Model](docs/screenshots/settings-model.png) |
@@ -121,7 +129,7 @@ becomes active.
 
 ### Verification
 
-`npm test` runs 113 unit assertions and 102 integration assertions against a real SQLite
+`npm test` runs 124 unit assertions and 114 integration assertions against a real SQLite
 file under a throwaway profile: the task-fence parser, tool-argument validation, the
 diff engine and its context window, the task stage maths and duration format, the backup
 envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
@@ -129,7 +137,8 @@ retention, approval gating, a file write reporting the lines it changed and its 
 change surviving a restart, a failed task rerunning from its own audit row, path
 confinement (including a symlink escape), log
 redaction/rotation, the attachment prompt, the composer's file search, the palette's
-fuzzy matcher, the citation pattern the markdown parser and the resolver share, and the
+fuzzy matcher, the citation pattern the markdown parser and the resolver share, the
+explainer that reads a shell command back in words, and the
 upgrade of a history file written by an older build. The model
 download is exercised against a local server that speaks Range: a resumed download, a
 wrong SHA-256, an import of a GGUF the user already has, a file that is not a GGUF, and
@@ -141,7 +150,7 @@ drops both, and a citation resolves to the fact, the summary or the exact file l
 The teardown is
 covered too, because a quit that frees the process under a running llama.cpp worker is
 what used to abort it.
-`npm run test:e2e` adds 42 Playwright tests on a throwaway profile: onboarding, the
+`npm run test:e2e` adds 44 Playwright tests on a throwaway profile: onboarding, the
 first run ending with a real answer from the local weights, the
 chat surface with a button/field/image/landmark audit, Privacy rows and switches,
 RU/EN, close-to-tray, the update channel, the vibrancy and spring timings, Quick Ask
@@ -152,7 +161,9 @@ citation chip opening the source behind it), the source manager (the files the i
 holds, the passages of one file, an ignore rule keeping a file out and a file read
 again on its own), the task rail on a real model turn (each stage timed, the write's lines
 diffed, a denied action keeping its approval stage and asking again on Retry, the Russian
-rail), and the model manager's memory estimate plus a real tokens-per-second
+rail), the approval preview (a command saying what it does and what it could cost, a write
+showing the lines it replaces), and the model manager's memory estimate plus a real
+tokens-per-second
 run against the loaded weights. Two of them are about leaving: quitting while the
 model is still answering, and quitting while the 572 MB weights are still loading, both
 of which have to exit 0 rather than abort the process. Performance budgets are their own

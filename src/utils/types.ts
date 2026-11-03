@@ -301,12 +301,34 @@ export type AuditDecision =
   | "cancelled"
   | "invalid";
 
+/** What an approval shows: a diff, a set of fields, a command with its notes, or a page. */
+export type ToolPreview =
+  | { kind: "diff"; title: string; body: string; added: number; removed: number; note?: string }
+  | {
+      kind: "fields";
+      title: string;
+      fields: { label: string; value: string }[];
+      body?: string;
+      note?: string;
+    }
+  | {
+      kind: "command";
+      title: string;
+      command: string;
+      cwd: string;
+      explanation: string;
+      risks: string[];
+      note?: string;
+    }
+  | { kind: "page"; title: string; url: string; heading: string; snippet: string }
+  | { kind: "text"; title: string; body: string };
+
 export interface ApprovalRequest {
   requestId: string;
   taskId: string;
   request: TaskRequest;
   /** Diff, command or argument preview computed before anything runs. */
-  preview: string;
+  preview: ToolPreview;
   /** Policy that produced this prompt, shown in the dialog. */
   policy: ApprovalPolicy;
   /** Which window asked, so only that surface shows the approval dialog. */

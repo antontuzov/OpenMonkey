@@ -88,14 +88,20 @@ export class WebBrowserTools {
   }
 
   private async fetchPage(url: string): Promise<string> {
+    const page = await this.readPage(url);
+    return `${page.title}\n${page.url}\n\n${truncate(page.text)}`;
+  }
+
+  /** Reads a page the way the tool does, so a preview and the tool agree on the content. */
+  async readPage(url: string): Promise<{ title: string; url: string; text: string }> {
+    assertNetworkAllowed("web.fetch_page");
     const parsed = new URL(this.assertHttpUrl(url));
     if (!(await this.allowedByRobots(parsed))) {
       throw new Error(`robots.txt on ${parsed.host} disallows fetching ${parsed.pathname}`);
     }
     const html = await this.get(parsed.toString(), `page:${parsed.toString()}`);
     const title = decodeEntities(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.trim() ?? parsed.toString());
-    const article = readableText(html);
-    return `${title}\n${parsed.toString()}\n\n${truncate(article)}`;
+    return { title, url: parsed.toString(), text: readableText(html) };
   }
 
   /** DuckDuckGo's HTML-lite endpoint keeps search result parsing dependency-free. */

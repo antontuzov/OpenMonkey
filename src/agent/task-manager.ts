@@ -31,6 +31,7 @@ import type {
   TaskRequest,
   TaskStepLabel,
   TaskType,
+  ToolPreview,
 } from "../utils/types";
 
 const TOOL_TYPES = new Set<TaskType>(["file", "web", "shell", "calendar", "email", "mcp", "memory"]);
@@ -339,7 +340,12 @@ export class TaskManager {
     const remembered = this.sessionDecisions.get(key);
     if (remembered !== undefined) return { approved: remembered, decision: "session" };
 
-    const preview = await buildPreview(request, args);
+    const preview = await buildPreview(request, args, {
+      fetchPage: async (url) => {
+        const page = await this.webBrowser.readPage(url);
+        return { title: page.title, text: page.text };
+      },
+    });
     const resolution = await this.requestApproval(task.id, request, preview, policy, origin);
     if (resolution.remember) this.sessionDecisions.set(key, resolution.approved);
     return {
@@ -353,7 +359,7 @@ export class TaskManager {
   private requestApproval(
     taskId: string,
     request: TaskRequest,
-    preview: string,
+    preview: ToolPreview,
     policy: ApprovalPolicy,
     origin: "main" | "quick"
   ): Promise<ApprovalResolution> {

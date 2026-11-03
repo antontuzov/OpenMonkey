@@ -131,6 +131,82 @@ try {
     }
   }
 
+  // The approval preview: the last thing between the model and the user's files.
+  // A command says what it does and what it could cost; a write shows the lines
+  // it replaces. Both come from a live turn, so the card is the real one.
+  if (existsSync(modelPath) && (await waitForReady()) === "ready") {
+    const approvalNote = path.join(os.homedir(), "Documents", "openmonkey-approval-note.txt");
+    writeFileSync(approvalNote, "the release ships on Friday\n", "utf8");
+    try {
+      await page.evaluate(() =>
+        window.electron.setConfig({ agent: { approvalPolicies: { file: "ask", shell: "ask" } } })
+      );
+      const composer = page.getByRole("textbox", { name: "Message OpenMonkey" });
+      const dialog = page.getByRole("dialog").filter({ hasText: "Action needs approval" });
+
+      // The 4B model sometimes describes the call instead of running it, so the
+      // turn is asked again, the way a user would.
+      const runFor = async (prompt) => {
+        for (let attempt = 1; attempt <= 6; attempt++) {
+          await composer.fill(prompt);
+          await composer.press("Enter");
+          const asked = await dialog
+            .waitFor({ timeout: 75_000 })
+            .then(() => true)
+            .catch(() => false);
+          if (asked) return;
+          const said = await page.evaluate(() => {
+            const answers = Array.from(document.querySelectorAll(".message-assistant"));
+            const last = answers[answers.length - 1];
+            return (last?.textContent ?? "no answer").replace(/\s+/g, " ").slice(0, 160);
+          });
+          console.warn(`approval turn ${attempt} did not ask; the model said: ${said}`);
+        }
+        throw new Error("the model never reached the approval");
+      };
+
+      const capture = async (call, file, ask) => {
+        await runFor(`${ask}\n\`\`\`task\n${JSON.stringify(call)}\n\`\`\``);
+        await page.waitForTimeout(400);
+        await dialog.screenshot({ path: path.join(outDir, file) });
+        await page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "hidden", timeout: 30_000 });
+      };
+
+      try {
+        await capture(
+          {
+            type: "shell",
+            action: "run_command",
+            arguments: { command: `chmod 777 ${approvalNote}` },
+            summary: "Make the note readable by everyone",
+          },
+          "approval-command.png",
+          "Use the shell tool to run exactly this one command and use no other tool:"
+        );
+      } catch (error) {
+        console.warn("approval-command.png skipped:", error.message);
+      }
+
+      try {
+        await capture(
+          {
+            type: "file",
+            action: "write_file",
+            arguments: { path: approvalNote, content: "the release slipped to Monday\n" },
+            summary: "Move the release to Monday",
+          },
+          "approval-write.png",
+          "Use the file tool to write exactly this one file and use no other tool:"
+        );
+      } catch (error) {
+        console.warn("approval-write.png skipped:", error.message);
+      }
+    } finally {
+      rmSync(approvalNote, { force: true });
+    }
+  }
+
   // A seeded thread shows every markdown block the renderer knows; a live answer
   // from a 4B model could not be relied on to produce them all.
   const dbFile = path.join(profile, "data", "openmonkey.db");

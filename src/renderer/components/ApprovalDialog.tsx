@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import type { ApprovalRequest } from "../../utils/types";
+import { ToolPreviewCard } from "./ToolPreviewCard";
 import { t } from "../i18n";
 
 interface ApprovalDialogProps {
@@ -9,16 +10,10 @@ interface ApprovalDialogProps {
   onResolve: (approved: boolean, remember: boolean) => void;
 }
 
-const lineClass = (line: string): string => {
-  if (line.startsWith("+")) return "text-accent-ink";
-  if (line.startsWith("-")) return "text-danger";
-  return "text-muted";
-};
-
 export const ApprovalDialog: React.FC<ApprovalDialogProps> = ({ approval, agentName, onResolve }) => {
   const [showRaw, setShowRaw] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const hasDiff = /^[+-] /m.test(approval.preview);
+  const hasDiff = approval.preview.kind === "diff";
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -94,15 +89,7 @@ export const ApprovalDialog: React.FC<ApprovalDialogProps> = ({ approval, agentN
           })}
         </p>
 
-        <div className="rounded-xl border border-line bg-card-2 overflow-auto max-h-64 shrink">
-          <pre className="p-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono">
-            {approval.preview.split("\n").map((line, index) => (
-              <span key={index} className={`${lineClass(line)} block`}>
-                {line || " "}
-              </span>
-            ))}
-          </pre>
-        </div>
+        <ToolPreviewCard preview={approval.preview} />
         {hasDiff && (
           <p className="text-[10px] text-faint mt-1.5">
             {t("approval.previewOnly")}
