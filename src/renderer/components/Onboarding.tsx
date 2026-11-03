@@ -1,5 +1,16 @@
-import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Cpu, Lock, Palette, ShieldCheck, Sparkles, WifiOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Cpu,
+  Loader,
+  Lock,
+  Palette,
+  ShieldCheck,
+  Sparkles,
+  WifiOff,
+} from "lucide-react";
 import { ModelDownloadCard } from "./ModelDownloadCard";
 import { ACCENTS } from "../constants";
 import { logoUrl } from "../assets";
@@ -21,6 +32,9 @@ interface OnboardingProps {
 }
 
 const STEPS = ["Welcome", "Identity", "Approvals", "Model"];
+
+/** The line the last step asks the model once the weights are in place. */
+const FIRST_PROMPT = "Greet me in one sentence and say that you run locally. Do not use tools.";
 
 const FEATURES = [
   {
@@ -48,6 +62,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ status, mood, config, on
   const [autoExecute, setAutoExecute] = useState(config.agent.autoExecuteTasks);
   const [models, setModels] = useState<ModelStatus | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [probe, setProbe] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [firstAnswer, setFirstAnswer] = useState("");
+  const [probeError, setProbeError] = useState("");
+  const probeChat = useRef<string | null>(null);
 
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
   const ready = status.state === "ready";
@@ -67,6 +85,35 @@ export const Onboarding: React.FC<OnboardingProps> = ({ status, mood, config, on
     const next = await window.electron?.getModelStatus();
     if (next) setModels(next);
     await onRefreshStatus();
+  };
+
+  // Only the running probe listens; the tokens stream into the card below.
+  useEffect(() => {
+    if (probe !== "running") return;
+    return window.electron?.onChatEvent((event) => {
+      if (event.conversationId !== probeChat.current) return;
+      if (event.type === "token") setFirstAnswer((current) => current + event.token);
+      if (event.type === "replace") setFirstAnswer(event.content);
+    });
+  }, [probe]);
+
+  const askOnce = async () => {
+    const api = window.electron;
+    if (!api) return;
+    setProbe("running");
+    setFirstAnswer("");
+    setProbeError("");
+    try {
+      const chat = await api.createConversation();
+      probeChat.current = chat.id;
+      const reply = await api.processMessage(chat.id, FIRST_PROMPT);
+      if (!reply?.content.trim()) throw new Error("The model answered with nothing.");
+      setFirstAnswer(reply.content.trim());
+      setProbe("done");
+    } catch (caught) {
+      setProbeError(caught instanceof Error ? caught.message : String(caught));
+      setProbe("error");
+    }
   };
 
   const finish = async () => {
@@ -372,6 +419,42 @@ export const Onboarding: React.FC<OnboardingProps> = ({ status, mood, config, on
                   </div>
                 </div>
 
+                {ready && (
+                  <div className="card mt-6 p-4" data-onboarding-probe>
+                    <div className="flex items-start gap-3">
+                      <span className="w-8 h-8 rounded-lg bg-card-2 border border-line flex items-center justify-center shrink-0">
+                        {probe === "running" ? (
+                          <Loader size={15} className="text-accent-ink animate-spin" />
+                        ) : (
+                          <Sparkles size={15} className="text-muted" />
+                        )}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="row-title">Hear it once before you finish</p>
+                        <p className="row-copy">
+                          {probe === "done"
+                            ? "Answered on this Mac. The chat opens with it after setup."
+                            : "One line, answered by the weights you just put in place."}
+                        </p>
+                        {firstAnswer && (
+                          <p
+                            data-onboarding-answer
+                            className="mt-2.5 text-[12px] leading-relaxed border-l-2 border-accent pl-3"
+                          >
+                            {firstAnswer}
+                          </p>
+                        )}
+                        {probe === "error" && (
+                          <p className="mt-2.5 text-[10.5px] leading-relaxed text-danger">{probeError}</p>
+                        )}
+                      </div>
+                      <button onClick={() => void askOnce()} disabled={probe === "running"} className="btn shrink-0">
+                        {probe === "running" ? "Asking…" : probe === "done" ? "Ask again" : "Ask it"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="card mt-6">
                   <div className="row">
                     <div className="flex items-center gap-3">
@@ -421,14 +504,28 @@ export const Onboarding: React.FC<OnboardingProps> = ({ status, mood, config, on
 
           <div className="flex items-center gap-3">
             <span className="text-[10px] text-faint">
-              {step === 3 && !ready ? "You can keep downloading after setup." : "Stored locally · no telemetry"}
+              {step === 3 && !ready
+                ? "You can keep downloading after setup."
+                : step === 3 && probe === "done"
+                  ? "Your first chat is waiting."
+                  : step === 3
+                    ? "Ask it one line, or finish now."
+                    : "Stored locally · no telemetry"}
             </span>
             <button
               onClick={next}
               disabled={finishing || (step === 1 && !name.trim())}
               className="btn btn-primary btn-lg"
             >
-              {finishing ? "Saving…" : step === 0 ? "Get started" : step === 3 ? "Finish setup" : "Continue"}
+              {finishing
+                ? "Saving…"
+                : step === 0
+                  ? "Get started"
+                  : step === 3
+                    ? probe === "done"
+                      ? "Open your first chat"
+                      : "Finish setup"
+                    : "Continue"}
               <ArrowRight size={14} />
             </button>
           </div>

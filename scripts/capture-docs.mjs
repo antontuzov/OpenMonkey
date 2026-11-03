@@ -244,3 +244,33 @@ try {
   await app.evaluate(({ app }) => app.quit()).catch(() => undefined);
   rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
+
+// The first run now ends with a reply, and it only happens once per profile, so this
+// shot is taken in its own throwaway profile after every other capture has skipped it.
+if (existsSync(modelPath)) {
+  const firstRunProfile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-docs-first-run-"));
+  const firstRun = await electron.launch({
+    args: [root],
+    env: { ...process.env, OPENMONKEY_USER_DATA: firstRunProfile, OPENMONKEY_DEBUG_PORT: "" },
+  });
+  try {
+    const page = await firstRun.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.getByRole("button", { name: "Get started" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByText("Give it a brain.").waitFor();
+    await page.locator("[data-onboarding-probe]").waitFor({ timeout: 180_000 });
+    await page.getByRole("button", { name: "Ask it" }).click();
+    await page.locator("[data-onboarding-answer]").waitFor({ timeout: 180_000 });
+    await page.getByRole("button", { name: "Open your first chat" }).waitFor({ timeout: 60_000 });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(outDir, "onboarding-model.png") });
+  } catch (error) {
+    console.warn("onboarding-model.png skipped:", error.message);
+  } finally {
+    await firstRun.evaluate(({ app }) => app.quit()).catch(() => undefined);
+    rmSync(firstRunProfile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+}

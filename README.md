@@ -65,6 +65,13 @@ one. Approvals are keyboard-first: the dialog opens with Deny reachable and Esca
 | --- | --- | --- | --- |
 | ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) | ![Model](docs/screenshots/settings-model.png) |
 
+The first run finishes the job: the model step downloads the GGUF with progress, a
+resumable transfer, a checksum and a free-space check before the first byte, or takes
+the file you already have, and the last step asks the local model one question so you
+hear it before you set anything up.
+
+![The first run ending with the model's own answer](docs/screenshots/onboarding-model.png)
+
 ## Requirements
 
 | | |
@@ -114,7 +121,7 @@ becomes active.
 
 ### Verification
 
-`npm test` runs 100 unit assertions and 64 integration assertions against a real SQLite
+`npm test` runs 100 unit assertions and 78 integration assertions against a real SQLite
 file under a throwaway profile: the task-fence parser, tool-argument validation, the
 diff engine and its context window, the task stage maths and duration format, the backup
 envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
@@ -122,8 +129,14 @@ retention, approval gating, a file write reporting the lines it changed and its 
 change surviving a restart, a failed task rerunning from its own audit row, path
 confinement (including a symlink escape), log
 redaction/rotation, the attachment prompt, the composer's file search, the palette's
-fuzzy matcher and the upgrade of a history file written by an older build.
-`npm run test:e2e` adds 36 Playwright tests on a throwaway profile: onboarding, the
+fuzzy matcher and the upgrade of a history file written by an older build. The model
+download is exercised against a local server that speaks Range: a resumed download, a
+wrong SHA-256, an import of a GGUF the user already has, a file that is not a GGUF, and
+a download refused before it starts because the volume is too small. The teardown is
+covered too, because a quit that frees the process under a running llama.cpp worker is
+what used to abort it.
+`npm run test:e2e` adds 39 Playwright tests on a throwaway profile: onboarding, the
+first run ending with a real answer from the local weights, the
 chat surface with a button/field/image/landmark audit, Privacy rows and switches,
 RU/EN, close-to-tray, the update channel, the vibrancy and spring timings, Quick Ask
 history, the composer (send key, slash commands, file mentions, attachments), the
@@ -131,7 +144,10 @@ command palette (Cmd+K, a setting found by a hidden word, keyboard-only navigati
 Russian palette), the task rail on a real model turn (each stage timed, the write's lines
 diffed, a denied action keeping its approval stage and asking again on Retry, the Russian
 rail), and the model manager's memory estimate plus a real tokens-per-second
-run against the loaded weights. Performance budgets are their own four tests (cold start
+run against the loaded weights. Two of them are about leaving: quitting while the
+model is still answering, and quitting while the 572 MB weights are still loading, both
+of which have to exit 0 rather than abort the process. Performance budgets are their own
+four tests (cold start
 under 2.5 s, no long tasks during a synthetic 320-token stream, idle memory under
 900 MB, Settings served as a lazy chunk). CI runs the same suites on both Mac
 architectures and packages tag builds on `v*` (signing and notarization run when the

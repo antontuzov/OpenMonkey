@@ -102,6 +102,7 @@ const api: ElectronAPI = {
     ipcRenderer.invoke("switch-provider", provider),
   benchmarkModel: () => ipcRenderer.invoke("benchmark-model"),
   downloadModel: () => ipcRenderer.invoke("download-model"),
+  importModel: () => ipcRenderer.invoke("import-model"),
   cancelModelDownload: () => ipcRenderer.invoke("cancel-model-download"),
   verifyModel: () => ipcRenderer.invoke("verify-model"),
   deleteModel: () => ipcRenderer.invoke("delete-model"),

@@ -11,6 +11,8 @@ export interface GgufModelEntry {
   dirName: string;
   bytes: number;
   sha256: string;
+  /** Overrides the Hugging Face path: a mirror, or the local server the tests run. */
+  url?: string;
 }
 
 export const BONSAI_4B: GgufModelEntry = {
@@ -27,5 +29,5 @@ export const BONSAI_4B: GgufModelEntry = {
 export const GGUF_MODELS = [BONSAI_4B];
 
 export function hfResolveUrl(entry: GgufModelEntry): string {
-  return `https://huggingface.co/${entry.repo}/resolve/${entry.revision}/${entry.file}`;
+  return entry.url ?? `https://huggingface.co/${entry.repo}/resolve/${entry.revision}/${entry.file}`;
 }

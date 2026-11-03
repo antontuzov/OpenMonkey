@@ -558,6 +558,9 @@ export interface ModelDownloadStatus {
   speedBytesPerSecond: number;
   /** null while unknown/untested, true after the pinned SHA-256 matches. */
   verified: boolean | null;
+  /** Space the download still needs, and what the volume has; null when unknown. */
+  requiredBytes?: number;
+  availableBytes?: number | null;
   error?: string;
 }
 
@@ -692,6 +695,8 @@ export interface ElectronAPI {
   switchProvider: (provider: ModelPreference) => Promise<void>;
   benchmarkModel: () => Promise<ModelBenchmark>;
   downloadModel: () => Promise<ModelDownloadStatus>;
+  /** Picks a GGUF already on this Mac and puts it where the app looks for its weights. */
+  importModel: () => Promise<ModelDownloadStatus>;
   cancelModelDownload: () => Promise<void>;
   verifyModel: () => Promise<ModelDownloadStatus>;
   deleteModel: () => Promise<ModelDownloadStatus>;

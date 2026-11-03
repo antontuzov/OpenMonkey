@@ -290,6 +290,24 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   ipcMain.handle("cancel-model-download", () => downloader.cancel());
   ipcMain.handle("verify-model", () => downloader.verifyInstalled());
   ipcMain.handle("get-model-download-status", () => downloader.current);
+  ipcMain.handle("import-model", async () => {
+    const options: Electron.OpenDialogOptions = {
+      title: "Choose a GGUF model",
+      properties: ["openFile"],
+      filters: [{ name: "GGUF model", extensions: ["gguf"] }],
+    };
+    const window = deps.getWindow();
+    const picked = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    if (picked.canceled || !picked.filePaths.length) return downloader.current;
+    const status = await downloader.importFrom(picked.filePaths[0]);
+    if (status.phase === "done") {
+      const instance = deps.getAgent();
+      if (instance && instance.getStatus().state !== "ready") {
+        await instance.reloadModel().catch(() => undefined);
+      }
+    }
+    return status;
+  });
   ipcMain.handle("reload-model", () => agent().reloadModel());
   ipcMain.handle("delete-model", async () => {
     const status = downloader.removeInstalled();

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Download, Loader, Pause, Play, RefreshCw, Trash2, TriangleAlert } from "lucide-react";
+import { Check, Download, FolderOpen, Loader, Pause, Play, RefreshCw, Trash2, TriangleAlert } from "lucide-react";
 import { BONSAI_4B } from "../../models/catalog";
 import type { ModelDownloadStatus } from "../../utils/types";
 
@@ -67,6 +67,18 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
     void window.electron?.cancelModelDownload();
   };
 
+  const importFile = () => {
+    setBusy(true);
+    void window.electron
+      ?.importModel()
+      .then(async (status) => {
+        if (status) setDownload(status);
+        await onChanged();
+      })
+      .catch(() => undefined)
+      .finally(() => setBusy(false));
+  };
+
   const verify = async () => {
     setBusy(true);
     try {
@@ -131,6 +143,19 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
     return `${mb(BONSAI_4B.bytes)} · one download, then every answer stays on this Mac.`;
   })();
 
+  /** What the volume holds against what the download still needs, before anything is pressed. */
+  const spaceLine = (() => {
+    const required = download?.requiredBytes;
+    const available = download?.availableBytes;
+    if (installed || downloading || verifying || required == null || available == null) return null;
+    return available < required
+      ? { short: true, text: `Needs ${mb(required)} free; ${mb(available)} available on this volume.` }
+      : { short: false, text: `${mb(available)} free on this volume; ${mb(required)} needed.` };
+  })();
+
+  /** An installed file that is a model but not the pinned release says so here. */
+  const mismatch = installed && download?.verified === false ? (download?.error ?? null) : null;
+
   return (
     <div className={compact ? "" : "card p-4"}>
       <div className="flex items-start gap-3">
@@ -165,6 +190,13 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
         <div className="flex items-start gap-2 mt-3 text-danger">
           <TriangleAlert size={13} className="mt-0.5 shrink-0" />
           <p className="text-[10.5px] leading-relaxed">{download?.error}</p>
+        </div>
+      )}
+
+      {mismatch && !failed && (
+        <div className="flex items-start gap-2 mt-3 text-warn">
+          <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+          <p className="text-[10.5px] leading-relaxed">{mismatch}</p>
         </div>
       )}
 
@@ -206,15 +238,27 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
             )}
           </>
         ) : (
-          <button onClick={start} disabled={verifying} className="btn btn-primary">
-            {paused || failed ? <Play size={12} /> : <Download size={12} />}
-            {paused ? "Resume" : failed ? "Retry" : "Download"}
-          </button>
+          <>
+            <button onClick={start} disabled={verifying || busy} className="btn btn-primary">
+              {paused || failed ? <Play size={12} /> : <Download size={12} />}
+              {paused ? "Resume" : failed ? "Retry" : "Download"}
+            </button>
+            {!compact && (
+              <button onClick={importFile} disabled={busy} className="btn">
+                <FolderOpen size={12} />
+                Use a file I have
+              </button>
+            )}
+          </>
         )}
         {!compact && !installed && !downloading && (
-          <span className="text-[10px] text-faint">Signed download from Hugging Face, verified locally.</span>
+          <span className="text-[10px] text-faint">Checked against the pinned SHA-256 before it loads.</span>
         )}
       </div>
+
+      {spaceLine && !compact && (
+        <p className={`text-[10px] mt-2.5 ${spaceLine.short ? "text-warn" : "text-faint"}`}>{spaceLine.text}</p>
+      )}
     </div>
   );
 };

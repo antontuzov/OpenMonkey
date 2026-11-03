@@ -69,6 +69,7 @@ recorded number — not a claim.
 
 | # | Upgrade | Evidence |
 | --- | --- | --- |
+| 2 | Onboarding finishes the job | The model step offers both routes in — a download with MB, %, ETA and pause/cancel, or "Use a file I have" for a GGUF already on the Mac — and states the free space it needs before it asks for a byte. The digest is verified, then the flow asks the model one question and shows its own answer before it lets you out. 10 integration tests (a download against a Range server, resume, a wrong digest refused, a volume without room refused before any request reaches the server, an import that copies and keeps the original, a non-GGUF refused, a valid but unpinned model reported honestly, every phase reported as it happens), an e2e spec that reaches a real answer through the wizard, and a capture of the last step showing Bonsai-4B at 572 MB and the model's answer on screen |
 | 3 | An empty state worth looking at | Four starter prompts that prefill the composer, and a dismissal that sticks across a reload — two e2e specs |
 | 4 | Markdown that matches model output | 14 unit tests (parser, tokenizer, offset stability while streaming), an e2e spec per block, a region baseline and a docs capture |
 | 5 | Message-level actions | 14 integration tests (variant groups, truncation, branching, token accounting), an e2e spec that walks the switcher, quotes, copies and branches, two docs captures; the reply on screen shows 3.4 s and 128 tokens |
