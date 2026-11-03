@@ -341,6 +341,11 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     agent().cancelTask(taskId);
   });
 
+  ipcMain.handle("retry-task", async (_event, taskId: unknown) => {
+    if (typeof taskId !== "string") throw new Error("A task id is required");
+    return await agent().retryTask(taskId);
+  });
+
   ipcMain.handle("get-audit-log", (_event, limit: unknown) => {
     const size = typeof limit === "number" && Number.isFinite(limit) ? limit : 100;
     return agent().getAuditLog(size);

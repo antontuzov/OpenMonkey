@@ -20,5 +20,12 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/renderer", "src/utils/types.ts", "src/models/catalog.ts", "src/models/benchmark.ts"]
+  "include": [
+    "src/renderer",
+    "src/utils/types.ts",
+    "src/utils/diff.ts",
+    "src/utils/task-steps.ts",
+    "src/models/catalog.ts",
+    "src/models/benchmark.ts"
+  ]
 }

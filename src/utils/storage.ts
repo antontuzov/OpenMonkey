@@ -22,11 +22,14 @@ import type {
   Conversation,
   ConversationKind,
   ConversationSearchHit,
+  DiffLine,
   MemoryFact,
   Message,
   MessageAttachment,
   QuickAskThread,
   Task,
+  TaskDiff,
+  TaskStep,
 } from "./types";
 import type { ExportBundle, ExportedMessage } from "./portability";
 
@@ -34,7 +37,7 @@ const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** Bumped when the table layout changes; an export carries it so a newer file is refused. */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 interface MessageRow {
   id: string;
@@ -57,6 +60,22 @@ interface MessageRow {
   /** Only present on reads that join the group; the switcher's "2 of 3". */
   variant_count?: number | null;
   variant_index?: number | null;
+}
+
+interface AuditRow {
+  id: string;
+  task_id: string;
+  conversation_id: string | null;
+  type: AuditEntry["type"];
+  action: string;
+  summary: string;
+  arguments: string;
+  decision: AuditEntry["decision"];
+  status: AuditEntry["status"];
+  result: string | null;
+  error: string | null;
+  created_at: number;
+  completed_at: number | null;
 }
 
 interface ConversationRow {
@@ -115,6 +134,54 @@ export const parseAttachments = (raw: string | null | undefined): MessageAttachm
       .filter((item) => item.name.length > 0);
   } catch {
     return [];
+  }
+};
+
+/** Reads the task timeline back; a row written by an older build has none. */
+export const parseSteps = (raw: string | null | undefined): TaskStep[] | undefined => {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    const steps = parsed
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+      .filter((item) => item.label === "queued" || item.label === "approval" || item.label === "running")
+      .map((item) => ({
+        label: item.label as TaskStep["label"],
+        startedAt: Number(item.startedAt) || 0,
+        endedAt: typeof item.endedAt === "number" ? item.endedAt : undefined,
+      }));
+    return steps.length ? steps : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** Reads the file change back; the column holds sealed text, so it is opened first. */
+export const parseDiff = (
+  raw: string | null | undefined,
+  open: (value: string) => string
+): TaskDiff | undefined => {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(open(raw)) as unknown;
+    if (!parsed || typeof parsed !== "object") return undefined;
+    const diff = parsed as Partial<TaskDiff>;
+    if (typeof diff.path !== "string" || !Array.isArray(diff.lines)) return undefined;
+    const lines: DiffLine[] = diff.lines
+      .filter((line): line is DiffLine => !!line && typeof line === "object")
+      .map((line) => ({
+        kind: line.kind === "add" || line.kind === "del" ? line.kind : "same",
+        text: String(line.text ?? ""),
+      }));
+    return {
+      path: diff.path,
+      added: typeof diff.added === "number" ? diff.added : 0,
+      removed: typeof diff.removed === "number" ? diff.removed : 0,
+      lines,
+    };
+  } catch {
+    return undefined;
   }
 };
 
@@ -197,6 +264,8 @@ export class Storage {
         error TEXT,
         command TEXT,
         cwd TEXT,
+        steps TEXT,
+        diff TEXT,
         created_at INTEGER NOT NULL,
         completed_at INTEGER
       );
@@ -267,6 +336,8 @@ export class Storage {
     const taskNames = new Set(taskColumns.map((column) => column.name));
     if (!taskNames.has("command")) this.db.exec("ALTER TABLE tasks ADD COLUMN command TEXT");
     if (!taskNames.has("cwd")) this.db.exec("ALTER TABLE tasks ADD COLUMN cwd TEXT");
+    if (!taskNames.has("steps")) this.db.exec("ALTER TABLE tasks ADD COLUMN steps TEXT");
+    if (!taskNames.has("diff")) this.db.exec("ALTER TABLE tasks ADD COLUMN diff TEXT");
 
     this.db.exec(`
       CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages (conversation_id, created_at);
@@ -1127,12 +1198,16 @@ export class Storage {
     if (!this.db) return;
     this.db
       .prepare(
-        `INSERT INTO tasks (id, type, description, status, emoji, result, error, command, cwd, created_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO tasks (id, type, description, status, emoji, result, error, command, cwd, steps, diff, created_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            status = excluded.status,
            result = excluded.result,
            error = excluded.error,
+           command = excluded.command,
+           cwd = excluded.cwd,
+           steps = excluded.steps,
+           diff = excluded.diff,
            completed_at = excluded.completed_at`
       )
       .run(
@@ -1145,6 +1220,8 @@ export class Storage {
         task.error ? this.seal(task.error) : null,
         task.command ?? null,
         task.cwd ? this.seal(task.cwd) : null,
+        task.steps ? JSON.stringify(task.steps) : null,
+        task.diff ? this.seal(JSON.stringify(task.diff)) : null,
         task.createdAt.getTime(),
         task.completedAt?.getTime() ?? null
       );
@@ -1164,6 +1241,8 @@ export class Storage {
       error: string | null;
       command: string | null;
       cwd: string | null;
+      steps: string | null;
+      diff: string | null;
       created_at: number;
       completed_at: number | null;
     }>;
@@ -1178,6 +1257,8 @@ export class Storage {
       error: row.error ? this.open(row.error) : undefined,
       command: row.command ?? undefined,
       cwd: row.cwd ? this.open(row.cwd) : undefined,
+      steps: parseSteps(row.steps),
+      diff: parseDiff(row.diff, this.open.bind(this)),
       createdAt: new Date(row.created_at),
       completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
     }));
@@ -1246,45 +1327,41 @@ export class Storage {
     if (!this.db) return [];
     const rows = this.db
       .prepare("SELECT * FROM audit ORDER BY created_at DESC LIMIT ?")
-      .all(Math.min(Math.max(1, limit), 500)) as Array<{
-      id: string;
-      task_id: string;
-      conversation_id: string | null;
-      type: AuditEntry["type"];
-      action: string;
-      summary: string;
-      arguments: string;
-      decision: AuditEntry["decision"];
-      status: AuditEntry["status"];
-      result: string | null;
-      error: string | null;
-      created_at: number;
-      completed_at: number | null;
-    }>;
+      .all(Math.min(Math.max(1, limit), 500)) as AuditRow[];
+    return rows.map((row) => this.toAudit(row));
+  }
 
-    return rows.map((row) => {
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(this.open(row.arguments)) as Record<string, unknown>;
-      } catch {
-        args = {};
-      }
-      return {
-        id: row.id,
-        taskId: row.task_id,
-        conversationId: row.conversation_id,
-        type: row.type,
-        action: row.action,
-        summary: row.summary,
-        arguments: args,
-        decision: row.decision,
-        status: row.status,
-        result: row.result ? this.open(row.result) : undefined,
-        error: row.error ? this.open(row.error) : undefined,
-        createdAt: new Date(row.created_at),
-        completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
-      };
-    });
+  /** The audit row of one task, so a task that failed can be run again. */
+  getAudit(taskId: string): AuditEntry | null {
+    if (!this.db) return null;
+    const row = this.db
+      .prepare("SELECT * FROM audit WHERE task_id = ? ORDER BY created_at DESC LIMIT 1")
+      .get(taskId) as AuditRow | undefined;
+    return row ? this.toAudit(row) : null;
+  }
+
+  private toAudit(row: AuditRow): AuditEntry {
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(this.open(row.arguments)) as Record<string, unknown>;
+    } catch {
+      args = {};
+    }
+    return {
+      id: row.id,
+      taskId: row.task_id,
+      conversationId: row.conversation_id,
+      type: row.type,
+      action: row.action,
+      summary: row.summary,
+      arguments: args,
+      decision: row.decision,
+      status: row.status,
+      result: row.result ? this.open(row.result) : undefined,
+      error: row.error ? this.open(row.error) : undefined,
+      createdAt: new Date(row.created_at),
+      completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+    };
   }
 
   clearAuditLog(): void {

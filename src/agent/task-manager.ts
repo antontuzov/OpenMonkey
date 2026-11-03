@@ -6,6 +6,8 @@ import { CalendarEmailTools } from "./tools/calendar-email";
 import { McpManager } from "./mcp-manager";
 import { MemoryManager } from "./memory-manager";
 import { buildPreview } from "./previews";
+import { diffCounts, lineDiff } from "../utils/diff";
+import { closeLastStep, openStep } from "../utils/task-steps";
 import {
   getToolDefinition,
   toolKey,
@@ -23,9 +25,11 @@ import type {
   ApprovalRequest,
   AuditDecision,
   AuditEntry,
+  FileWrite,
   McpServerStatus,
   Task,
   TaskRequest,
+  TaskStepLabel,
   TaskType,
 } from "../utils/types";
 
@@ -50,7 +54,7 @@ export class TaskManager {
   private mcp = new McpManager();
   private memory = new MemoryManager();
   private activeTasks = new Map<string, Task>();
-  private pendingApprovals = new Map<string, (resolution: ApprovalResolution) => void>();
+  private pendingApprovals = new Map<string, { taskId: string; resolve: (resolution: ApprovalResolution) => void }>();
   private sessionDecisions = new Map<string, boolean>();
   private running = new Map<string, AbortController>();
   private audits = new Map<string, AuditEntry>();
@@ -66,6 +70,7 @@ export class TaskManager {
         status: "failed",
         error: "Interrupted by app restart",
         completedAt: new Date(),
+        steps: closeLastStep(task.steps),
       };
       storage.saveTask(interrupted);
       this.activeTasks.set(task.id, interrupted);
@@ -133,6 +138,7 @@ export class TaskManager {
       status: "pending",
       createdAt: new Date(),
       emoji: emojiFor(request.type),
+      steps: [{ label: "queued", startedAt: Date.now() }],
     };
     this.activeTasks.set(task.id, task);
     this.publish(task);
@@ -160,6 +166,10 @@ export class TaskManager {
     const definition = validated.definition;
     const args = validated.arguments;
     request.mutating = definition ? definition.mutating : !this.mcp.isReadOnly(request.action);
+
+    // The request is sound, so the wait for the app is over; the next step is
+    // either the decision or the work itself.
+    this.closeStep(task.id);
 
     if (request.type === "shell") {
       task.command = String(args.command ?? "");
@@ -209,6 +219,7 @@ export class TaskManager {
     if (externalSignal?.aborted) controller.abort();
     else externalSignal?.addEventListener("abort", forwardAbort, { once: true });
     this.finish(task, "running");
+    this.openStep(task.id, "running");
 
     if (controller.signal.aborted) {
       this.finish(task, "cancelled", "Cancelled by you");
@@ -237,7 +248,14 @@ export class TaskManager {
       else if (!publishTimer) publishTimer = setTimeout(flushOutput, 120);
     };
 
-    const context: ToolContext = { signal: controller.signal, onOutput };
+    const onWrite = (write: FileWrite) => {
+      const lines = lineDiff(write.before, write.after);
+      if (!lines) return;
+      const { added, removed } = diffCounts(lines);
+      this.patch(task.id, { diff: { path: write.path, added, removed, lines } });
+    };
+
+    const context: ToolContext = { signal: controller.signal, onOutput, onWrite };
 
     try {
       let result: string;
@@ -339,37 +357,57 @@ export class TaskManager {
     policy: ApprovalPolicy,
     origin: "main" | "quick"
   ): Promise<ApprovalResolution> {
+    this.openStep(taskId, "approval");
     this.patch(taskId, { status: "awaiting-approval" });
     return new Promise<ApprovalResolution>((resolve) => {
       const requestId = `approval_${taskId}`;
-      this.pendingApprovals.set(requestId, resolve);
+      this.pendingApprovals.set(requestId, { taskId, resolve });
       const payload: ApprovalRequest = { requestId, taskId, request, preview, policy, origin };
       this.agent.emit("approval-request", payload);
     });
   }
 
   resolveApproval(requestId: string, approved: boolean, remember = false): void {
-    const resolve = this.pendingApprovals.get(requestId);
-    if (!resolve) return;
+    const pending = this.pendingApprovals.get(requestId);
+    if (!pending) return;
     logger.info("approval.resolved", { requestId, approved, remember });
     this.pendingApprovals.delete(requestId);
-    resolve({ approved, remember });
+    this.closeStep(pending.taskId);
+    pending.resolve({ approved, remember });
   }
 
   cancelTask(taskId: string): void {
     const requestId = `approval_${taskId}`;
-    const resolve = this.pendingApprovals.get(requestId);
-    if (resolve) {
+    const pending = this.pendingApprovals.get(requestId);
+    if (pending) {
       logger.info("approval.cancelled", { taskId });
       this.pendingApprovals.delete(requestId);
-      resolve({ approved: false, remember: false, cancelled: true });
+      this.closeStep(taskId);
+      pending.resolve({ approved: false, remember: false, cancelled: true });
     }
     this.running.get(taskId)?.abort();
   }
 
+  /** Run a task again from what it asked the first time. */
+  async retryTask(taskId: string): Promise<Task | null> {
+    const audit = storage.getAudit(taskId);
+    if (!audit) return null;
+    const request: TaskRequest = {
+      type: audit.type,
+      action: audit.action,
+      arguments: audit.arguments,
+      summary: audit.summary,
+      mutating: true,
+    };
+    return await this.executeTask(request, audit.conversationId);
+  }
+
   /** Stop pressed: close approvals and abort running work so nothing outlives the reply. */
   abortActive(): void {
-    for (const resolve of this.pendingApprovals.values()) resolve({ approved: false, remember: false });
+    for (const pending of this.pendingApprovals.values()) {
+      this.closeStep(pending.taskId);
+      pending.resolve({ approved: false, remember: false });
+    }
     this.pendingApprovals.clear();
     for (const controller of this.running.values()) controller.abort();
   }
@@ -467,8 +505,23 @@ export class TaskManager {
     });
   }
 
+  /** Start the next stage of the timeline, so the monitor can time each one. */
+  private openStep(taskId: string, label: TaskStepLabel): void {
+    const current = this.activeTasks.get(taskId);
+    this.patch(taskId, { steps: openStep(current?.steps, label) });
+  }
+
+  /** Close the stage that is still open, if there is one. */
+  private closeStep(taskId: string): void {
+    const current = this.activeTasks.get(taskId);
+    const steps = closeLastStep(current?.steps);
+    if (!steps || steps === current?.steps) return;
+    this.patch(taskId, { steps });
+  }
+
   private finish(task: Task, status: Task["status"], resultOrError?: string): void {
     const completed = status === "completed" || status === "failed" || status === "denied" || status === "cancelled";
+    if (completed) this.closeStep(task.id);
     this.patch(
       task.id,
       {
@@ -499,7 +552,7 @@ export class TaskManager {
   }
 
   async shutdown(): Promise<void> {
-    for (const resolve of this.pendingApprovals.values()) resolve({ approved: false, remember: false });
+    for (const pending of this.pendingApprovals.values()) pending.resolve({ approved: false, remember: false });
     this.pendingApprovals.clear();
     for (const controller of this.running.values()) controller.abort();
     this.running.clear();

@@ -98,6 +98,38 @@ try {
     }
   }
 
+  // The activity rail: the stages a task walked through, each with the time it
+  // took, and the lines a file write changed. The task comes from a live turn, so
+  // the numbers on screen are the numbers the agent really spent.
+  if (existsSync(modelPath) && (await waitForReady()) === "ready") {
+    const railNote = path.join(os.homedir(), "Documents", "openmonkey-rail-note.txt");
+    rmSync(railNote, { force: true, recursive: true });
+    try {
+      await page.evaluate(() => window.electron.setConfig({ agent: { approvalPolicies: { file: "allow" } } }));
+      const call = JSON.stringify({
+        type: "file",
+        action: "write_file",
+        arguments: { path: railNote, content: "alpha\nbeta\n" },
+        summary: "Write the note",
+      });
+      const composer = page.getByRole("textbox", { name: "Message OpenMonkey" });
+      await composer.fill(`Run exactly this one tool call and no other: \`\`\`task\n${call}\n\`\`\``);
+      await composer.press("Enter");
+      const railRow = page
+        .locator("[data-task-row]")
+        .filter({ hasText: /Write the note|file\.write_file/ })
+        .first();
+      await railRow.locator(".chip").filter({ hasText: "done" }).waitFor({ timeout: 120_000 });
+      await railRow.getByRole("button", { name: /Change \(\+2 \/ −0\)/ }).click();
+      await page.waitForTimeout(400);
+      await page.locator(".motion-panel").screenshot({ path: path.join(outDir, "task-monitor.png") });
+    } catch (error) {
+      console.warn("task-monitor.png skipped:", error.message);
+    } finally {
+      rmSync(railNote, { force: true, recursive: true });
+    }
+  }
+
   // A seeded thread shows every markdown block the renderer knows; a live answer
   // from a 4B model could not be relied on to produce them all.
   const dbFile = path.join(profile, "data", "openmonkey.db");

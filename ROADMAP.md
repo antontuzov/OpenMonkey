@@ -30,6 +30,11 @@ and approval-gated tools. Nothing here is a mock screen.
 - Agent v2: schema-validated tool registry, Ask/Allow/Block per tool, session approvals,
   diff/shell/draft previews, encrypted audit log with export, symlink-safe workspace roots,
   live shell output with kill, Trash deletes.
+- Activity rail: each task shows the stages it walked through — queued, approval, running —
+  with the time each took, the lines a file write changed, its command and collapsible
+  output, plus Copy and Retry; a denied action keeps its approval stage and reruns from the
+  audit row it left behind. The rail and the approval preview read one diff engine, so the
+  two cannot disagree about what a write does.
 - Extensions: local stdio MCP servers with discovery, per-server approvals, health, restart,
   enable/disable and JSON-Schema-checked arguments.
 - Memory: encrypted pinned facts, extractive cross-chat digests, an opt-in in-memory lexical
@@ -54,7 +59,8 @@ and approval-gated tools. Nothing here is a mock screen.
   words; lexical scoring can surface an irrelevant passage, so citations are grounded against
   the retrieved blocks rather than trusted from the model.
 - MCP is local stdio only — no HTTP/SSE transport, OAuth or auto-install. Shell execution is
-  piped, not a PTY, so interactive/TUI programs do not work. No tool retry or plan preview.
+  piped, not a PTY, so interactive/TUI programs do not work. No plan preview — an approval
+  shows the action and its diff, not a whole plan the agent intends to follow.
 - Calendar/mail live paths are untested here to avoid new macOS Automation prompts.
 - The 4B model frequently emits malformed task JSON; validation rejects it and shows a failed
   task instead of guessing at the intended call.

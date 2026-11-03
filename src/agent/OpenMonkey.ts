@@ -914,6 +914,10 @@ Always maintain a helpful, professional tone while being approachable.`;
     this.taskManager.cancelTask(taskId);
   }
 
+  retryTask(taskId: string): Promise<Task | null> {
+    return this.taskManager.retryTask(taskId);
+  }
+
   stopGeneration(): void {
     this.controller?.abort();
     this.controller = null;

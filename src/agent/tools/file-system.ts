@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { shell } from "electron";
 import { allowedRoots } from "../../utils/config";
 import type { TaskType } from "../../utils/types";
+import type { ToolContext } from "./context";
 import { resolveInWorkspace } from "./paths";
 
 const MAX_READ_BYTES = 256_000;
@@ -10,16 +11,24 @@ const MAX_READ_BYTES = 256_000;
 export class FileSystemTools {
   readonly type: TaskType = "file";
 
-  async execute(action: string, args: Record<string, unknown>): Promise<string> {
+  async execute(action: string, args: Record<string, unknown>, context?: ToolContext): Promise<string> {
     switch (action) {
       case "list_dir":
         return this.listDir(String(args.path ?? ""));
       case "read_file":
         return this.readFile(await resolveInWorkspace(String(args.path ?? "")));
       case "write_file":
-        return this.writeFile(await resolveInWorkspace(String(args.path ?? "")), String(args.content ?? ""));
+        return this.writeFile(
+          await resolveInWorkspace(String(args.path ?? "")),
+          String(args.content ?? ""),
+          context
+        );
       case "append_file":
-        return this.appendFile(await resolveInWorkspace(String(args.path ?? "")), String(args.content ?? ""));
+        return this.appendFile(
+          await resolveInWorkspace(String(args.path ?? "")),
+          String(args.content ?? ""),
+          context
+        );
       case "move_file":
         return this.transfer(
           await resolveInWorkspace(String(args.source ?? "")),
@@ -67,19 +76,36 @@ export class FileSystemTools {
     return buffer.toString("utf8");
   }
 
-  private async writeFile(file: string, content: string): Promise<string> {
+  /** The text a write will replace, so the monitor can show what changed. */
+  private async readForDiff(file: string): Promise<string> {
+    try {
+      const stat = await fs.stat(file);
+      if (!stat.isFile() || stat.size > MAX_READ_BYTES) return "";
+      const buffer = await fs.readFile(file);
+      if (buffer.includes(0)) return "";
+      return buffer.toString("utf8");
+    } catch {
+      return "";
+    }
+  }
+
+  private async writeFile(file: string, content: string, context?: ToolContext): Promise<string> {
     const stat = await fs.stat(file).catch(() => null);
     if (stat?.isDirectory()) throw new Error(`${file} is a folder`);
+    const before = await this.readForDiff(file);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, content, "utf8");
+    context?.onWrite?.({ path: file, before, after: content });
     return `Wrote ${Buffer.byteLength(content)} bytes to ${file}`;
   }
 
-  private async appendFile(file: string, content: string): Promise<string> {
+  private async appendFile(file: string, content: string, context?: ToolContext): Promise<string> {
     const stat = await fs.stat(file).catch(() => null);
     if (stat?.isDirectory()) throw new Error(`${file} is a folder`);
+    const before = await this.readForDiff(file);
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.appendFile(file, content, "utf8");
+    context?.onWrite?.({ path: file, before, after: `${before}${content}` });
     return `Appended ${Buffer.byteLength(content)} bytes to ${file}`;
   }
 

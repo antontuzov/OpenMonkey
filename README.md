@@ -53,6 +53,14 @@ it named.
 | --- | --- |
 | ![The command palette](docs/screenshots/command-palette.png) | ![The palette searching chats, settings and actions](docs/screenshots/command-palette-search.png) |
 
+The activity rail on the right shows the work as the agent does it. Each task carries the
+stages it walked through — queued, approval, running — with the time each one took, the
+lines a file write changed, the command it ran, and Copy and Retry on the row. A task that
+needed a decision keeps that decision in its timeline, so a slow approval is visible as
+one. Approvals are keyboard-first: the dialog opens with Deny reachable and Escape declines.
+
+![The task rail with a timeline and a diff](docs/screenshots/task-monitor.png)
+
 | Onboarding | Settings → Privacy | Settings → Desktop | Settings → Model |
 | --- | --- | --- | --- |
 | ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) | ![Model](docs/screenshots/settings-model.png) |
@@ -106,18 +114,23 @@ becomes active.
 
 ### Verification
 
-`npm test` runs 86 unit assertions and 54 integration assertions against a real SQLite
+`npm test` runs 100 unit assertions and 64 integration assertions against a real SQLite
 file under a throwaway profile: the task-fence parser, tool-argument validation, the
-backup envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
-retention, approval gating, path confinement (including a symlink escape), log
+diff engine and its context window, the task stage maths and duration format, the backup
+envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
+retention, approval gating, a file write reporting the lines it changed and its sealed
+change surviving a restart, a failed task rerunning from its own audit row, path
+confinement (including a symlink escape), log
 redaction/rotation, the attachment prompt, the composer's file search, the palette's
 fuzzy matcher and the upgrade of a history file written by an older build.
-`npm run test:e2e` adds 33 Playwright tests on a throwaway profile: onboarding, the
+`npm run test:e2e` adds 36 Playwright tests on a throwaway profile: onboarding, the
 chat surface with a button/field/image/landmark audit, Privacy rows and switches,
 RU/EN, close-to-tray, the update channel, the vibrancy and spring timings, Quick Ask
 history, the composer (send key, slash commands, file mentions, attachments), the
 command palette (Cmd+K, a setting found by a hidden word, keyboard-only navigation, the
-Russian palette), and the model manager's memory estimate plus a real tokens-per-second
+Russian palette), the task rail on a real model turn (each stage timed, the write's lines
+diffed, a denied action keeping its approval stage and asking again on Retry, the Russian
+rail), and the model manager's memory estimate plus a real tokens-per-second
 run against the loaded weights. Performance budgets are their own four tests (cold start
 under 2.5 s, no long tasks during a synthetic 320-token stream, idle memory under
 900 MB, Settings served as a lazy chunk). CI runs the same suites on both Mac

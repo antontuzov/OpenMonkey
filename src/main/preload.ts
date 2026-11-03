@@ -81,6 +81,7 @@ const api: ElectronAPI = {
   approveTask: (requestId: string, approved: boolean, remember = false) =>
     ipcRenderer.invoke("approve-task", requestId, approved, remember),
   cancelTask: (taskId: string) => ipcRenderer.invoke("cancel-task", taskId),
+  retryTask: (taskId: string) => ipcRenderer.invoke("retry-task", taskId),
   getAuditLog: (limit?: number) => ipcRenderer.invoke("get-audit-log", limit),
   exportAuditLog: () => ipcRenderer.invoke("export-audit-log"),
   clearAuditLog: () => ipcRenderer.invoke("clear-audit-log"),

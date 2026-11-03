@@ -2,8 +2,8 @@ import * as fs from "node:fs/promises";
 import { allowedRoots } from "../utils/config";
 import type { TaskRequest } from "../utils/types";
 import { expandPath } from "./tools/paths";
+import { MAX_DIFF_LINES, lineDiff, renderDiff } from "../utils/diff";
 
-const MAX_DIFF_LINES = 500;
 const MAX_PREVIEW = 4_000;
 
 const bytes = (size: number): string => {
@@ -14,71 +14,6 @@ const bytes = (size: number): string => {
 
 const clip = (text: string): string =>
   text.length > MAX_PREVIEW ? `${text.slice(0, MAX_PREVIEW)}\n… preview truncated` : text;
-
-type DiffLine = { kind: "same" | "add" | "del"; text: string };
-
-function lineDiff(before: string, after: string): DiffLine[] | null {
-  const oldLines = before.split("\n");
-  const newLines = after.split("\n");
-  if (oldLines.length > MAX_DIFF_LINES || newLines.length > MAX_DIFF_LINES) return null;
-
-  const rows = oldLines.length + 1;
-  const cols = newLines.length + 1;
-  const table = new Int32Array(rows * cols);
-  for (let i = oldLines.length - 1; i >= 0; i--) {
-    for (let j = newLines.length - 1; j >= 0; j--) {
-      table[i * cols + j] =
-        oldLines[i] === newLines[j]
-          ? table[(i + 1) * cols + j + 1] + 1
-          : Math.max(table[(i + 1) * cols + j], table[i * cols + j + 1]);
-    }
-  }
-
-  const result: DiffLine[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < oldLines.length && j < newLines.length) {
-    if (oldLines[i] === newLines[j]) {
-      result.push({ kind: "same", text: oldLines[i] });
-      i++;
-      j++;
-    } else if (table[(i + 1) * cols + j] >= table[i * cols + j + 1]) {
-      result.push({ kind: "del", text: oldLines[i++] });
-    } else {
-      result.push({ kind: "add", text: newLines[j++] });
-    }
-  }
-  while (i < oldLines.length) result.push({ kind: "del", text: oldLines[i++] });
-  while (j < newLines.length) result.push({ kind: "add", text: newLines[j++] });
-  return result;
-}
-
-/** Keep two lines of context around each change so the preview stays readable. */
-function renderDiff(lines: DiffLine[], label: string): string {
-  const keep = new Set<number>();
-  lines.forEach((line, index) => {
-    if (line.kind === "same") return;
-    for (let offset = -2; offset <= 2; offset++) {
-      const target = index + offset;
-      if (target >= 0 && target < lines.length) keep.add(target);
-    }
-  });
-
-  const output: string[] = [];
-  let skipped = false;
-  lines.forEach((line, index) => {
-    if (!keep.has(index)) {
-      if (!skipped && output.length) output.push("  …");
-      skipped = true;
-      return;
-    }
-    skipped = false;
-    output.push(`${line.kind === "add" ? "+" : line.kind === "del" ? "-" : " "} ${line.text}`);
-  });
-
-  const clipped = output.length > 120 ? [...output.slice(0, 120), "  … diff truncated"] : output;
-  return clip(`${label}\n${clipped.join("\n")}`);
-}
 
 async function readText(file: string): Promise<string | null> {
   try {
@@ -131,7 +66,7 @@ export async function buildPreview(request: TaskRequest, args: Record<string, un
         if (!diff) return `${target} has more than ${MAX_DIFF_LINES} lines; the file will be replaced entirely (${after.split("\n").length} new lines).`;
         const added = diff.filter((line) => line.kind === "add").length;
         const removed = diff.filter((line) => line.kind === "del").length;
-        return renderDiff(diff, `Modify ${target} (+${added} / -${removed})`);
+        return clip(renderDiff(diff, `Modify ${target} (+${added} / -${removed})`));
       }
       if (action === "append_file") {
         const content = String(args.content ?? "");

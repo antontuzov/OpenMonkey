@@ -140,6 +140,36 @@ export type ChatEvent =
       message?: Message;
     };
 
+/** One line of a file change. */
+export interface DiffLine {
+  kind: "same" | "add" | "del";
+  text: string;
+}
+
+/** What a file write changed, line by line. */
+export interface TaskDiff {
+  path: string;
+  added: number;
+  removed: number;
+  lines: DiffLine[];
+}
+
+/** The steps a task walked through, with the time each one took. */
+export type TaskStepLabel = "queued" | "approval" | "running";
+
+export interface TaskStep {
+  label: TaskStepLabel;
+  startedAt: number;
+  endedAt?: number;
+}
+
+/** What a tool wrote, so the monitor can show the change instead of a sentence. */
+export interface FileWrite {
+  path: string;
+  before: string;
+  after: string;
+}
+
 export interface Task {
   id: string;
   type: TaskType;
@@ -155,6 +185,10 @@ export interface Task {
   cwd?: string;
   /** Live stdout/stderr while a shell call runs; the final clipped result lands in `result`. */
   output?: string;
+  /** The steps the task went through, each with its own duration. */
+  steps?: TaskStep[];
+  /** What a file write changed, line by line. */
+  diff?: TaskDiff;
 }
 
 export type TaskType =
@@ -636,6 +670,8 @@ export interface ElectronAPI {
   resetSettingsSection: (page: SettingsPage) => Promise<Config>;
   approveTask: (requestId: string, approved: boolean, remember?: boolean) => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
+  /** Run a task again from what it asked the first time. */
+  retryTask: (taskId: string) => Promise<Task | null>;
   getAuditLog: (limit?: number) => Promise<AuditEntry[]>;
   exportAuditLog: () => Promise<string | null>;
   clearAuditLog: () => Promise<void>;
