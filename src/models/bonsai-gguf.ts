@@ -8,6 +8,7 @@ import type {
 } from "node-llama-cpp";
 import * as fs from "node:fs";
 import logger from "../utils/logger";
+import { drainAddonWork, outstandingAddonWorkers, trackAddonWork } from "./addon-work";
 import type { BenchmarkMeasurement } from "./benchmark";
 
 export interface BonsaiConfig {
@@ -27,8 +28,21 @@ export interface GenerateOptions {
 
 type LlamaCppModule = typeof import("node-llama-cpp");
 
-/** A load takes a few seconds; quit waits that long before it gives up draining one. */
-const UNLOAD_DRAIN_MS = 15_000;
+/** A generation aborts, so quit only waits this long for one to settle. */
+const ABORT_DRAIN_MS = 15_000;
+
+/**
+ * A load cannot be aborted — llama.cpp is already filling tensors on a libuv thread —
+ * so quit waits this long for it. Exiting before it settles makes the addon complete
+ * the worker into a freed JS context, which aborts the process.
+ */
+const LOAD_SETTLE_MS = 90_000;
+
+/** How long teardown waits for each kind of outstanding addon worker. */
+export interface DrainBudget {
+  abortMs: number;
+  loadMs: number;
+}
 
 /**
  * node-llama-cpp is ESM with top-level await, so `require()` throws and a literal
@@ -47,18 +61,17 @@ export class BonsaiGGUF {
   private session: LlamaChatSession | null = null;
   private loading: Promise<void> | null = null;
   private activeSystemPrompt = "";
-  /**
-   * node-llama-cpp does its work on a libuv thread pool. A worker that is still
-   * outstanding when Node frees the environment at exit gets completed from a
-   * teardown hook, and the addon then throws into a dead JS context: the process
-   * aborts with SIGABRT. So every addon call is tracked here and drained before exit.
-   */
-  private inFlight = new Set<Promise<unknown>>();
+  private loadWorker: Promise<void> | null = null;
   private aborts = new Set<AbortController>();
   private quitting = false;
+  private readonly drain: DrainBudget;
 
-  constructor(config: BonsaiConfig) {
+  constructor(config: BonsaiConfig, drain: Partial<DrainBudget> = {}) {
     this.config = config;
+    this.drain = {
+      abortMs: drain.abortMs ?? ABORT_DRAIN_MS,
+      loadMs: drain.loadMs ?? LOAD_SETTLE_MS,
+    };
   }
 
   get isLoaded(): boolean {
@@ -91,7 +104,8 @@ export class BonsaiGGUF {
     })();
 
     const loading = this.loading;
-    this.inFlight.add(loading);
+    trackAddonWork(loading);
+    this.loadWorker = loading;
     try {
       await loading;
     } catch (error) {
@@ -99,7 +113,7 @@ export class BonsaiGGUF {
       await this.unload();
       throw error;
     } finally {
-      this.inFlight.delete(loading);
+      if (this.loadWorker === loading) this.loadWorker = null;
     }
     return loading;
   }
@@ -129,12 +143,10 @@ export class BonsaiGGUF {
     }
 
     const { signal: _signal, ...rest } = options;
-    const work = session.prompt(prompt, { ...rest, signal: controller.signal });
-    this.inFlight.add(work);
+    const work = trackAddonWork(session.prompt(prompt, { ...rest, signal: controller.signal }));
     try {
       return await work;
     } finally {
-      this.inFlight.delete(work);
       this.aborts.delete(controller);
     }
   }
@@ -245,6 +257,35 @@ export class BonsaiGGUF {
     this.activeSystemPrompt = systemPrompt;
   }
 
+  /** Resolves to `false` on a timer that cannot keep the process alive. */
+  private giveUpAfter(ms: number): Promise<false> {
+    return new Promise<false>((resolve) => {
+      const timer = setTimeout(() => resolve(false), ms);
+      timer.unref?.();
+    });
+  }
+
+  /**
+   * Wait for the load worker, which is the one addon call teardown cannot cancel:
+   * llama.cpp is already filling tensors on a libuv thread. Exiting while it runs makes
+   * the addon complete the worker into a freed JS context and the process aborts, so
+   * quit waits this out instead of disposing underneath it.
+   */
+  private async waitForLoad(): Promise<void> {
+    const load = this.loadWorker;
+    if (!load) return;
+    const startedAt = Date.now();
+    const settled = await Promise.race([
+      load.then(
+        () => true,
+        () => true
+      ),
+      this.giveUpAfter(this.drain.loadMs),
+    ]);
+    if (!settled) logger.warn("gguf.unload.load.timedOut", { waitedMs: Date.now() - startedAt });
+    else logger.info("gguf.unload.load.settled", { waitedMs: Date.now() - startedAt });
+  }
+
   /**
    * Abort and await everything the addon is running, then free the weights. A worker
    * that outlives the Node environment aborts the process, so this is what quit calls.
@@ -253,11 +294,12 @@ export class BonsaiGGUF {
     for (const controller of this.aborts) controller.abort();
     this.aborts.clear();
 
-    const drained = await Promise.race([
-      Promise.allSettled([...this.inFlight]).then(() => true),
-      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), UNLOAD_DRAIN_MS)),
-    ]);
-    if (!drained) logger.warn("gguf.unload.drain.timedOut", { pending: this.inFlight.size });
+    const drained = await drainAddonWork(this.drain.abortMs);
+    if (!drained) {
+      logger.warn("gguf.unload.drain.timedOut", { pending: outstandingAddonWorkers() });
+    }
+
+    await this.waitForLoad();
 
     for (const resource of [this.session, this.context, this.model]) {
       try {
@@ -278,7 +320,6 @@ export class BonsaiGGUF {
       /* runtime already stopped */
     }
     this.llama = null;
-    this.inFlight.clear();
   }
 
   /** unload() plus the promise that no later call reloads the weights. */

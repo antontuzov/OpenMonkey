@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { quitApp } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import os from "node:os";
@@ -24,11 +25,12 @@ test("a markdown answer renders as headings, lists, a table, highlighted code an
 
   const app = await electron.launch({
     args: [root],
+    timeout: 120_000,
     env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
   });
 
   try {
-    const page = await app.firstWindow();
+    const page = await app.firstWindow({ timeout: 120_000 });
     await page.waitForLoadState("domcontentloaded");
     // Tall enough that the whole answer fits without the sticky header overlapping it.
     await page.setViewportSize({ width: 1280, height: 1200 });
@@ -98,11 +100,6 @@ test("a markdown answer renders as headings, lists, a table, highlighted code an
     await bubble.getByRole("button", { name: "Copy code" }).first().click();
     await expect(bubble.getByText("Copied", { exact: true })).toBeVisible();
   } finally {
-    try {
-      await app.evaluate(({ app: electronApp }) => electronApp.quit());
-    } catch {
-      /* already closed */
-    }
-    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await quitApp(app, profile);
   }
 });

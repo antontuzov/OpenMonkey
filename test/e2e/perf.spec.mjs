@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { quitApp } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
@@ -23,9 +24,10 @@ test.beforeAll(async () => {
   launchedAt = performance.now();
   app = await electron.launch({
     args: [root],
+    timeout: 120_000,
     env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
   });
-  page = await app.firstWindow();
+  page = await app.firstWindow({ timeout: 120_000 });
   page.on("request", (request) => {
     if (request.resourceType() === "script") scriptRequests.push({ url: request.url(), at: performance.now() - launchedAt });
   });
@@ -35,12 +37,7 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  try {
-    await app?.evaluate(({ app }) => app.quit());
-  } catch {
-    /* the app may already be gone */
-  }
-  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  await quitApp(app, profile);
 });
 
 test("cold start reaches its first surface inside the budget", async () => {

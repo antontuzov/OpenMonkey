@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { quitApp } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -16,21 +17,17 @@ async function launch(extraConfig = {}) {
   );
   const app = await electron.launch({
     args: [root],
+    timeout: 120_000,
     env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
   });
-  const page = await app.firstWindow();
+  const page = await app.firstWindow({ timeout: 120_000 });
   await page.waitForLoadState("domcontentloaded");
   await page.setViewportSize({ width: 1280, height: 1000 });
   return { app, page, profile };
 }
 
 async function close(app, profile) {
-  try {
-    await app.evaluate(({ app: electronApp }) => electronApp.quit());
-  } catch {
-    /* already closed */
-  }
-  rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  await quitApp(app, profile);
 }
 
 /**

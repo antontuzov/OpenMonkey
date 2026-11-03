@@ -25,12 +25,13 @@ test.beforeAll(async () => {
   profile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-e2e-"));
   app = await electron.launch({
     args: [root],
+    timeout: 120_000,
     env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
   });
   app.process().on("exit", (code, signal) => {
     quitStatus = { code, signal };
   });
-  page = await app.firstWindow();
+  page = await app.firstWindow({ timeout: 120_000 });
   await page.waitForLoadState("domcontentloaded");
 });
 

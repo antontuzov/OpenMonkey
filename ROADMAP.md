@@ -549,6 +549,30 @@ was regenerated with the portraits loading. **Not covered:** screenshots are mac
 English only, and the signed/notarized artifacts and live update feed from items 32–33
 still do not exist in this checkout. `npm run typecheck` and `npm run build` are clean.
 
+**Phase 7 verification (31, second pass — model teardown):** quitting the app while a
+model load was running aborted the process with SIGABRT. The macOS crash report shows
+the cause: `AddonModelLoadModelWorker::Execute()` was still running on a libuv thread
+while `node::Environment::CleanupHandles()` freed the JS context, so the addon
+completed the worker into freed memory. The fix is not a bigger timeout but a real
+drain: one shared tracker (`src/models/addon-work.ts`) now wraps every addon worker —
+the load, the generation and the four GGUF inspection calls — and teardown waits for
+them. A generation can be aborted (15 s budget); a load cannot, so it gets 90 s, and
+the shutdown watchdog (150 s) was raised to outlast it, because a forced exit under a
+live worker is the very crash being fixed. `SIGTERM`/`SIGINT` now run the same drain
+instead of killing the process, which also preserves the WAL checkpoint that closes the
+encrypted history. Four integration tests cover the contract (quit waits for a load it
+cannot cancel, a failing load is still drained, the wait is bounded, a later load is
+refused once quit began) and an e2e spec quits the app during a real load and asserts
+exit code 0 with no signal. **A/B proof:** with the load wait removed and the abort
+budget cut to 50 ms, that e2e spec failed and produced a 17th crash report with the
+identical `CleanupHandles` / `ggml_uncaught_exception` signature; the experiment was
+reverted and the suite rerun. The harness itself was the other half of the fix — the
+e2e runner used to hard-kill a still-loading app, which is what produced the crash
+reports in the first place, so every spec now quits through one waiting helper. Cold
+start across the last full run measured 831–850 ms against a 2,500 ms budget, and the
+run left **0 crash reports** in `~/Library/Logs/DiagnosticReports`.
+`npm run typecheck` and `npm run build` are clean.
+
 ---
 
 ## Phase 8 — Commercial layer (only if you charge, P2)

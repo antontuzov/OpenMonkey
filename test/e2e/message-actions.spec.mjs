@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { quitApp } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import os from "node:os";
@@ -31,11 +32,12 @@ test("a reply shows its duration and tokens, and the switcher walks the answers"
 
   const app = await electron.launch({
     args: [root],
+    timeout: 120_000,
     env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
   });
 
   try {
-    const page = await app.firstWindow();
+    const page = await app.firstWindow({ timeout: 120_000 });
     await page.waitForLoadState("domcontentloaded");
     await page.setViewportSize({ width: 1280, height: 1000 });
     await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
@@ -92,11 +94,6 @@ test("a reply shows its duration and tokens, and the switcher walks the answers"
     await expect(page.getByRole("button", { name: /Answer probe \(branch\)/ })).toBeVisible();
     await expect(page.getByText("Branched into a new chat")).toBeVisible();
   } finally {
-    try {
-      await app.evaluate(({ app: electronApp }) => electronApp.quit());
-    } catch {
-      /* already closed */
-    }
-    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await quitApp(app, profile);
   }
 });

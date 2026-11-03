@@ -24,8 +24,13 @@ let pendingConversation: string | null = null;
 
 const PRELOAD = path.join(__dirname, "../preload/preload.js");
 
-/** Model teardown waits for the worker it aborted; this caps how long quit can take. */
-const SHUTDOWN_WATCHDOG_MS = 30_000;
+/**
+ * Model teardown waits for the worker it aborted; this caps how long quit can take.
+ * It has to outlast the load wait in the GGUF teardown, because a forced exit while a
+ * load worker runs is exactly the abort that crash report describes.
+ */
+const SHUTDOWN_WARN_MS = 30_000;
+const SHUTDOWN_WATCHDOG_MS = 150_000;
 
 /**
  * macOS can back the window with a system material. The sidebar is left
@@ -338,17 +343,34 @@ app.on("before-quit", (event) => {
   // freeing the Node environment while an addon worker is still running aborts it.
   event.preventDefault();
   shuttingDown = true;
+  const warning = setTimeout(
+    () => logger.warn("agent.shutdown.slow", { ms: SHUTDOWN_WARN_MS }),
+    SHUTDOWN_WARN_MS
+  );
   const watchdog = setTimeout(() => {
-    logger.warn("agent.shutdown.slow", { ms: SHUTDOWN_WATCHDOG_MS });
+    logger.warn("agent.shutdown.forced", { ms: SHUTDOWN_WATCHDOG_MS });
     app.exit(0);
   }, SHUTDOWN_WATCHDOG_MS);
   openMonkey
     .shutdown()
     .catch((error: unknown) => logger.error("agent.shutdown.failed", { error }))
     .finally(() => {
+      clearTimeout(warning);
       clearTimeout(watchdog);
       desktopManager?.destroy();
       trayManager?.destroy();
       app.quit();
     });
 });
+
+/**
+ * A termination signal has to run the same drain: dying on SIGTERM frees the Node
+ * environment under the model worker, which aborts the process, and skips the WAL
+ * checkpoint that closes the encrypted history.
+ */
+for (const signal of ["SIGTERM", "SIGINT"] as const) {
+  process.on(signal, () => {
+    logger.info("app.signal.quit", { signal });
+    app.quit();
+  });
+}

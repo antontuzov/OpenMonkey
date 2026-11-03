@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { quitApp } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -27,11 +28,12 @@ test("quitting while the model is still answering exits cleanly", async () => {
 
   const app = await electron.launch({
     args: [root],
+    timeout: 120_000,
     env: { ...process.env, OPENMONKEY_USER_DATA: profile, OPENMONKEY_DEBUG_PORT: "" },
   });
 
   try {
-    const page = await app.firstWindow();
+    const page = await app.firstWindow({ timeout: 120_000 });
     await page.waitForLoadState("domcontentloaded");
 
     // The weights are only warm once the load worker has finished, so anything still
@@ -74,11 +76,11 @@ test("quitting while the model is still answering exits cleanly", async () => {
     expect(exit?.signal, `app died with ${exit?.signal}; model teardown aborted the process`).toBeNull();
     expect(exit?.code, "the app must exit with 0, not an error code").toBe(0);
   } finally {
+    await quitApp(app, profile);
     try {
       await app.close();
     } catch {
       /* already exited */
     }
-    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

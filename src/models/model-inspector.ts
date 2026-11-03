@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import logger from "../utils/logger";
+import { trackAddonWork } from "./addon-work";
 import type { ModelMemoryEstimate } from "../utils/types";
 
 type LlamaCppModule = typeof import("node-llama-cpp");
@@ -29,18 +30,22 @@ export async function estimateModelMemory(
 
   try {
     const { readGgufFileInfo, GgufInsights } = await importLlamaCpp();
-    const info = await readGgufFileInfo(modelPath);
-    const insights = await GgufInsights.from(info);
+    const info = await trackAddonWork(readGgufFileInfo(modelPath));
+    const insights = await trackAddonWork(GgufInsights.from(info));
 
-    const weights = await insights.estimateModelResourceRequirementsV2({
-      gpuLayers: 0,
-      useMmap: true,
-    });
-    const context = await insights.estimateContextResourceRequirementsV2({
-      contextSize,
-      modelGpuLayers: 0,
-      useMmap: true,
-    });
+    const weights = await trackAddonWork(
+      insights.estimateModelResourceRequirementsV2({
+        gpuLayers: 0,
+        useMmap: true,
+      })
+    );
+    const context = await trackAddonWork(
+      insights.estimateContextResourceRequirementsV2({
+        contextSize,
+        modelGpuLayers: 0,
+        useMmap: true,
+      })
+    );
 
     const trainContextSize = insights.trainContextSize ?? null;
     return {
