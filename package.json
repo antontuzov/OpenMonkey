@@ -5,6 +5,10 @@
   "main": "dist/main/main.js",
   "author": "OpenMonkey contributors",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/antontuzov/OpenMonkey.git"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",

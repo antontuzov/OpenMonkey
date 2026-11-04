@@ -60,6 +60,19 @@ test("the artifact name carries no version, so /latest/download/ stays valid", (
   assert.match(ARTIFACT_NAME, /\$\{arch\}/, "the updater picks an archive by the arch in its name");
 });
 
+test("the updater feed and the download links name the same published repository", () => {
+  const publish = PACKAGE.build.publish;
+  assert.equal(publish.provider, "github");
+  // electron-builder copies releaseType into app-update.yml inside the installed app,
+  // and a build configured for drafts leaves an installed app blind to real releases.
+  assert.equal(publish.releaseType, "release", "an installed app would look for draft releases");
+  const repository = "antontuzov/OpenMonkey";
+  assert.ok(PACKAGE.repository.url.includes(`github.com/${repository}.git`), "the feed's owner/repo is inferred from here");
+  for (const link of [LANDING, read("README.md"), read("docs/RELEASE_NOTES.md")]) {
+    assert.ok(link.includes(`github.com/${repository}`), "a download link points somewhere else");
+  }
+});
+
 const keysByLanguage = (source: string) => {
   const bounds = { en: source.indexOf("  en: {"), ru: source.indexOf("  ru: {") };
   const end = source.indexOf("\n};", bounds.ru);
