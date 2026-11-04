@@ -4,6 +4,15 @@ All notable changes to OpenMonkey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions match the tag
 that produced the build.
 
+## Unreleased
+
+### Changed
+
+- **The updater promises only what it can do.** On a build without a Developer ID
+  signature it no longer downloads an archive it cannot install; a new version now
+  names itself and opens the release page, and the download-and-restart path stays on
+  for signed builds. Settings → Desktop → Updates says the same thing.
+
 ## 0.9.1 — 2026-11-04
 
 The first build anyone can download. Nothing about the app itself changed in this

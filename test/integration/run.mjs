@@ -38,6 +38,7 @@ try {
       path.join(here, "preview-model.test.ts"),
       path.join(here, "mcp-manager.test.ts"),
       path.join(here, "mlx-tokens.test.ts"),
+      path.join(here, "updater.test.ts"),
       path.join(here, "logger.test.ts"),
       path.join(here, "settings.test.ts"),
     ],
@@ -49,7 +50,10 @@ try {
     format: "cjs",
     target: "node22",
     external: ["better-sqlite3", "electron-store"],
-    alias: { electron: path.join(here, "electron-stub.mjs") },
+    alias: {
+      electron: path.join(here, "electron-stub.mjs"),
+      "electron-updater": path.join(here, "electron-updater-stub.ts"),
+    },
     logLevel: "warning",
   });
 
@@ -69,6 +73,7 @@ try {
     "preview-model.test.cjs",
     "mcp-manager.test.cjs",
     "mlx-tokens.test.cjs",
+    "updater.test.cjs",
     "logger.test.cjs",
     // Last: it writes config sections other suites read, and the runs are sequential.
     "settings.test.cjs",

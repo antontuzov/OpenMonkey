@@ -225,7 +225,7 @@ const EN = {
   "desktop.updateChannelCopy": "Stable follows published releases. Beta opts in to prerelease builds from GitHub.",
   "desktop.channelStable": "Stable",
   "desktop.channelBeta": "Beta",
-  "desktop.updateHint": "Checks at launch and every six hours, and never while network access is off. A newer version asks before it restarts.",
+  "desktop.updateHint": "Checks at launch and every six hours, and never while network access is off. A Developer ID build asks before it restarts; any other build names the release and opens its download page.",
 
   "appearance.colorMode": "Color mode",
   "appearance.theme": "Interface theme",
@@ -592,7 +592,7 @@ const RU: Record<StringKey, string> = {
   "desktop.updateChannelCopy": "Stable следует опубликованным релизам. Beta подключает пре-релизные сборки с GitHub.",
   "desktop.channelStable": "Stable",
   "desktop.channelBeta": "Beta",
-  "desktop.updateHint": "Проверка при запуске и каждые шесть часов, и никогда при выключенной сети. Новая версия спросит перед перезапуском.",
+  "desktop.updateHint": "Проверка при запуске и каждые шесть часов, и никогда при выключенной сети. Сборка с Developer ID спросит перед перезапуском; любая другая назовёт релиз и откроет его страницу загрузок.",
 
   "appearance.colorMode": "Цветовой режим",
   "appearance.theme": "Тема интерфейса",

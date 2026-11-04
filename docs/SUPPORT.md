@@ -26,9 +26,11 @@ Never paste your passphrase, a backup file, or the contents of `data/secret.key`
   notarized; local `electron-builder` output is not. For an unsigned local build,
   right-click → Open, or clear quarantine with
   `xattr -d com.apple.quarantine /Applications/OpenMonkey.app`.
-- **Updates do nothing in development.** The updater only runs in a packaged app, and
+- **The updater never installs anything.** The updater only runs in a packaged app, and
   only when **Network access** is on. Installed builds check at launch and every six
-  hours; the channel lives in Settings → Desktop → Updates.
+  hours; the channel lives in Settings → Desktop → Updates. A Developer ID-signed build
+  downloads its update and asks before restarting; an unsigned build only names the new
+  version and opens its release page, so install the `.dmg` from there over the old app.
 - **I forgot the passphrase.** There is no recovery by design. **Erase everything** in
   Settings → Privacy deletes the database and the key; the chat history cannot be
   decrypted without the passphrase.

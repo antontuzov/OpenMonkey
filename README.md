@@ -332,12 +332,14 @@ one; older macOS versions offered right-click → Open as a workaround and newer
 not, but the command above always works. Add the Apple secrets to the repository and the
 `package` job signs and notarizes by itself.
 
-**Updates do nothing.** The updater runs only in a packaged app with **Network
-access** on. Installed builds check at launch and every six hours; the channel lives
-in Settings → Desktop → Updates. It can check and report but cannot install, though:
-electron-updater hands the downloaded archive to Squirrel.Mac, and Squirrel verifies the
-signature of both the running app and the update. For an unsigned build that is a
-non-starter, so install the new `.dmg` over the old app until signing is configured.
+**The updater never installs anything.** The updater runs only in a packaged app with
+**Network access** on. Installed builds check at launch and every six hours; the channel
+lives in Settings → Desktop → Updates. What happens next depends on how the app was
+built: a Developer ID-signed build downloads the update and asks before restarting into
+it, and an unsigned build stops short of that — it names the new version and opens its
+release page, because electron-updater would hand the archive to Squirrel.Mac, and
+Squirrel verifies the signature of both the running app and the update and refuses.
+Dropping the new `.dmg` over the old app is the update until signing is configured.
 
 **Forgot the passphrase.** There is no recovery by design. **Erase everything** in
 Settings → Privacy drops the database and the key; the history cannot be decrypted.
