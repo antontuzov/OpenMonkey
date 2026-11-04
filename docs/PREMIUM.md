@@ -17,7 +17,6 @@ What a trial user judges before they decide to pay.
 
 | # | Upgrade | Done when | Effort |
 | --- | --- | --- | --- |
-| 1 | **Signed, notarized DMG and a live update feed** | `spctl -a -vv` accepts the DMG on a clean Mac; a packaged 0.9.0 install updates itself to 0.9.1 from the GitHub release feed | M |
 | 2 | **Onboarding finishes the job** | Fresh profile → model downloaded (progress with MB, %, ETA, pause/cancel), checksum verified, disk-space precondition, or an existing GGUF imported → first reply, all without leaving the flow | L |
 | 3 | **An empty state worth looking at** | Mood-aware greeting plus four starter prompts (read a folder, summarize clipboard, explain this code, plan my day) that prefill the composer; dismissed prompts stay dismissed | S |
 | 4 | **Markdown that matches model output** | Lists, headings, tables, blockquotes, task lists and links render; fenced code gets syntax highlighting and a copy button; diffs render as diffs; streaming never reflows finished text | M |
@@ -29,6 +28,12 @@ What a trial user judges before they decide to pay.
 | 10 | **Quick Ask grows up** | History of quick asks, a follow-up turn in place, "open in chat", and pinning; stays keyboard-only | S |
 | 11 | **Window feel** | macOS sidebar vibrancy, unified title bar, 160–220 ms springs for panel and view changes, crossfade into settings, no light flash on dark-mode resize (guarded today) | M |
 | 12 | **Settings that answer questions** | Search across all pages, reset-this-section, and a privacy dashboard: key source, database size, last prune, and a counter of network requests the app made | M |
+
+**Dropped:** the original row 1, *signed and notarized DMG plus a live update feed*.
+The CI package job already signs and notarizes tag builds when the Apple secrets are
+in the repository, and there is no plan to buy a Developer ID certificate. Source
+installs and unsigned local builds stay the supported route, so the row had no owner
+and no date. `src/main/updater.ts` remains wired and inert without a signed feed.
 
 ## P1 — depth that earns the price
 
@@ -98,7 +103,7 @@ above needs a test, a capture, or a recorded number before it is called done.
 
 ## Suggested sequence
 
-1. **Sprint 1 — trust and first run:** 1, 2, 9, 11, 12.
+1. **Sprint 1 — trust and first run:** 2, 9, 11, 12.
 2. **Sprint 2 — chat depth:** 4, 5, 6, 7, 8, 10.
 3. **Sprint 3 — brain depth and money:** 13, 14, 15, 16, 23, 29, 30, 31.
-4. **Later:** voice, vision, tabs, extra languages.
+4. **Later:** voice, vision, extra languages.
