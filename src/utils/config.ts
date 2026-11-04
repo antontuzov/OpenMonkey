@@ -24,6 +24,8 @@ const defaultConfig: Config = {
     starterPromptsHidden: false,
     language: "en",
     sendKey: "enter",
+    openTabs: [] as string[],
+    activeTab: null as string | null,
   },
   privacy: {
     saveHistory: true,

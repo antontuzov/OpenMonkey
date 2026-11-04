@@ -575,6 +575,10 @@ export interface Config {
     language: AppLanguage;
     /** Which key sends a message; the other one starts a new line. */
     sendKey: "enter" | "cmd-enter";
+    /** The conversations open in tabs, in the order the tabs are shown. */
+    openTabs: string[];
+    /** The tab that was in front when the app was closed. */
+    activeTab: string | null;
   };
   privacy: {
     saveHistory: boolean;
@@ -738,7 +742,6 @@ export interface ElectronAPI {
   getMessages: (conversationId: string) => Promise<Message[]>;
   getConversations: () => Promise<Conversation[]>;
   createConversation: () => Promise<Conversation>;
-  switchConversation: (id: string) => Promise<Message[]>;
   renameConversation: (id: string, title: string) => Promise<void>;
   setConversationPinned: (id: string, pinned: boolean) => Promise<void>;
   deleteConversation: (id: string) => Promise<Conversation | null>;

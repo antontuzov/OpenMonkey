@@ -1,8 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { FolderOpen, Loader, PanelRight, Settings2 } from "lucide-react";
 import { ChatInterface } from "./components/ChatInterface";
 import { TaskMonitor } from "./components/TaskMonitor";
 import { AppSidebar } from "./components/AppSidebar";
+import { TabStrip } from "./components/TabStrip";
 import { Onboarding } from "./components/Onboarding";
 import { ApprovalDialog } from "./components/ApprovalDialog";
 import { LockScreen } from "./components/LockScreen";
@@ -66,6 +67,12 @@ export default function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  /** The chats open in this window, in the order the tabs are shown. */
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
+  /** True once the stored tabs are read, so the first write does not erase them. */
+  const tabsRestored = useRef(false);
+  /** The tabs as they were when the window opened. */
+  const storedTabs = useRef<{ openTabs: string[]; activeTab: string | null } | null>(null);
   const [busyConversationId, setBusyConversationId] = useState<string | null>(null);
   const [privacyStatus, setPrivacyStatus] = useState<PrivacyStatus | null>(null);
   /** The command palette: one box for the chats, the settings and the commands. */
@@ -97,11 +104,9 @@ export default function App() {
       // A quick ask opened from the popover becomes a chat and lands here.
       api.onOpenConversation((id) => {
         setView("chat");
-        void api.switchConversation(id).then(() => {
-          setActiveConversationId(id);
-          setBusyConversationId(null);
-          return api.getConversations().then(setConversations);
-        }).catch(() => undefined);
+        setOpenTabs((tabs) => (tabs.includes(id) ? tabs : [...tabs, id]));
+        setActiveConversationId(id);
+        void api.getConversations().then(setConversations).catch(() => undefined);
       }),
       // An imported backup can add chats and change settings while this window is open.
       api.onLocalDataChanged(() => {
@@ -113,6 +118,7 @@ export default function App() {
       // reloading the window, which would flash the whole app.
       api.onHistoryReset(() => {
         setConversations([]);
+        setOpenTabs([]);
         setActiveConversationId(null);
         setHistoryVersion((value) => value + 1);
         void api.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
@@ -121,7 +127,16 @@ export default function App() {
 
     void api.getCurrentMood().then(setMood).catch(() => undefined);
     void api.getAgentStatus().then(setStatus).catch(() => undefined);
-    void api.getConfig().then(setConfig).catch(() => undefined);
+    void api
+      .getConfig()
+      .then((next) => {
+        setConfig(next);
+        storedTabs.current = {
+          openTabs: next.ui.openTabs ?? [],
+          activeTab: next.ui.activeTab ?? null,
+        };
+      })
+      .catch(() => undefined);
     void api.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
 
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
@@ -169,11 +184,26 @@ export default function App() {
         }
         if (cancelled) return;
         setConversations(list);
-        setActiveConversationId((current) =>
-          current && list.some((conversation) => conversation.id === current)
-            ? current
-            : list[0]?.id ?? null
+
+        // The tabs are restored once. A later reload of the model must not throw
+        // away the chats the user has open.
+        if (tabsRestored.current) {
+          setOpenTabs((current) => current.filter((id) => list.some((item) => item.id === id)));
+          return;
+        }
+
+        const openable = list
+          .filter((conversation) => conversation.kind === "chat")
+          .map((conversation) => conversation.id);
+        const saved = storedTabs.current;
+        const restored = (saved?.openTabs ?? []).filter((id) => openable.includes(id));
+        const fallback = openable[0] ?? list[0]?.id ?? null;
+        const tabs = restored.length ? restored : fallback ? [fallback] : [];
+        setOpenTabs(tabs);
+        setActiveConversationId(
+          saved?.activeTab && tabs.includes(saved.activeTab) ? saved.activeTab : tabs[0] ?? null
         );
+        tabsRestored.current = true;
       } catch {
         /* the agent announces readiness again after a model reload */
       }
@@ -200,37 +230,48 @@ export default function App() {
     });
   }, []);
 
+  /** A tab of its own, even when the chat in front is still empty. */
+  const newTab = useCallback(async () => {
+    const api = window.electron;
+    if (!api) return;
+    try {
+      const created = await api.createConversation();
+      const list = await api.getConversations();
+      setConversations(list.length ? list : [created]);
+      setOpenTabs((tabs) => (tabs.includes(created.id) ? tabs : [...tabs, created.id]));
+      setActiveConversationId(created.id);
+    } catch {
+      /* keep the current chat if a new one cannot be created yet */
+    }
+  }, []);
+
   const newChat = useCallback(async () => {
     const api = window.electron;
     if (!api) return;
     const current = conversations.find((conversation) => conversation.id === activeConversationId);
     if (current && current.messageCount === 0) return;
+    await newTab();
+  }, [activeConversationId, conversations, newTab]);
 
-    try {
-      setBusyConversationId(null);
-      const created = await api.createConversation();
-      const list = await api.getConversations();
-      setConversations(list.length ? list : [created]);
-      setActiveConversationId(created.id);
-    } catch {
-      /* keep the current chat if a new one cannot be created yet */
-    }
-  }, [activeConversationId, conversations]);
+  /**
+   * Switching tabs is a change of view, not of chat: the running answer in the
+   * other tab keeps going, and the model follows the question when it is sent.
+   */
+  const selectConversation = useCallback((id: string) => {
+    if (!id) return;
+    setOpenTabs((tabs) => (tabs.includes(id) ? tabs : [...tabs, id]));
+    setActiveConversationId(id);
+  }, []);
 
-  const selectConversation = useCallback(
-    async (id: string) => {
-      if (!id || id === activeConversationId) return;
-      const api = window.electron;
-      if (!api) return;
-      try {
-        await api.switchConversation(id);
-        setBusyConversationId(null);
-        setActiveConversationId(id);
-      } catch {
-        void refreshConversations();
-      }
+  /** Closing a tab leaves the chat in the history; the last one stays open. */
+  const closeTab = useCallback(
+    (id: string) => {
+      if (openTabs.length <= 1) return;
+      const next = openTabs.filter((tab) => tab !== id);
+      setOpenTabs(next);
+      if (id === activeConversationId) setActiveConversationId(next[next.length - 1] ?? null);
     },
-    [activeConversationId, refreshConversations]
+    [activeConversationId, openTabs]
   );
 
   const renameConversation = useCallback(async (id: string, title: string) => {
@@ -268,17 +309,21 @@ export default function App() {
         const fallback = await api.deleteConversation(id);
         const list = await api.getConversations();
         setConversations(list);
+        const remaining = openTabs.filter((tab) => tab !== id);
         if (id === activeConversationId) {
-          setActiveConversationId(fallback?.id ?? list[0]?.id ?? null);
+          const next = fallback?.id ?? list[0]?.id ?? null;
+          setOpenTabs(next && !remaining.includes(next) ? [...remaining, next] : remaining);
+          setActiveConversationId(next);
           setBusyConversationId(null);
-        } else if (id === busyConversationId) {
-          setBusyConversationId(null);
+        } else {
+          setOpenTabs(remaining);
+          if (id === busyConversationId) setBusyConversationId(null);
         }
       } catch {
         /* keep the list unchanged */
       }
     },
-    [activeConversationId, busyConversationId]
+    [activeConversationId, busyConversationId, openTabs]
   );
 
   const searchConversations = useCallback(async (query: string): Promise<ConversationSearchHit[]> => {
@@ -331,6 +376,12 @@ export default function App() {
     const next = await window.electron?.setConfig(patch);
     if (next) setConfig(next);
   }, []);
+
+  // The open chats are part of the window state: they come back with the window.
+  useEffect(() => {
+    if (!tabsRestored.current) return;
+    void patchConfig({ ui: { openTabs, activeTab: activeConversationId } });
+  }, [activeConversationId, openTabs, patchConfig]);
 
   const resetSection = useCallback(async (page: SettingsPage) => {
     const next = await window.electron?.resetSettingsSection(page);
@@ -420,6 +471,9 @@ export default function App() {
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId);
   const activeTitle = activeConversation?.title ?? "New chat";
   const activeBusy = busyConversationId != null && busyConversationId === activeConversationId;
+  const tabConversations = openTabs
+    .map((id) => conversations.find((conversation) => conversation.id === id))
+    .filter((conversation): conversation is Conversation => Boolean(conversation));
 
   const palette = paletteOpen ? (
     <Suspense fallback={null}>
@@ -544,6 +598,15 @@ export default function App() {
             </button>
           </div>
         </header>
+
+        <TabStrip
+          tabs={tabConversations}
+          activeId={activeConversationId}
+          busyId={busyConversationId}
+          onSelect={selectConversation}
+          onClose={closeTab}
+          onNewTab={() => void newTab()}
+        />
 
         <ChatInterface
           status={status}

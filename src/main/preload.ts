@@ -54,7 +54,6 @@ const api: ElectronAPI = {
   getMessages: (conversationId: string) => ipcRenderer.invoke("get-messages", conversationId),
   getConversations: () => ipcRenderer.invoke("get-conversations"),
   createConversation: () => ipcRenderer.invoke("create-conversation"),
-  switchConversation: (id: string) => ipcRenderer.invoke("switch-conversation", id),
   renameConversation: (id: string, title: string) => ipcRenderer.invoke("rename-conversation", id, title),
   setConversationPinned: (id: string, pinned: boolean) =>
     ipcRenderer.invoke("pin-conversation", id, pinned),

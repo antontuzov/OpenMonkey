@@ -43,6 +43,14 @@ Enter or Cmd+Enter sends, whichever the reader prefers.
 
 ![The slash commands the composer answers itself](docs/screenshots/chat-composer-commands.png)
 
+Several chats can be open at once. The strip above the chat holds the ones you
+have in front of you, and each keeps its own thread: switching a tab changes the
+view, not the chat, so an answer that is still running stays in the chat it
+belongs to and the other tab waits its turn. The open chats are part of the
+window state, so they come back with the window.
+
+![Two chats open as tabs](docs/screenshots/chat-tabs.png)
+
 Everything the app can do is one keystroke away. **Cmd+K** opens a command palette that
 searches the chats, the settings pages and the commands with one fuzzy matcher: type a word
 nobody sees on screen — "keychain" — and the setting that answers to it comes up first.

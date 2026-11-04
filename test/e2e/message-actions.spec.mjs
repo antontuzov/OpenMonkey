@@ -17,6 +17,13 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 /**
+ * A chat in the list on the left. The tab strip carries the same names, so the
+ * row is taken by its own marker rather than by the text alone.
+ */
+const chatRow = (page, title) =>
+  page.locator("[data-session-row]").filter({ hasText: title }).first();
+
+/**
  * The chat around a reply: how long it took, how many tokens it used, and the
  * other answers to the same question. The thread comes from the shared fixture,
  * so the test is about the renderer and the bridge, not about a model.
@@ -49,7 +56,7 @@ test("a reply shows its duration and tokens, and the switcher walks the answers"
     // The renderer reads its conversation list at start-up, so it reloads to see the row.
     await page.reload();
     await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
-    await page.getByRole("button", { name: /Answer probe/ }).click();
+    await chatRow(page, "Answer probe").click();
 
     const turn = page.locator(".message-enter").last();
     await expect(turn.locator(".message-assistant")).toContainText(LONG_ANSWER);
@@ -91,7 +98,7 @@ test("a reply shows its duration and tokens, and the switcher walks the answers"
 
     // Branching copies the chat up to this message into a chat of its own.
     await turn.getByRole("button", { name: "Branch from here" }).click();
-    await expect(page.getByRole("button", { name: /Answer probe \(branch\)/ })).toBeVisible();
+    await expect(chatRow(page, "Answer probe (branch)")).toBeVisible();
     await expect(page.getByText("Branched into a new chat")).toBeVisible();
   } finally {
     await quitApp(app, profile);

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { seedMarkdownThread } from "../test/fixtures/markdown-answer.mjs";
 import { seedMessageThread } from "../test/fixtures/message-actions.mjs";
 import { seedMemoryChat } from "../test/fixtures/memory-browser.mjs";
+import { seedTabThread } from "../test/fixtures/tabs.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outDir = path.join(root, "docs", "screenshots");
@@ -489,5 +490,55 @@ if (existsSync(modelPath)) {
   } finally {
     await firstRun.evaluate(({ app }) => app.quit()).catch(() => undefined);
     rmSync(firstRunProfile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+}
+
+// The tabs: several chats open in one window, each keeping its own thread.
+// It runs in its own throwaway profile, so the strip shows exactly the chats
+// this picture is about.
+{
+  const tabProfile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-docs-tabs-"));
+  writeFileSync(
+    path.join(tabProfile, "openmonkey-config.json"),
+    JSON.stringify({ onboarding: { completed: true }, model: { provider: "bonsai" } })
+  );
+  const tabApp = await electron.launch({
+    args: [root],
+    env: { ...process.env, OPENMONKEY_USER_DATA: tabProfile, OPENMONKEY_DEBUG_PORT: "" },
+  });
+  try {
+    const page = await tabApp.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    await page.setViewportSize({ width: 1280, height: 820 });
+    const dbFile = path.join(tabProfile, "data", "openmonkey.db");
+    const deadline = Date.now() + 60_000;
+    while (!existsSync(dbFile) && Date.now() < deadline) {
+      await page.waitForTimeout(300);
+    }
+    seedTabThread(dbFile);
+    await page.reload();
+    await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
+
+    // The row in the list and the tab that carries the same name would both
+    // answer a loose selector, so the row is taken by its own marker.
+    const row = (title) => page.locator("[data-session-row]").filter({ hasText: title }).first();
+    await row("Release checklist").click();
+    await row("Model notes").click();
+
+    // The empty chat the window opens with has no place in the picture.
+    const emptyTab = page.getByRole("tab", { name: "New chat" });
+    if (await emptyTab.count()) {
+      await emptyTab.hover();
+      await page.getByRole("button", { name: "Close New chat" }).click();
+    }
+
+    await page.getByRole("tab", { name: "Model notes" }).click();
+    await page.waitForTimeout(400);
+    await page.locator("main").screenshot({ path: path.join(outDir, "chat-tabs.png") });
+  } catch (error) {
+    console.warn("chat-tabs.png skipped:", error.message);
+  } finally {
+    await tabApp.evaluate(({ app }) => app.quit()).catch(() => undefined);
+    rmSync(tabProfile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }

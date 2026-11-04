@@ -561,6 +561,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const providerLabel =
     status.provider === "mlx" ? "MLX" : status.provider === "bonsai" ? "Bonsai 4B" : "No model";
   const busy = isSending || Boolean(stream) || (busyConversationId != null && busyConversationId === conversationId);
+  /** The model answers one chat at a time, so another tab can hold the slot. */
+  const busyElsewhere = busyConversationId != null && busyConversationId !== conversationId;
 
   useEffect(() => {
     if (!conversationId) {
@@ -708,6 +710,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return;
       }
       if (command === "/clear") {
+        // Clearing empties the model session, so it must not cut another chat's
+        // answer short.
+        if (busyElsewhere) {
+          setNotice(t("chat.busyElsewhere"));
+          return;
+        }
         try {
           await window.electron?.clearConversation(conversationId);
           setMessages([]);
@@ -719,6 +727,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return;
       }
       if (command === "/summarize") {
+        if (busyElsewhere) {
+          setNotice(t("chat.busyElsewhere"));
+          return;
+        }
         setIsSending(true);
         try {
           const summary = await window.electron?.summarizeConversation(conversationId);
@@ -734,7 +746,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }
       }
     },
-    [conversationId, onConversationsChanged]
+    [busyElsewhere, conversationId, onConversationsChanged]
   );
 
   // The command palette runs the same commands the composer does.
@@ -832,6 +844,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       return;
     }
 
+    // The model answers one chat at a time: the other tab holds the slot.
+    if (busyElsewhere) {
+      setNotice(t("chat.busyElsewhere"));
+      return;
+    }
+
     const localId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const userMessage: Message = {
       id: localId,
@@ -867,7 +885,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       onConversationsChanged();
       textareaRef.current?.focus();
     }
-  }, [attachments, busy, conversationId, input, onConversationsChanged, ready, runCommand]);
+  }, [attachments, busy, busyElsewhere, conversationId, input, onConversationsChanged, ready, runCommand]);
 
   const regenerate = useCallback(async () => {
     if (!conversationId || !ready || busy) return;
@@ -1344,7 +1362,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 ready
                   ? busy
                     ? t("chat.placeholderBusy")
-                    : t("chat.placeholder", { name: agentName })
+                    : busyElsewhere
+                      ? t("chat.busyElsewhere")
+                      : t("chat.placeholder", { name: agentName })
                   : status.state === "error"
                     ? t("chat.placeholderUnavailable")
                     : t("chat.placeholderWaiting")

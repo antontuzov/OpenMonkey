@@ -127,19 +127,11 @@ export class OpenMonkey extends EventEmitter {
   }
 
   createConversation(): Conversation {
-    this.stopGeneration();
     const conversation = storage.createConversation();
-    this.activateConversation(conversation.id);
+    // A new chat starts empty, so it needs no context of its own: the running
+    // reply keeps the session and finishes as it is.
+    if (!this.controller) this.activateConversation(conversation.id);
     return conversation;
-  }
-
-  /** Loads the stored turns and re-seeds the local session before the first question. */
-  switchConversation(conversationId: string): Message[] {
-    const conversation = storage.getConversation(conversationId);
-    if (!conversation) throw new Error("That conversation no longer exists");
-    this.stopGeneration();
-    this.activateConversation(conversationId);
-    return storage.getMessages(conversationId);
   }
 
   renameConversation(id: string, title: string): void {
@@ -729,9 +721,9 @@ say the action is still running.`,
   private activateConversation(conversationId: string): void {
     this.activeConversationId = conversationId;
     this.conversationHistory = this.historyFor(conversationId);
-    if (this.modelManager.active) {
-      this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
-    }
+    // The session can only be re-seeded while it is idle: doing it mid-answer
+    // would rewrite the context that reply is built on.
+    this.reseedModel();
   }
 
   private promptHistory(): Array<{ role: "user" | "assistant"; content: string }> {

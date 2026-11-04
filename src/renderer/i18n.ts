@@ -106,6 +106,10 @@ const EN = {
   "chat.command.summarize": "Digest this chat",
   "chat.command.help": "List the commands",
   "chat.cleared": "Chat cleared",
+  "chat.tabs": "Open chats",
+  "chat.tab.new": "New tab",
+  "chat.tab.close": "Close {title}",
+  "chat.busyElsewhere": "Another chat is still answering.",
   "chat.filesRefused": "{count} file(s) were skipped: only text, code and images up to {size} can be attached.",
 
   "tasks.title": "Tasks",
@@ -469,6 +473,10 @@ const RU: Record<StringKey, string> = {
   "chat.command.summarize": "Сжать чат",
   "chat.command.help": "Показать команды",
   "chat.cleared": "Чат очищен",
+  "chat.tabs": "Открытые чаты",
+  "chat.tab.new": "Новая вкладка",
+  "chat.tab.close": "Закрыть {title}",
+  "chat.busyElsewhere": "Другой чат ещё отвечает.",
   "chat.filesRefused": "Пропущено файлов: {count}. Прикрепить можно только текст, код и картинки до {size}.",
 
   "tasks.title": "Задачи",

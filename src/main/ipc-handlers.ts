@@ -185,7 +185,6 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("get-conversations", () => agent().getConversations());
   ipcMain.handle("create-conversation", () => agent().createConversation());
-  ipcMain.handle("switch-conversation", (_event, id: unknown) => agent().switchConversation(conversationId(id)));
   ipcMain.handle("rename-conversation", (_event, id: unknown, title: unknown) => {
     if (typeof title !== "string") throw new Error("Title must be text");
     agent().renameConversation(conversationId(id), title);
