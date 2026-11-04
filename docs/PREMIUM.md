@@ -29,11 +29,13 @@ What a trial user judges before they decide to pay.
 | 11 | **Window feel** | macOS sidebar vibrancy, unified title bar, 160–220 ms springs for panel and view changes, crossfade into settings, no light flash on dark-mode resize (guarded today) | M |
 | 12 | **Settings that answer questions** | Search across all pages, reset-this-section, and a privacy dashboard: key source, database size, last prune, and a counter of network requests the app made | M |
 
-**Dropped:** the original row 1, *signed and notarized DMG plus a live update feed*.
-The CI package job already signs and notarizes tag builds when the Apple secrets are
-in the repository, and there is no plan to buy a Developer ID certificate. Source
-installs and unsigned local builds stay the supported route, so the row had no owner
-and no date. `src/main/updater.ts` remains wired and inert without a signed feed.
+| 1 | **A download a stranger can use** | Tag pipeline publishes a public GitHub Release with the `.dmg`; the landing page and README link it with permanent URLs; SHA-256 of every file is in the notes; `latest-mac.yml` is published beside it so a signed build can update itself the moment a Developer ID exists | M |
+
+**Still outside row 1:** Developer ID signing and notarization. Apple retired the Intel
+runner, so the release is Apple Silicon only, and the build is unsigned: Gatekeeper
+questions the first launch, and Squirrel.Mac refuses to install an update over an
+unsigned app. Both need the paid certificate; the pipeline reads the five Apple secrets
+and needs no other change.
 
 ## P1 — depth that earns the price
 
@@ -74,6 +76,7 @@ recorded number — not a claim.
 
 | # | Upgrade | Evidence |
 | --- | --- | --- |
+| 1 | A download a stranger can use | A tag now produces a public GitHub Release rather than a build artifact that expires in two weeks. `OpenMonkey-arm64.dmg` keeps its name across versions, so `…/releases/latest/download/…` is a link the site can hard-code and a bookmark can keep. `latest-mac.yml` is rebuilt from the bytes about to be uploaded, not carried out of a build job. Proved against a real 202,711,693-byte DMG: the manifest generator's SHA-512 and size match electron-builder's own output exactly, 5 unit tests on the generator (both arches, one arch, base64 rather than hex, and three refusals), 6 more that fail if the landing link, the release notes and the publish step ever stop agreeing with `artifactName`. The site is live on GitHub Pages, and its download cards were read back from the rendered DOM in both languages. |
 | 2 | Onboarding finishes the job | The model step offers both routes in — a download with MB, %, ETA and pause/cancel, or "Use a file I have" for a GGUF already on the Mac — and states the free space it needs before it asks for a byte. The digest is verified, then the flow asks the model one question and shows its own answer before it lets you out. 10 integration tests (a download against a Range server, resume, a wrong digest refused, a volume without room refused before any request reaches the server, an import that copies and keeps the original, a non-GGUF refused, a valid but unpinned model reported honestly, every phase reported as it happens), an e2e spec that reaches a real answer through the wizard, and a capture of the last step showing Bonsai-4B at 572 MB and the model's answer on screen |
 | 3 | An empty state worth looking at | Four starter prompts that prefill the composer, and a dismissal that sticks across a reload — two e2e specs |
 | 4 | Markdown that matches model output | 14 unit tests (parser, tokenizer, offset stability while streaming), an e2e spec per block, a region baseline and a docs capture |

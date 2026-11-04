@@ -210,13 +210,14 @@
         <div class="download-grid">
           <div class="download-card">
             <h3>macOS</h3>
-            <p data-i18n="download.mac">Ventura 13 or newer, Apple Silicon and Intel. Around 2 GB of memory once the model is loaded.</p>
-            <a class="pill pill-solid" href="https://github.com/antontuzov/OpenMonkey/releases" rel="noreferrer" target="_blank">Releases</a>
+            <p data-i18n="download.mac">Ventura 13 or newer, on any Apple Silicon Mac. Around 2 GB of memory once the model is loaded.</p>
+            <a class="pill pill-solid" href="https://github.com/antontuzov/OpenMonkey/releases/latest/download/OpenMonkey-arm64.dmg" rel="noreferrer" data-i18n="download.mac.cta">Download for Apple Silicon</a>
+            <a class="pill" href="https://github.com/antontuzov/OpenMonkey/releases/latest" rel="noreferrer" data-i18n="download.notes">Release notes and checksums</a>
           </div>
           <div class="download-card">
-            <h3>Windows</h3>
-            <p data-i18n="download.win">Windows 10 or newer with the GGUF backend. macOS-only tools stay disabled until the model is present.</p>
-            <a class="pill" href="https://github.com/antontuzov/OpenMonkey/releases" rel="noreferrer" target="_blank">Releases</a>
+            <h3 data-i18n="download.win.title">Windows and Intel</h3>
+            <p data-i18n="download.win">No installer yet. Apple retired the Intel build runner, and nothing has been packaged for Windows, so both paths are from source today.</p>
+            <a class="pill" href="https://github.com/antontuzov/OpenMonkey#readme" rel="noreferrer" data-i18n="download.win.cta">How to build it</a>
           </div>
           <div class="download-card">
             <h3 data-i18n="download.source.title">From source</h3>
@@ -227,8 +228,9 @@
           </div>
         </div>
         <p class="download-note" data-i18n="download.note">
-          Release artifacts are produced by the tag pipeline. Builds you make locally are
-          unsigned, so Gatekeeper asks once.
+          The download is built by the tag pipeline and is not signed with an Apple
+          Developer ID, so Gatekeeper questions it once. The release notes carry the one
+          command that settles it, and the SHA-256 of every file.
         </p>
       </section>
     </main>

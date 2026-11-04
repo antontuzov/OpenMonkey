@@ -1,6 +1,6 @@
 {
   "name": "openmonkey",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "OpenMonkey - Local AI Agent with Dynamic Personality",
   "main": "dist/main/main.js",
   "author": "OpenMonkey contributors",
@@ -90,10 +90,10 @@
       "output": "release",
       "buildResources": "build"
     },
-    "artifactName": "OpenMonkey-${version}-${arch}.${ext}",
+    "artifactName": "OpenMonkey-${arch}.${ext}",
     "publish": {
       "provider": "github",
-      "releaseType": "draft"
+      "releaseType": "release"
     }
   }
 }

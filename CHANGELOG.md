@@ -4,6 +4,43 @@ All notable changes to OpenMonkey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions match the tag
 that produced the build.
 
+## 0.9.1 — 2026-11-04
+
+The first build anyone can download. Nothing about the app itself changed in this
+release; what changed is that a tag now produces a public artifact instead of a
+temporary one.
+
+### Added
+
+- **A published release** — a tag runs the package job, then publishes a public GitHub
+  Release with `OpenMonkey-arm64.dmg`, the updater zip, their block maps and
+  `latest-mac.yml`. The release notes are kept in the repository and carry the SHA-256
+  of every file built.
+- **Download links that keep working** — artifacts are named by architecture and not by
+  version, so `releases/latest/download/OpenMonkey-arm64.dmg` is a permanent link. The
+  landing page and README point straight at the disk image.
+- **The product site is online** — `landing/` publishes to GitHub Pages from `main`.
+- Several chats open in one window at once, each keeping its own thread, restored with
+  the window (0.9.0 shipped the code; this is the release that carries it).
+- `scripts/make-update-manifest.mjs` rebuilds the macOS update manifest from the
+  archives actually on disk, so it is correct whichever arches reach a release.
+
+### Fixed
+
+- The CI `verify` and `package` jobs waited on Apple's retired Intel runner, which never
+  answers; every run sat queued for a day and was then cancelled. Both jobs build on
+  Apple Silicon now, and an Intel or Windows installer is stated as absent rather than
+  implied.
+- The landing page promised a Windows installer and an Intel build that no pipeline
+  produced.
+
+### Known limits
+
+The release is unsigned: there is no Apple Developer ID behind it, so Gatekeeper
+questions the first launch and the in-app updater can report a new version but cannot
+install one. Both are settled by the certificate, not by code — the package job already
+reads the five Apple secrets.
+
 ## 0.9.0 — 2026-10-30
 
 The release-candidate build: local chat with tools, approvals, memory, privacy

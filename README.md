@@ -15,8 +15,22 @@ and no network call except the ones you explicitly ask the agent to make.
 The ape art in this file is flat PNGs built from the same portraits the app uses;
 `python3 scripts/make-brand-art.py` regenerates them into `assets/brand/`.
 
-A single-page product site lives in [`landing/`](landing/index.html) — open
-`landing/index.html` directly or serve the folder with any static host.
+## Download
+
+**[OpenMonkey for Apple Silicon (`.dmg`)][dmg]** — about 200 MB. The app only: the
+model weights are fetched on first run, and the app states the size before it starts.
+
+The build is produced by the tag pipeline and is **not signed with an Apple Developer
+ID**, so macOS refuses it on the first launch. Copy it to `/Applications`, then run
+`xattr -dr com.apple.quarantine /Applications/OpenMonkey.app`. [The release
+page][release] carries the SHA-256 of every file and the same instructions.
+
+A single-page product site lives at
+**<https://antontuzov.github.io/OpenMonkey/>**, built from [`landing/`](landing/index.html)
+by the `pages` job; open `landing/index.html` directly to work on it.
+
+[dmg]: https://github.com/antontuzov/OpenMonkey/releases/latest/download/OpenMonkey-arm64.dmg
+[release]: https://github.com/antontuzov/OpenMonkey/releases/latest
 
 ![Chat with a local model](docs/screenshots/chat.png)
 
@@ -100,7 +114,7 @@ hear it before you set anything up.
 
 | | |
 | --- | --- |
-| OS | macOS 13+ (Apple Silicon and Intel); Windows 10+ for the GGUF backend |
+| OS | macOS 13+ on Apple Silicon for the published disk image; Intel and Windows run from source but have no build pipeline |
 | Runtime | Node.js 22.12 or newer (Electron 45's `engines` requirement) |
 | Disk | 572,270,624 bytes for the pinned model (~546 MiB) |
 | Memory | 455 MB for the shell before a model loads; ~2.0 GB total with Bonsai-4B loaded (measured 1.7 GB main + 0.3 GB helpers); plan for 4 GB |
@@ -209,8 +223,9 @@ src/ui/         LogoManager (mood → icons), mood-detector, task-emojis
 src/renderer/   React UI: chat, settings, task monitor, styles
 src/utils/      config (electron-store), storage (SQLite + AES-GCM), logger, types
 assets/logos/   12 circular 512px mood portraits, sliced from the art sheet
-scripts/        download-models.ts, crop-logos.py, capture-docs.mjs
-docs/           privacy, model compatibility, support, screenshots
+scripts/        download-models.ts, crop-logos.py, capture-docs.mjs,
+                make-brand-art.py, make-update-manifest.mjs
+docs/           privacy, model compatibility, support, release notes, screenshots
 ```
 
 The renderer and the main process never import each other's runtime code. They
@@ -310,14 +325,19 @@ inside userData in packaged builds.
 **MLX backend unavailable.** The MLX snapshot plus `mlx-lm` are optional and only
 work on Apple Silicon; the backend selector hides the option when either is missing.
 
-**Gatekeeper blocked an unsigned build.** Right-click → Open, or
-`xattr -d com.apple.quarantine /Applications/OpenMonkey.app`. Local builds are not
-signed; the CI package job signs and notarizes tag builds once the Apple secrets are
-configured.
+**Gatekeeper blocked an unsigned build.** `xattr -dr com.apple.quarantine
+/Applications/OpenMonkey.app`. Neither the published release nor a local build is signed
+with a Developer ID, because that certificate costs money and this project does not have
+one; older macOS versions offered right-click → Open as a workaround and newer ones may
+not, but the command above always works. Add the Apple secrets to the repository and the
+`package` job signs and notarizes by itself.
 
 **Updates do nothing.** The updater runs only in a packaged app with **Network
 access** on. Installed builds check at launch and every six hours; the channel lives
-in Settings → Desktop → Updates.
+in Settings → Desktop → Updates. It can check and report but cannot install, though:
+electron-updater hands the downloaded archive to Squirrel.Mac, and Squirrel verifies the
+signature of both the running app and the update. For an unsigned build that is a
+non-starter, so install the new `.dmg` over the old app until signing is configured.
 
 **Forgot the passphrase.** There is no recovery by design. **Erase everything** in
 Settings → Privacy drops the database and the key; the history cannot be decrypted.

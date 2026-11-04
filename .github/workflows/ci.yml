@@ -14,17 +14,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Apple retired the Intel runner image, so an x64 leg would wait a day for a
+  # machine that never comes and then be cancelled. Intel builds are cross-compiled
+  # or built from source instead; neither is automated here yet.
   verify:
-    name: verify (${{ matrix.arch }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-14
-            arch: arm64
-          - runner: macos-13
-            arch: x64
-    runs-on: ${{ matrix.runner }}
+    name: verify
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -57,18 +52,10 @@ jobs:
           retention-days: 7
 
   package:
-    name: package (${{ matrix.arch }})
+    name: package
     if: startsWith(github.ref, 'refs/tags/v')
     needs: verify
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-14
-            arch: arm64
-          - runner: macos-13
-            arch: x64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -78,8 +65,10 @@ jobs:
       - run: npm ci
       - run: npm run build
       # Developer ID signing and notarization read their credentials from the
-      # environment; without the secrets this produces an unsigned local build.
-      - run: npx electron-builder --mac --${{ matrix.arch }} --publish never
+      # environment. Without them electron-builder logs "skipped macOS application
+      # code signing" and produces a DMG that Gatekeeper will question; the
+      # release notes tell the downloader what to do about that.
+      - run: npx electron-builder --mac --arm64 --publish never
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -88,8 +77,74 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - uses: actions/upload-artifact@v4
         with:
-          name: OpenMonkey-${{ matrix.arch }}
+          name: OpenMonkey-arm64
           path: |
             release/*.dmg
             release/*.zip
+            release/*.blockmap
           retention-days: 14
+
+  release:
+    name: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: OpenMonkey-*
+          merge-multiple: true
+          path: dist
+      # The manifest is rebuilt from the bytes that are about to be uploaded rather
+      # than carried from a build job, so it is correct whichever arches made it
+      # this far.
+      - run: node scripts/make-update-manifest.mjs --dir dist --version "${GITHUB_REF_NAME#v}"
+      # The body lives in the repository so its wording is reviewed like anything else.
+      # Appending the digests of the bytes actually built keeps the checksums honest.
+      - run: |
+          cp docs/RELEASE_NOTES.md notes.md
+          { printf '\n## Checksums\n\n```sh\n'; (cd dist && sha256sum OpenMonkey-* latest-mac.yml); printf '```\n'; } >> notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "OpenMonkey $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            dist/OpenMonkey-arm64.dmg \
+            dist/OpenMonkey-arm64.dmg.blockmap \
+            dist/OpenMonkey-arm64.zip \
+            dist/OpenMonkey-arm64.zip.blockmap \
+            dist/latest-mac.yml
+
+  # The site is static and lives in landing/, so it publishes from that folder on
+  # every change to main. Its asset paths are all relative, which is what lets it
+  # sit under /OpenMonkey/ rather than at the domain root.
+  pages:
+    name: pages
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: landing
+      - id: deployment
+        uses: actions/deploy-pages@v4
