@@ -1,4 +1,75 @@
 import { rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { expect } from "@playwright/test";
+
+/**
+ * Empties the chat so the next model turn is asked without the failed attempts in
+ * front of it.
+ *
+ * Repeating the same request inside one chat teaches the opposite of what a retry
+ * wants: after two or three copies the model has only text-only answers to imitate,
+ * so it keeps describing the tool call instead of running it. /clear is answered by
+ * the app itself and drops those turns from the history, which makes every retry
+ * the first thing the model sees.
+ */
+export async function resetChat(page) {
+  const composer = page.locator("textarea").first();
+  await composer.fill("/clear");
+  await composer.press("Enter");
+  await expect(page.getByText(/chat cleared|чат очищен/i)).toBeVisible({ timeout: 30_000 });
+}
+
+/** Every process below the given one, so a teardown can be waited for. */
+function descendantsOf(pid) {
+  try {
+    const output = execFileSync("/bin/ps", ["-axo", "pid=,ppid="], { encoding: "utf8" });
+    const children = new Map();
+    for (const line of output.split("\n")) {
+      const [child, parent] = line.trim().split(/\s+/);
+      if (!child || !parent) continue;
+      if (!children.has(Number(parent))) children.set(Number(parent), []);
+      children.get(Number(parent)).push(Number(child));
+    }
+    const found = new Set();
+    const walk = (parent) => {
+      for (const child of children.get(parent) ?? []) {
+        if (found.has(child)) continue;
+        found.add(child);
+        walk(child);
+      }
+    };
+    walk(pid);
+    return [...found];
+  } catch {
+    return [];
+  }
+}
+
+const isAlive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Waits until the given processes are gone.
+ *
+ * The model runs in a worker of its own, and a worker that outlives the app keeps
+ * the weights in memory and the CPU busy: the next spec then starts on a machine
+ * that is still busy, which is how a cold start turns into sixteen seconds and a
+ * model load turns into a timeout that has nothing to do with the code.
+ */
+async function waitForGone(pids, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!pids.some(isAlive)) return true;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  return !pids.some(isAlive);
+}
 
 /**
  * Quits the app the way a user does and waits for the process to be gone.
@@ -16,6 +87,7 @@ export async function quitApp(app, profile) {
   }
 
   const proc = app.process();
+  const workers = descendantsOf(proc.pid);
   const exited = new Promise((resolve) => {
     if (proc.exitCode !== null || proc.signalCode !== null) {
       resolve({ code: proc.exitCode, signal: proc.signalCode });
@@ -38,6 +110,7 @@ export async function quitApp(app, profile) {
     proc.kill("SIGKILL");
     await exited;
   }
+  await waitForGone(workers, 30_000);
   if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   return status;
 }

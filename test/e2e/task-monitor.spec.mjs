@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { quitApp } from "./helpers.mjs";
+import { quitApp, resetChat } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -35,7 +35,9 @@ async function close(app, profile) {
  * from a live model turn rather than from a seeded row. The 4B model writes its own
  * tool calls when asked in prose and drifts into five calls at a time, so the turn
  * hands it the block to run - and a model that only describes the call is asked
- * again, because this suite is about the rail and not about the weights.
+ * again after the chat is cleared, because this suite is about the rail and not
+ * about the weights. Repeating the request in the same conversation only teaches
+ * the model to answer in text, since that is what the last three turns did.
  */
 async function runWrite(page, prompt, waitFor) {
   const composer = page.locator("textarea").first();
@@ -54,6 +56,7 @@ async function runWrite(page, prompt, waitFor) {
       console.log(`turn ${attempt} did not reach the rail; the rail said: ${rail.replace(/\s+/g, " ")}`);
       await expect(generating).toBeHidden({ timeout: 120_000 });
       if (attempt === 5) throw new Error(`five turns produced no task for the rail: ${error.message}`);
+      await resetChat(page);
     }
   }
 }

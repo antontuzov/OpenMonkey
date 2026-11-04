@@ -69,6 +69,13 @@ from the same diff the rail shows, so the two cannot disagree.
 | --- | --- |
 | ![A shell command in the approval](docs/screenshots/approval-command.png) | ![A file write in the approval](docs/screenshots/approval-write.png) |
 
+Extensions are managed the same way. Settings → MCP servers starts a local stdio server
+from a form and lets you edit it later, shows its health and whatever it printed on
+stderr, and gives each of its tools a rule of its own — a tool follows the server's Ask /
+Allow / Block until you set one beside it.
+
+![Settings → MCP servers, with a running server and one tool given its own rule](docs/screenshots/settings-mcp.png)
+
 | Onboarding | Settings → Privacy | Settings → Desktop | Settings → Model |
 | --- | --- | --- | --- |
 | ![Onboarding](docs/screenshots/onboarding.png) | ![Privacy](docs/screenshots/settings-privacy.png) | ![Desktop](docs/screenshots/settings-desktop.png) | ![Model](docs/screenshots/settings-model.png) |
@@ -129,7 +136,7 @@ becomes active.
 
 ### Verification
 
-`npm test` runs 124 unit assertions and 114 integration assertions against a real SQLite
+`npm test` runs 124 unit assertions and 120 integration assertions against a real SQLite
 file under a throwaway profile: the task-fence parser, tool-argument validation, the
 diff engine and its context window, the task stage maths and duration format, the backup
 envelope, the mood map, benchmark arithmetic, encryption flipping with `VACUUM`,
@@ -149,8 +156,10 @@ the digest stays visible, recall changes the prompt and not the note, forgetting
 drops both, and a citation resolves to the fact, the summary or the exact file lines.
 The teardown is
 covered too, because a quit that frees the process under a running llama.cpp worker is
-what used to abort it.
-`npm run test:e2e` adds 44 Playwright tests on a throwaway profile: onboarding, the
+what used to abort it. The MCP manager runs against a real stdio server started from a
+fixture: the tools it lists, the lines the server printed, a rule for one tool that
+leaves the process running, and the reason a command gives when it will not start.
+`npm run test:e2e` adds 46 Playwright tests on a throwaway profile: onboarding, the
 first run ending with a real answer from the local weights, the
 chat surface with a button/field/image/landmark audit, Privacy rows and switches,
 RU/EN, close-to-tray, the update channel, the vibrancy and spring timings, Quick Ask
@@ -162,11 +171,17 @@ holds, the passages of one file, an ignore rule keeping a file out and a file re
 again on its own), the task rail on a real model turn (each stage timed, the write's lines
 diffed, a denied action keeping its approval stage and asking again on Retry, the Russian
 rail), the approval preview (a command saying what it does and what it could cost, a write
-showing the lines it replaces), and the model manager's memory estimate plus a real
+showing the lines it replaces), the MCP manager (a server's health and output on the page,
+a per-tool rule that survives a reload, a failing server edited back to ready), and the
+model manager's memory estimate plus a real
 tokens-per-second
 run against the loaded weights. Two of them are about leaving: quitting while the
 model is still answering, and quitting while the 572 MB weights are still loading, both
-of which have to exit 0 rather than abort the process. Performance budgets are their own
+of which have to exit 0 rather than abort the process. The specs that need the model
+to reach a tool ask again after clearing the chat, because the same question twice in
+one conversation only teaches a 4B model to answer in words instead of running the
+call. Between specs the harness waits for the app's model worker to be gone, so one
+teardown cannot starve the next cold start. Performance budgets are their own
 four tests (cold start
 under 2.5 s, no long tasks during a synthetic 320-token stream, idle memory under
 900 MB, Settings served as a lazy chunk). CI runs the same suites on both Mac

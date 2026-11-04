@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { quitApp } from "./helpers.mjs";
+import { quitApp, resetChat } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -30,7 +30,8 @@ async function launch(extraConfig = {}) {
 /**
  * The call comes from a live model turn, because that is the only way the app
  * reaches a tool. The 4B model sometimes describes the call instead of running
- * it, so a turn that never reaches the dialog is asked again, like a user would.
+ * it, so a turn that never reaches the dialog is asked again after the chat is
+ * cleared, like a user who empties the chat instead of repeating themselves.
  */
 async function runTask(page, prompt, waitFor) {
   const composer = page.locator("textarea").first();
@@ -43,9 +44,16 @@ async function runTask(page, prompt, waitFor) {
       await waitFor();
       return;
     } catch (error) {
+      const said = await page
+        .locator(".space-y-5")
+        .last()
+        .innerText()
+        .catch(() => "no answer");
       console.log(`turn ${attempt} did not reach the approval; the rail said: ${await page.locator(".motion-panel .card").first().innerText().catch(() => "no rail")}`);
+      console.log(`the model said: ${said.replace(/\s+/g, " ").slice(0, 300)}`);
       await expect(generating).toBeHidden({ timeout: 120_000 });
       if (attempt === 5) throw new Error(`five turns produced no approval: ${error.message}`);
+      await resetChat(page);
     }
   }
 }

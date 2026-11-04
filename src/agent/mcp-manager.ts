@@ -3,7 +3,7 @@ import { getDefaultEnvironment, StdioClientTransport } from "@modelcontextprotoc
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { mcpServers } from "../utils/config";
 import logger from "../utils/logger";
-import type { McpServerConfig, McpServerStatus } from "../utils/types";
+import type { ApprovalPolicy, McpServerConfig, McpServerStatus } from "../utils/types";
 import { validateJsonSchema } from "./tool-registry";
 
 const CONNECT_TIMEOUT_MS = 20_000;
@@ -34,27 +34,61 @@ export class McpManager {
 
   async initialize(): Promise<void> {
     this.stopped = false;
-    await this.refresh();
+    await this.sync();
   }
 
-  /** Re-reads config and reconnects every server. Serialized so toggles cannot race. */
-  refresh(): Promise<void> {
+  /**
+   * Applies the stored config to the live servers: a new one starts, a changed
+   * command restarts, and a rule that only changes who may call what leaves the
+   * running server alone. Serialized so toggles cannot race.
+   */
+  sync(): Promise<void> {
     const run = async () => {
-      await this.closeAll();
       if (this.stopped) return;
       const configs = mcpServers();
-      this.connections = new Map(
-        configs.map((config) => [
-          config.id,
-          { config, client: null, state: config.enabled ? "connecting" : "stopped", tools: [], stderr: "" } satisfies Connection,
-        ])
-      );
-      await Promise.all(
-        configs.filter((config) => config.enabled).map((config) => this.connect(config.id))
-      );
+      const wanted = new Set(configs.map((config) => config.id));
+
+      for (const [id, connection] of [...this.connections]) {
+        if (wanted.has(id)) continue;
+        await this.closeOne(connection);
+        this.connections.delete(id);
+      }
+
+      const work: Promise<void>[] = [];
+      for (const config of configs) {
+        const existing = this.connections.get(config.id);
+        if (!existing) {
+          this.connections.set(config.id, {
+            config,
+            client: null,
+            state: config.enabled ? "connecting" : "stopped",
+            tools: [],
+            stderr: "",
+          });
+          if (config.enabled) work.push(this.connect(config.id));
+          continue;
+        }
+        const restarted = transportChanged(existing.config, config);
+        existing.config = config;
+        if (restarted) {
+          work.push(this.reconnect(config.id));
+        } else if (config.enabled && existing.state === "stopped") {
+          work.push(this.connect(config.id));
+        } else if (!config.enabled && existing.state !== "stopped") {
+          work.push(this.closeOne(existing));
+        }
+      }
+      await Promise.all(work);
     };
     this.queue = this.queue.then(run, run);
     return this.queue;
+  }
+
+  private async reconnect(id: string): Promise<void> {
+    const connection = this.connections.get(id);
+    if (!connection) return;
+    await this.closeOne(connection);
+    if (connection.config.enabled) await this.connect(id);
   }
 
   private async connect(id: string): Promise<void> {
@@ -129,19 +163,25 @@ export class McpManager {
   }
 
   status(): McpServerStatus[] {
-    return [...this.connections.values()].map((connection) => ({
-      id: connection.config.id,
-      name: connection.config.name,
-      enabled: connection.config.enabled,
-      state: connection.state,
-      toolCount: connection.tools.length,
-      tools: connection.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        readOnly: tool.annotations?.readOnlyHint === true,
-      })),
-      error: connection.error,
-    }));
+    return [...this.connections.values()].map((connection) => {
+      const { config } = connection;
+      return {
+        id: config.id,
+        name: config.name,
+        enabled: config.enabled,
+        state: connection.state,
+        toolCount: connection.tools.length,
+        tools: connection.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          readOnly: tool.annotations?.readOnlyHint === true,
+          policy: config.toolPolicies?.[tool.name] ?? config.approval,
+        })),
+        error: connection.error,
+        stderr: connection.stderr.trim() || undefined,
+        policy: config.approval,
+      };
+    });
   }
 
   /** Protocol text appended to the model's system prompt. */
@@ -181,9 +221,20 @@ export class McpManager {
     return "tool" in resolved && resolved.tool.annotations?.readOnlyHint === true;
   }
 
-  serverPolicy(action: string): McpServerConfig["approval"] | null {
-    const resolved = this.resolve(action);
-    return "connection" in resolved ? resolved.connection.config.approval : null;
+  /**
+   * The rule that applies to one tool: its own, or the server's when it has none.
+   * It answers for a server that is not connected too, so a rule can be set
+   * before the server ever starts.
+   */
+  policyFor(action: string): ApprovalPolicy | null {
+    const separator = action.indexOf(".");
+    if (separator <= 0) return null;
+    const serverId = action.slice(0, separator);
+    const toolName = action.slice(separator + 1);
+    const connection = this.connections.get(serverId);
+    if (!connection) return null;
+    const { config } = connection;
+    return config.toolPolicies?.[toolName] ?? config.approval;
   }
 
   validate(action: string, args: Record<string, unknown>): string | null {
@@ -222,6 +273,12 @@ export class McpManager {
     await this.closeAll();
   }
 }
+
+/** A rule that only changes who may call what must not restart the server. */
+const transportChanged = (before: McpServerConfig, after: McpServerConfig): boolean =>
+  before.command !== after.command ||
+  before.args.join(" ") !== after.args.join(" ") ||
+  JSON.stringify(before.env ?? {}) !== JSON.stringify(after.env ?? {});
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {

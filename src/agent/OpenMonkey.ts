@@ -842,7 +842,7 @@ Always maintain a helpful, professional tone while being approachable.`;
   }
 
   async refreshMcp(): Promise<McpServerStatus[]> {
-    await this.taskManager.getMcpManager().refresh();
+    await this.taskManager.getMcpManager().sync();
     this.reseedModel();
     return this.taskManager.getMcpStatus();
   }

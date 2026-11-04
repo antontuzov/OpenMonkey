@@ -360,12 +360,16 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   enabled: boolean;
   approval: ApprovalPolicy;
+  /** A rule for one tool of this server; a tool without one follows the server. */
+  toolPolicies?: Record<string, ApprovalPolicy>;
 }
 
 export interface McpToolInfo {
   name: string;
   description?: string;
   readOnly: boolean;
+  /** The rule that applies to this tool right now. */
+  policy: ApprovalPolicy;
 }
 
 export interface McpServerStatus {
@@ -376,6 +380,10 @@ export interface McpServerStatus {
   toolCount: number;
   tools: McpToolInfo[];
   error?: string;
+  /** Whatever the server wrote to stderr, kept so the user can see why it failed. */
+  stderr?: string;
+  /** The rule that applies to tools without one of their own. */
+  policy: ApprovalPolicy;
 }
 
 export type Mood =

@@ -405,6 +405,63 @@ try {
   }
 }
 
+// The MCP manager, in its own throwaway home: a real stdio server is started from
+// the repository's fixture, so the shot shows the tools it serves, what it printed
+// on stderr and one tool with a rule of its own.
+{
+  const mcpProfile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-docs-mcp-"));
+  writeFileSync(
+    path.join(mcpProfile, "openmonkey-config.json"),
+    JSON.stringify({
+      onboarding: { completed: true },
+      model: { provider: "bonsai" },
+      mcp: {
+        servers: [
+          {
+            id: "notes",
+            name: "Notes tools",
+            command: process.execPath,
+            args: [path.join(root, "test", "fixtures", "mcp-server.mjs")],
+            enabled: true,
+            approval: "ask",
+            toolPolicies: { write_note: "allow" },
+          },
+        ],
+      },
+    })
+  );
+
+  const mcpApp = await electron.launch({
+    args: [root],
+    env: { ...process.env, OPENMONKEY_USER_DATA: mcpProfile, OPENMONKEY_DEBUG_PORT: "" },
+  });
+  try {
+    const page = await mcpApp.firstWindow();
+    await page.waitForLoadState("domcontentloaded");
+    await page.setViewportSize({ width: 1440, height: 980 });
+    await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await page.getByRole("navigation").first().waitFor();
+    await page.getByRole("button", { name: "MCP servers", exact: true }).click();
+
+    const row = page.locator(".row").filter({ hasText: "Notes tools" }).first();
+    await row.locator(".chip").filter({ hasText: "ready" }).waitFor({ timeout: 120_000 });
+    await row.getByRole("button", { name: "Show tools for Notes tools" }).click();
+    await page.getByText("fixture server ready on stdio").waitFor({ timeout: 60_000 });
+    await page.waitForTimeout(500);
+
+    const servers = page.locator("section", { hasText: "Local servers" }).first();
+    await servers.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await servers.screenshot({ path: path.join(outDir, "settings-mcp.png") });
+  } catch (error) {
+    console.warn("settings-mcp.png skipped:", error.message);
+  } finally {
+    await mcpApp.evaluate(({ app }) => app.quit()).catch(() => undefined);
+    rmSync(mcpProfile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+}
+
 // The first run now ends with a reply, and it only happens once per profile, so this
 // shot is taken in its own throwaway profile after every other capture has skipped it.
 if (existsSync(modelPath)) {

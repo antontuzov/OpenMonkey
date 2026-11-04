@@ -26,13 +26,16 @@ import {
   MessageSquare,
   Monitor,
   Palette,
+  Pencil,
   Plug,
   Plus,
   RefreshCw,
+  RotateCcw,
   RotateCw,
   Search,
   ShieldCheck,
   SquareTerminal,
+  Terminal,
   Trash2,
   Upload,
   UserRound,
@@ -267,6 +270,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [mcpBusy, setMcpBusy] = useState<string | null>(null);
   const [mcpError, setMcpError] = useState("");
   const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [serverName, setServerName] = useState("");
   const [serverCommand, setServerCommand] = useState("");
   const [serverArgs, setServerArgs] = useState("");
@@ -699,7 +703,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     await refreshMcp();
   };
 
-  const addServer = async () => {
+  /**
+   * A tool follows the server until it is given a rule of its own, so picking the
+   * server's own answer clears the override instead of storing a duplicate.
+   */
+  const patchToolPolicy = async (serverId: string, toolName: string, policy: ApprovalPolicy) => {
+    const server = servers.find((item) => item.id === serverId);
+    if (!server) return;
+    const next = { ...(server.toolPolicies ?? {}) };
+    if (policy === server.approval) delete next[toolName];
+    else next[toolName] = policy;
+    await patchServer(serverId, { toolPolicies: Object.keys(next).length ? next : undefined });
+  };
+
+  const clearToolPolicy = async (serverId: string, toolName: string) => {
+    const server = servers.find((item) => item.id === serverId);
+    if (!server?.toolPolicies) return;
+    const next = { ...server.toolPolicies };
+    delete next[toolName];
+    await patchServer(serverId, { toolPolicies: Object.keys(next).length ? next : undefined });
+  };
+
+  const openAddForm = () => {
+    setEditingId(null);
+    setServerName("");
+    setServerCommand("");
+    setServerArgs("");
+    setServerEnv("");
+    setMcpError("");
+    setAdding(true);
+  };
+
+  const openEditForm = (server: McpServerConfig) => {
+    setEditingId(server.id);
+    setServerName(server.name);
+    setServerCommand(server.command);
+    setServerArgs(server.args.join(" "));
+    setServerEnv(Object.entries(server.env ?? {}).map(([key, value]) => `${key}=${value}`).join("\n"));
+    setMcpError("");
+    setAdding(true);
+  };
+
+  const closeForm = () => {
+    setAdding(false);
+    setEditingId(null);
+    setMcpError("");
+  };
+
+  const saveServer = async () => {
     const name = serverName.trim();
     const command = serverCommand.trim();
     if (!name || !command) {
@@ -715,25 +766,32 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
       env[line.slice(0, index).trim()] = line.slice(index + 1);
     }
-    const server: McpServerConfig = {
-      id: `mcp_${Date.now().toString(36)}`,
+    const fields = {
       name,
       command,
       args: splitArgs(serverArgs),
       env: Object.keys(env).length ? env : undefined,
-      enabled: true,
-      approval: "ask",
     };
     setMcpError("");
     try {
-      await onPatch({ mcp: { servers: [...servers, server] } });
-      await refreshMcp();
-      toast(t("toast.serverAdded"));
-      setAdding(false);
-      setServerName("");
-      setServerCommand("");
-      setServerArgs("");
-      setServerEnv("");
+      if (editingId) {
+        await onPatch({
+          mcp: { servers: servers.map((server) => (server.id === editingId ? { ...server, ...fields } : server)) },
+        });
+        await refreshMcp();
+        toast(t("toast.serverUpdated"));
+      } else {
+        const server: McpServerConfig = {
+          id: `mcp_${Date.now().toString(36)}`,
+          ...fields,
+          enabled: true,
+          approval: "ask",
+        };
+        await onPatch({ mcp: { servers: [...servers, server] } });
+        await refreshMcp();
+        toast(t("toast.serverAdded"));
+      }
+      closeForm();
     } catch (error) {
       setMcpError(error instanceof Error ? error.message : String(error));
     }
@@ -795,6 +853,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   useEffect(() => {
     if (section !== "extensions") return;
     void refreshMcp();
+    // A server that is still starting, or one that dies, should show up without
+    // the user leaving the page and coming back.
+    const timer = window.setInterval(() => void refreshMcp(), 2_500);
+    return () => window.clearInterval(timer);
   }, [section]);
 
   useEffect(() => {
@@ -1901,7 +1963,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <section>
                   <div className="flex items-center justify-between gap-4 mb-2">
                     <p className="section-label !mb-0">Local servers</p>
-                    <button onClick={() => setAdding((value) => !value)} className="btn !h-7 !px-2.5">
+                    <button onClick={() => (adding ? closeForm() : openAddForm())} className="btn !h-7 !px-2.5">
                       {adding ? <X size={11} /> : <Plus size={11} />}
                       {adding ? "Cancel" : "Add server"}
                     </button>
@@ -1909,6 +1971,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                   {adding && (
                     <div className="card p-4 mb-3">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-[11.5px] font-medium">
+                          {editingId ? `Edit ${serverName || "server"}` : "Add a server"}
+                        </p>
+                        <button onClick={closeForm} aria-label="Close the server form" className="icon-btn">
+                          <X size={12} />
+                        </button>
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         <label className="block">
                           <span className="text-[10px] text-muted">Display name</span>
@@ -1959,9 +2029,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </div>
                       {mcpError && <p className="text-[10.5px] text-danger mt-2">{mcpError}</p>}
                       <div className="flex justify-end mt-3">
-                        <button onClick={() => void addServer()} className="btn btn-primary">
-                          <Plus size={12} />
-                          Add and start
+                        <button onClick={() => void saveServer()} className="btn btn-primary">
+                          {editingId ? <Check size={12} /> : <Plus size={12} />}
+                          {editingId ? "Save and restart" : "Add and start"}
                         </button>
                       </div>
                     </div>
@@ -2025,6 +2095,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                   <RotateCw size={12} className={busy ? "animate-spin" : ""} />
                                 </button>
                                 <button
+                                  onClick={() => openEditForm(server)}
+                                  aria-label={`Edit ${server.name}`}
+                                  className="icon-btn"
+                                >
+                                  <Pencil size={12} />
+                                </button>
+                                <button
                                   onClick={() => (removingId === server.id ? void removeServer(server.id) : setRemovingId(server.id))}
                                   aria-label={`Remove ${server.name}`}
                                   className={`icon-btn ${removingId === server.id ? "!text-danger" : ""}`}
@@ -2049,26 +2126,70 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             )}
                             {expandedServer === server.id && (
                               <div className="px-4 pb-4 -mt-1">
+                                {live?.stderr && (
+                                  <div className="mb-2">
+                                    <p className="text-[10px] text-muted mb-1 flex items-center gap-1.5">
+                                      <Terminal size={11} />
+                                      Server output
+                                    </p>
+                                    <pre className="text-[10px] font-mono text-muted bg-card-2 border border-line rounded-lg px-3 py-2 max-h-28 overflow-auto whitespace-pre-wrap break-all">
+                                      {live.stderr}
+                                    </pre>
+                                  </div>
+                                )}
                                 {live && live.tools.length > 0 ? (
                                   <div className="space-y-1">
-                                    {live.tools.map((tool) => (
-                                      <div
-                                        key={tool.name}
-                                        className="flex items-start justify-between gap-3 bg-card-2 border border-line rounded-lg px-3 py-2"
-                                      >
-                                        <div className="min-w-0">
-                                          <p className="text-[11px] font-mono truncate">{tool.name}</p>
-                                          {tool.description && (
-                                            <p className="text-[10px] text-muted leading-relaxed mt-0.5 line-clamp-2">
-                                              {tool.description}
-                                            </p>
-                                          )}
+                                    {live.tools.map((tool) => {
+                                      const own = server.toolPolicies?.[tool.name];
+                                      const effective = tool.policy;
+                                      return (
+                                        <div
+                                          key={tool.name}
+                                          className="flex items-start justify-between gap-3 bg-card-2 border border-line rounded-lg px-3 py-2"
+                                        >
+                                          <div className="min-w-0">
+                                            <p className="text-[11px] font-mono truncate">{tool.name}</p>
+                                            {tool.description && (
+                                              <p className="text-[10px] text-muted leading-relaxed mt-0.5 line-clamp-2">
+                                                {tool.description}
+                                              </p>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center gap-2 shrink-0">
+                                            <span className={`chip shrink-0 ${tool.readOnly ? "chip-accent" : ""}`}>
+                                              {tool.readOnly ? "read-only" : "mutating"}
+                                            </span>
+                                            <div className="segmented">
+                                              {POLICY_OPTIONS.map((option) => (
+                                                <button
+                                                  key={option.value}
+                                                  onClick={() => void patchToolPolicy(server.id, tool.name, option.value)}
+                                                  aria-label={`${option.label} ${tool.name}`}
+                                                  className={`${effective === option.value ? "segmented-active" : ""} ${
+                                                    option.value === "block" && effective === "block" ? "!text-danger" : ""
+                                                  }`}
+                                                >
+                                                  {option.label}
+                                                </button>
+                                              ))}
+                                            </div>
+                                            {own && (
+                                              <button
+                                                onClick={() => void clearToolPolicy(server.id, tool.name)}
+                                                aria-label={`Let ${tool.name} follow the server rule`}
+                                                title="Follow the server rule"
+                                                className="icon-btn"
+                                              >
+                                                <RotateCcw size={12} />
+                                              </button>
+                                            )}
+                                          </div>
                                         </div>
-                                        <span className={`chip shrink-0 ${tool.readOnly ? "chip-accent" : ""}`}>
-                                          {tool.readOnly ? "read-only" : "mutating"}
-                                        </span>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
+                                    <p className="text-[10px] text-faint leading-relaxed">
+                                      A tool follows the server&apos;s rule until you give it one of its own.
+                                    </p>
                                   </div>
                                 ) : (
                                   <p className="text-[10.5px] text-muted">
@@ -2083,8 +2204,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     )}
                   </div>
                   <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
-                    Servers start with the app and reconnect when the config changes. Tools listed as read-only skip
-                    prompts; everything else follows the Ask / Allow / Block choice beside it.
+                    Servers start with the app and restart only when their command changes. Tools listed as
+                    read-only skip prompts; everything else follows the Ask / Allow / Block choice beside it, and
+                    a single tool can be given a rule of its own.
                   </p>
                 </section>
 

@@ -200,11 +200,12 @@ export class TaskManager {
         return latest();
       }
       decision = authorization.decision;
-    } else if (!config.get("agent").autoExecuteTasks) {
+    } else {
       // Read-only calls never prompt, but Block still means block.
-      const policy = this.approvalPolicy(request.type);
-      const serverPolicy = request.type === "mcp" ? this.mcp.serverPolicy(request.action) : null;
-      if (policy === "block" || serverPolicy === "block") {
+      const toolPolicy = request.type === "mcp" ? this.mcp.policyFor(request.action) : null;
+      const globalBlock =
+        !config.get("agent").autoExecuteTasks && this.approvalPolicy(request.type) === "block";
+      if (toolPolicy === "block" || globalBlock) {
         const message = "Blocked by your approval policy in Settings → Approvals";
         this.finish(task, "denied", message);
         this.recordAudit(task, conversationId, request, args, "blocked", "denied", message);
@@ -323,17 +324,19 @@ export class TaskManager {
     args: Record<string, unknown>,
     origin: "main" | "quick"
   ): Promise<{ approved: boolean; decision: AuditDecision; cancelled?: boolean }> {
+    // A rule set for one server or one tool is a choice about that item, so it
+    // holds even when the master switch would wave everything through.
+    if (request.type === "mcp" && this.mcp.policyFor(request.action) === "block") {
+      return { approved: false, decision: "blocked" };
+    }
     if (config.get("agent").autoExecuteTasks) return { approved: true, decision: "auto" };
 
     const policy = this.approvalPolicy(request.type);
     if (policy === "block") return { approved: false, decision: "blocked" };
 
-    if (request.type === "mcp") {
-      const serverPolicy = this.mcp.serverPolicy(request.action);
-      if (serverPolicy === "block") return { approved: false, decision: "blocked" };
-      if (serverPolicy === "allow") return { approved: true, decision: "policy" };
+    if (request.type === "mcp" && this.mcp.policyFor(request.action) === "allow") {
+      return { approved: true, decision: "policy" };
     }
-
     if (policy === "allow") return { approved: true, decision: "policy" };
 
     const key = toolKey(request.type, request.action);
