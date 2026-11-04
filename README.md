@@ -1,7 +1,7 @@
 # OpenMonkey
 
 <p align="center">
-  <img src="assets/brand/openmonkey-moods.webp" alt="OpenMonkey changing moods" width="220">
+  <img src="assets/brand/openmonkey-hero.png" alt="OpenMonkey: it runs on your Mac" width="420">
 </p>
 
 A local-only AI agent for your desktop. It runs a small language model on your own
@@ -12,8 +12,9 @@ window, the menu bar tray and the Dock icon at the same time.
 Nothing leaves the computer by default. There is no account, no telemetry, no API key
 and no network call except the ones you explicitly ask the agent to make.
 
-The animation above is built from the same portraits the app uses:
-`python3 scripts/make-logo-animation.py` regenerates it into `assets/brand/`.
+The ape art in this file is flat PNGs built from the same portraits the app uses;
+`python3 scripts/make-brand-art.py` regenerates them into `assets/brand/`.
+
 A single-page product site lives in [`landing/`](landing/index.html) — open
 `landing/index.html` directly or serve the folder with any static host.
 
@@ -222,6 +223,10 @@ unsubscribe function, so views do not leak listeners.
 lazily with a dynamic import rather than a static `require`.
 
 ## The 12 moods
+
+<p align="center">
+  <img src="assets/brand/openmonkey-moods.png" alt="The twelve mood portraits" width="640">
+</p>
 
 The agent infers a mood from the conversation and from its own replies. One
 `setCurrentMood` call propagates to the tray icon, the Dock icon, the chat avatar,

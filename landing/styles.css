@@ -162,10 +162,6 @@ img {
   filter: blur(6px);
 }
 
-.hero-art picture {
-  display: block;
-}
-
 .hero-portrait {
   position: relative;
   width: 320px;
@@ -465,9 +461,9 @@ img {
 }
 
 .visual-mood img {
-  width: 260px;
-  height: 260px;
-  border-radius: 50%;
+  width: min(100%, 460px);
+  height: auto;
+  border-radius: var(--radius);
   box-shadow: 0 18px 40px rgba(38, 37, 30, 0.16);
 }
 

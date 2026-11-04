@@ -15,7 +15,7 @@
     "test:integration": "node test/integration/run.mjs",
     "download-models": "tsx scripts/download-models.ts",
     "benchmark-model": "tsx scripts/benchmark-model.ts",
-    "brand:animation": "python3 scripts/make-logo-animation.py",
+    "brand:art": "python3 scripts/make-brand-art.py",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "package:mac": "npm run build && electron-builder --mac",
