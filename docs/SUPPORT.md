@@ -22,10 +22,11 @@ Never paste your passphrase, a backup file, or the contents of `data/secret.key`
 - **No model loaded.** Run `npm run download-models` in a development checkout, or
   open Settings → Model and use **Download** in an installed build. `docs/MODELS.md`
   lists paths and sizes.
-- **Gatekeeper blocked the app.** Builds from a tagged release are signed and
-  notarized; local `electron-builder` output is not. For an unsigned local build,
-  right-click → Open, or clear quarantine with
-  `xattr -d com.apple.quarantine /Applications/OpenMonkey.app`.
+- **Gatekeeper blocked the app.** Neither a tagged release nor a local
+  `electron-builder` build carries an Apple Developer ID — the package job signs and
+  notarizes only when the repository has the Apple secrets, and it does not. Clear
+  quarantine once:
+  `xattr -dr com.apple.quarantine /Applications/OpenMonkey.app`.
 - **The updater never installs anything.** The updater only runs in a packaged app, and
   only when **Network access** is on. Installed builds check at launch and every six
   hours; the channel lives in Settings → Desktop → Updates. A Developer ID-signed build

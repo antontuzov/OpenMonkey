@@ -33,9 +33,11 @@ The app opens normally from then on. Anything you build yourself with
 Because the build is unsigned, the in-app updater cannot finish its job either. On
 macOS, electron-updater hands the downloaded archive to Squirrel.Mac, and Squirrel
 verifies the code signature of both the app that is running and the update that is
-about to replace it. With no signature on either side, it refuses. New versions
-therefore arrive as a release here, and dropping the new DMG over the old app is the
-update. Signing the builds is the one thing that turns automatic updates on.
+about to replace it. With no signature on either side, it refuses. So the app never
+downloads what it cannot install: when a newer version appears it names the release and
+opens this page, and dropping the new DMG over the old app is the update. Your chats are
+in `~/Library/Application Support/openmonkey` and survive it. Signing the builds is the
+one thing that turns automatic updates on.
 
 ## Verifying what you downloaded
 

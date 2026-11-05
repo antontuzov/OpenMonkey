@@ -4,7 +4,23 @@ All notable changes to OpenMonkey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions match the tag
 that produced the build.
 
-## Unreleased
+## 0.9.2 — 2026-11-05
+
+The tag whose pipeline actually publishes. 0.9.1's build died before it could upload
+anything, so `releases/latest/download/OpenMonkey-arm64.dmg` was a 404 and the landing
+page linked to it; this release is the first file anyone can download.
+
+### Fixed
+
+- **A tag now reaches GitHub Releases.** The package job passed the Apple signing
+  secrets as environment variables even when the repository has none, and
+  electron-builder read an empty `CSC_LINK` as a certificate path and failed the build.
+  The names are now absent rather than blank, so an unsigned build completes and the
+  release job publishes the DMG, the updater zip, their block maps and `latest-mac.yml`.
+- **Installed builds show their mood art.** `assetPath()` joined onto
+  `Contents/Resources`, but the builder copies the folder to
+  `Contents/Resources/assets`, so every packaged run looked for the twelve portraits one
+  directory too high and the tray and Dock stayed empty.
 
 ### Changed
 

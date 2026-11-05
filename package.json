@@ -1,6 +1,6 @@
 {
   "name": "openmonkey",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "OpenMonkey - Local AI Agent with Dynamic Personality",
   "main": "dist/main/main.js",
   "author": "OpenMonkey contributors",
