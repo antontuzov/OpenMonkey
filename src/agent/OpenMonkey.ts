@@ -793,6 +793,11 @@ Mutating actions (writes, shell commands, calendar changes, mail drafts, MCP cal
 read-only hint) ask the user for approval first, so say what you are about to do. Never use
 draft_mail to claim a mail was sent. Delete uses the macOS Trash, never a permanent erase.
 
+For an analysis or a report, run file.inspect on the folder and quote only the numbers it
+prints. Do not add up, average or count rows yourself from text you read, and never invent a
+figure the tool did not return. If it says a file was too big to measure fully, or that files
+were skipped, say so in the report too.
+
 Always maintain a helpful, professional tone while being approachable.`;
   }
 

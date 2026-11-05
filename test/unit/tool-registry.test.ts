@@ -114,6 +114,20 @@ test("the image tools are declared the way the web tool reads them", () => {
   assert.match((validateToolArguments(save, { url: "https://x/y.png" }) as { error: string }).error, /"path"/);
 });
 
+test("the inspect action is declared the way the file tool reads it", () => {
+  const inspect = getToolDefinition("file", "inspect");
+  assert.ok(inspect);
+  // Measuring never writes, so it must not raise the approval dialog on every report.
+  assert.equal(inspect.mutating, false);
+  assert.deepEqual(validateToolArguments(inspect, {}), {
+    arguments: { path: "", pattern: "*" },
+  });
+  assert.deepEqual(validateToolArguments(inspect, { path: "~/Documents/sales", pattern: "*.csv" }), {
+    arguments: { path: "~/Documents/sales", pattern: "*.csv" },
+  });
+  assert.ok(describeBuiltInTools().includes("file.inspect"), "the prompt lists it, or the model cannot use it");
+});
+
 test("JSON Schema validation covers the MCP subset", () => {
   const schema = {
     type: "object",

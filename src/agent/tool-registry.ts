@@ -112,6 +112,24 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     timeoutMs: 45_000,
   },
   {
+    type: "file",
+    action: "inspect",
+    description:
+      "Measure files instead of eyeballing them: table rows, columns and number totals, JSON shape, document size",
+    args: {
+      path: optionalPath(),
+      pattern: {
+        type: "string",
+        description: "Name filter; * is the only wildcard",
+        maxLength: 200,
+        default: "*",
+      },
+    },
+    mutating: false,
+    // Up to 40 files, each read up to 4 MB — the slowest read the file tool can do.
+    timeoutMs: 90_000,
+  },
+  {
     type: "web",
     action: "fetch_page",
     description: "Fetch a page and extract its readable text",

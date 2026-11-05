@@ -19,6 +19,14 @@ that produced the build.
   robots.txt is respected, and a path outside the folders you gave the agent is refused
   before a single byte is fetched. Both actions sit behind Settings → Privacy → network
   access, so with the switch off neither request leaves the Mac.
+- **Analysis reports quote numbers the app measured.** `file.inspect` walks a folder and
+  answers with what a report actually needs — rows and columns, per-column min, max, mean
+  and sum, the values behind a category, the keys and shape of a JSON document, headings
+  and word counts — instead of handing the model a truncated page and hoping it adds up.
+  Tables are recognised by their shape rather than only by `.csv`, so a report exported as
+  `.txt` still gets measured. A file bigger than the 4 MB read cap is measured up to the
+  cap and says so, binary files are named rather than parsed, the walk stops at 40 matches
+  and reports the stop, and nothing is written: the action needs no approval.
 
 ### Fixed
 
@@ -45,6 +53,13 @@ that produced the build.
   but never navigated to the chat, relying on the starter-prompt spec to leave it there —
   and that spec is skipped on a machine with no model, so on CI the panel was absent and
   its transition duration came back as nothing. A spec that needs a surface now opens it.
+- Twenty-seven tests cover the measuring pass: eighteen on the facts themselves (quoted
+  commas and newlines inside a field, `n/a` in a price column, money signs, ragged rows,
+  a `.txt` export read as a table, a wide table that says what it left out) and nine that
+  run the tool over real files on disk, including one over the read cap and one over a
+  folder of 45 matches. Writing the capped-file test is what found the first crash: min
+  and max were taken with a spread over the whole column, so a 330 000-row export blew
+  the call stack. They are folded in a loop now.
 
 ## 0.9.2 — 2026-11-05
 

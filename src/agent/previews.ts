@@ -162,6 +162,17 @@ export async function buildPreview(
           note: "Missing parent folders are created too.",
         };
       }
+      if (action === "inspect") {
+        return {
+          kind: "fields",
+          title: "Measure files for a report",
+          fields: present([
+            field("Folder", target || allowedRoots()[0]),
+            field("Filter", args.pattern ? String(args.pattern) : "every file"),
+          ]),
+          note: "Counts and number ranges are read back, not the files themselves; nothing is changed.",
+        };
+      }
       return { kind: "text", title: `${action} ${target}`.trim(), body: JSON.stringify(args, null, 2) };
     }
 
