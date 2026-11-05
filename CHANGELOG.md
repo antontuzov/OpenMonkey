@@ -41,6 +41,10 @@ that produced the build.
   licence in the answer, the fallback when the first index is down, a non-image refused,
   an oversized file refused, a path outside the workspace refused without downloading,
   and nothing fetched at all when the network switch is off.
+- The motion spec stopped reading the settings page. It measured the chat panel's spring
+  but never navigated to the chat, relying on the starter-prompt spec to leave it there —
+  and that spec is skipped on a machine with no model, so on CI the panel was absent and
+  its transition duration came back as nothing. A spec that needs a surface now opens it.
 
 ## 0.9.2 — 2026-11-05
 

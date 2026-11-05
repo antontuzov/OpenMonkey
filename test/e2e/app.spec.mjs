@@ -62,6 +62,19 @@ async function openSettingsPage(section) {
   await page.getByRole("navigation").first().getByRole("button", { name: section, exact: true }).click();
 }
 
+/**
+ * Leaves settings and waits for the chat, whichever view is on screen.
+ *
+ * A spec that measures the chat's own surfaces cannot count on the test before it to
+ * have navigated back: the settings view replaces that whole tree, and on a machine
+ * with no model the spec that used to end on "Back to app" is skipped.
+ */
+async function openChat() {
+  const back = page.getByRole("button", { name: "Back to app" });
+  if (await back.isVisible().catch(() => false)) await back.click();
+  await expect(page.getByRole("textbox", { name: "Message OpenMonkey" })).toBeVisible();
+}
+
 test("a fresh profile opens the onboarding on Welcome", async () => {
   await expect(page.getByRole("button", { name: "Skip setup" })).toBeVisible();
   await expect(page.getByText("Welcome", { exact: true })).toBeVisible();
@@ -375,6 +388,10 @@ test("erasing the history clears the window instead of reloading it", async () =
 });
 
 test("the window feels native: a material sidebar and springs on every panel", async () => {
+  // The settings-search sweep above ends inside settings, and the starter-prompt spec
+  // that used to navigate back is skipped when there is no model, so come back here.
+  await openChat();
+
   const mac = process.platform === "darwin";
   const toMillis = (value) => {
     const text = String(value).trim();
