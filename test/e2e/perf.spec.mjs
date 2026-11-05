@@ -160,17 +160,37 @@ test("a long history mounts only the messages near the reader", async () => {
     .toBe(before + count);
 
   // …and the newest one is the one the reader is left looking at.
-  const windowState = async () => ({
-    start: Number(await scroll.getAttribute("data-virtual-start")),
-    end: Number(await scroll.getAttribute("data-virtual-end")),
-    following: await scroll.getAttribute("data-following"),
-    count: Number(await scroll.getAttribute("data-message-count")),
+  const samples = await page.evaluate(async () => {
+    const read = () => {
+      const element = document.querySelector("[data-chat-scroll]");
+      const mounted = [...document.querySelectorAll("[data-message-id]")].map((node) =>
+        node.getAttribute("data-message-id")
+      );
+      return {
+        count: element?.getAttribute("data-message-count"),
+        start: element?.getAttribute("data-virtual-start"),
+        end: element?.getAttribute("data-virtual-end"),
+        following: element?.getAttribute("data-following"),
+        top: element?.scrollTop,
+        height: element?.scrollHeight,
+        view: element?.clientHeight,
+        first: mounted[0],
+        last: mounted[mounted.length - 1],
+      };
+    };
+    const timeline = [];
+    for (let index = 0; index < 20; index += 1) {
+      timeline.push(read());
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return timeline;
   });
+  console.log("virtual window:", JSON.stringify(samples));
+
   await expect
-    .poll(async () => (await windowState()).end, { timeout: 15000 })
+    .poll(async () => Number(await scroll.getAttribute("data-virtual-end")), { timeout: 15000 })
     .toBe(before + count);
   await expect(page.locator('[data-message-id="hist_599"]')).toHaveCount(1);
-  console.log("virtual window:", await windowState());
 
   const mounted = await page.locator("[data-message-id]").count();
   const pads = await page.locator('[data-virtual-pad="top"]').count();
