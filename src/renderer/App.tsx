@@ -100,6 +100,10 @@ export default function App() {
       api.onApprovalRequest((request) => {
         if ((request.origin ?? "main") === "main") setApproval(request);
       }),
+      // The answer may have come from the notification, so the dialog stops waiting.
+      api.onApprovalResolved((payload) => {
+        setApproval((current) => (current?.requestId === payload.requestId ? null : current));
+      }),
       api.onOpenSettings(() => setView("settings")),
       // A quick ask opened from the popover becomes a chat and lands here.
       api.onOpenConversation((id) => {

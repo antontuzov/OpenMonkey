@@ -42,6 +42,16 @@ that produced the build.
   account removed. `publish.list_channels` reports what is set up and how much room is
   left, without ever showing the token. Both actions sit behind Settings → Privacy →
   network access.
+- **An approval can be answered from the notification itself.** The banner macOS shows
+  when a tool wants your yes now carries **Allow** and **Deny**, so a decision no longer
+  needs the window in front of you: press one and the tool runs, press the other and it
+  is refused. The dialog that was waiting for an answer closes by itself, in the main
+  window and in Quick Ask alike. The buttons can be turned off in Settings → Desktop,
+  where macOS — which decides on its own whether a banner shows actions at all — is
+  named as the one that has the last word. Quiet hours are there too: pick the hours,
+  and the notifications stay quiet inside them while the Dock badge still counts what
+  waits for you. A window that is already in front still gets no banner at all, and the
+  app never answers an approval twice.
 
 ### Fixed
 
@@ -85,6 +95,11 @@ that produced the build.
   it needs a screen; a headless test now reads the same titles out of the page source
   and asks the index for them. It caught the publishing policy row, which had been
   added to the Approvals page without being added to the index.
+- Twelve headless tests cover the notification: the banner carries Allow and Deny,
+  pressing Allow answers the approval with a yes, pressing Deny with a no, the buttons
+  stay away when they are turned off, a window that is in front gets no banner, quiet
+  hours silence it and the morning brings it back. Five more cover the hours
+  themselves, including a window that runs past midnight and a pair that means nothing.
 
 ## 0.9.2 — 2026-11-05
 

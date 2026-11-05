@@ -346,6 +346,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const memoryConfig = config.memory ?? { enabled: true, workspaceSearch: false };
   const publishing = config.publishing ?? { telegramChat: "", redditSubreddit: "" };
   const policies = { ...DEFAULT_POLICIES, ...(agent.approvalPolicies ?? {}) };
+  const quietHours = config.desktop.quietHours ?? { enabled: false, from: "22:00", to: "08:00" };
   /** What the publishing policy really does right now, so the page cannot lie about it. */
   const publishPolicy =
     agent.autoExecuteTasks ? "allow" : policies.publish;
@@ -1373,6 +1374,48 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         disabled={!config.desktop.notifications}
                         onChange={() => patchDesktop({ notifyOnComplete: !config.desktop.notifyOnComplete })}
                       />
+                    </SettingRow>
+                    <SettingRow title={t("desktop.notifyActions")} copy={t("desktop.notifyActionsCopy")}>
+                      <Toggle
+                        on={config.desktop.notifyActions}
+                        label={t("desktop.notifyActions")}
+                        disabled={!config.desktop.notifications}
+                        onChange={() => patchDesktop({ notifyActions: !config.desktop.notifyActions })}
+                      />
+                    </SettingRow>
+                    <SettingRow title={t("desktop.quietHours")} copy={t("desktop.quietHoursCopy")}>
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="time"
+                          key={`quiet-from-${quietHours.from}`}
+                          defaultValue={quietHours.from}
+                          aria-label={t("desktop.quietFrom")}
+                          disabled={!quietHours.enabled}
+                          onChange={(event) =>
+                            patchDesktop({ quietHours: { ...quietHours, from: event.target.value } })
+                          }
+                          className="field w-[104px] font-mono !text-[11px]"
+                        />
+                        <span className="text-[10.5px] text-faint">–</span>
+                        <input
+                          type="time"
+                          key={`quiet-to-${quietHours.to}`}
+                          defaultValue={quietHours.to}
+                          aria-label={t("desktop.quietTo")}
+                          disabled={!quietHours.enabled}
+                          onChange={(event) =>
+                            patchDesktop({ quietHours: { ...quietHours, to: event.target.value } })
+                          }
+                          className="field w-[104px] font-mono !text-[11px]"
+                        />
+                        <Toggle
+                          on={quietHours.enabled}
+                          label={t("desktop.quietHours")}
+                          onChange={() =>
+                            patchDesktop({ quietHours: { ...quietHours, enabled: !quietHours.enabled } })
+                          }
+                        />
+                      </div>
                     </SettingRow>
                   </div>
                   <p className="text-[10.5px] text-faint mt-2 px-1">{t("desktop.badge")}</p>

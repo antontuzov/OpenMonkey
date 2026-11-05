@@ -52,6 +52,8 @@ const ENTRIES: SettingEntry[] = [
   { page: "desktop", key: "desktop.keepRunning", keywords: ["tray", "menu bar", "close window", "background"] },
   { page: "desktop", key: "desktop.notifyApprovals", keywords: ["notification", "alert", "banner"] },
   { page: "desktop", key: "desktop.notifyDone", keywords: ["notification", "finished", "complete"] },
+  { page: "desktop", key: "desktop.notifyActions", keywords: ["allow", "deny", "banner", "approve from the notification"] },
+  { page: "desktop", key: "desktop.quietHours", keywords: ["quiet", "night", "do not disturb", "silent hours"] },
   { page: "desktop", key: "desktop.updateChannel", keywords: ["beta", "prerelease", "auto update", "new version"] },
   { page: "desktop", key: "desktop.quickAskToggle", keywords: ["option space", "popover", "global shortcut", "hotkey"] },
   { page: "desktop", key: "nav.newChat", keywords: ["shortcut", "command n", "keyboard"] },

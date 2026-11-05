@@ -49,6 +49,9 @@ const defaultConfig: Config = {
     closeToTray: process.platform !== "darwin",
     notifications: true,
     notifyOnComplete: true,
+    // Allow and Deny on the banner itself, so an approval need not open the window.
+    notifyActions: true,
+    quietHours: { enabled: false, from: "22:00", to: "08:00" },
     quickAsk: true,
     updateChannel: "stable",
   },
@@ -148,6 +151,8 @@ const PAGE_DEFAULTS: Partial<Record<SettingsPage, ConfigPatch>> = {
       closeToTray: defaultConfig.desktop.closeToTray,
       notifications: defaultConfig.desktop.notifications,
       notifyOnComplete: defaultConfig.desktop.notifyOnComplete,
+      notifyActions: defaultConfig.desktop.notifyActions,
+      quietHours: { ...defaultConfig.desktop.quietHours },
       quickAsk: defaultConfig.desktop.quickAsk,
       updateChannel: defaultConfig.desktop.updateChannel,
     },

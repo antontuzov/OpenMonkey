@@ -655,6 +655,10 @@ export interface Config {
     closeToTray: boolean;
     notifications: boolean;
     notifyOnComplete: boolean;
+    /** Put Allow and Deny on the notification itself, so the window need not open. */
+    notifyActions: boolean;
+    /** The hours the app stays quiet, in the user's own clock. */
+    quietHours: { enabled: boolean; from: string; to: string };
     quickAsk: boolean;
     /** Stable follows published releases; beta opts in to GitHub prereleases. */
     updateChannel: "stable" | "beta";
@@ -886,6 +890,8 @@ export interface ElectronAPI {
   onCycleMood: (callback: () => void) => () => void;
   onTaskUpdate: (callback: (task: Task) => void) => () => void;
   onApprovalRequest: (callback: (request: ApprovalRequest) => void) => () => void;
+  /** An approval was answered somewhere else — a notification — so the dialog must go. */
+  onApprovalResolved: (callback: (payload: { requestId: string }) => void) => () => void;
   onOpenSettings: (callback: () => void) => () => void;
   /** The history was locked or erased and the renderer must drop what it holds. */
   onHistoryReset: (callback: () => void) => () => void;

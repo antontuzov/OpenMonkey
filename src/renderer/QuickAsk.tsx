@@ -95,6 +95,10 @@ export const QuickAsk: React.FC = () => {
     const offApproval = api.onApprovalRequest((request) => {
       if (request.origin === "quick") setApproval(request);
     });
+    // The answer may have come from the notification, so the popover stops waiting.
+    const offResolved = api.onApprovalResolved((payload) => {
+      setApproval((current) => (current?.requestId === payload.requestId ? null : current));
+    });
     const offCommand = api.onMenuCommand((command) => {
       if (command !== "focus-composer") return;
       inputRef.current?.focus();
@@ -137,6 +141,7 @@ export const QuickAsk: React.FC = () => {
       offStatus();
       offMood();
       offApproval();
+      offResolved();
       offCommand();
       offStarted();
       offChat();

@@ -2,6 +2,7 @@ import { app, BrowserWindow, globalShortcut, Notification, screen } from "electr
 import * as path from "node:path";
 import config from "../utils/config";
 import logger from "../utils/logger";
+import { withinQuietHours } from "../utils/quiet-hours";
 import type { ApprovalRequest, Task } from "../utils/types";
 
 const PRELOAD = path.join(__dirname, "../preload/preload.js");
@@ -9,6 +10,10 @@ const PRELOAD = path.join(__dirname, "../preload/preload.js");
 export interface DesktopDeps {
   getMainWindow: () => BrowserWindow | null;
   showMainWindow: () => void;
+  /** Answer an approval that was raised in a window the user is not looking at. */
+  resolveApproval: (requestId: string, approved: boolean) => void;
+  /** The clock, so the quiet hours can be tested without waiting for the night. */
+  now?: () => Date;
 }
 
 /**
@@ -69,22 +74,46 @@ export class DesktopManager {
 
   notifyApproval(request: ApprovalRequest): void {
     this.approvedTasks.add(request.taskId);
-    if (!config.get("desktop").notifications || !Notification.isSupported()) return;
+    const settings = config.get("desktop");
+    if (!settings.notifications || !Notification.isSupported()) return;
+    // Quiet hours are the user's own hours: the badge still counts what waits.
+    if (withinQuietHours(this.now(), settings.quietHours)) return;
 
     const main = this.deps.getMainWindow();
     const quickVisible = Boolean(this.quickWindow?.isVisible());
     if (request.origin === "quick" ? quickVisible : main?.isFocused()) return;
 
+    const decisions = settings.notifyActions
+      ? [
+          { decision: "allow" as const, text: "Allow" },
+          { decision: "deny" as const, text: "Deny" },
+        ]
+      : undefined;
+
     const notification = new Notification({
       title: `${config.get("agent").name}: approval needed`,
       body: request.request.summary,
       silent: true,
+      ...(decisions
+        ? { actions: decisions.map((entry) => ({ type: "button" as const, text: entry.text })) }
+        : {}),
     });
     notification.on("click", () => {
       if (request.origin === "quick") this.showQuickAsk();
       else this.deps.showMainWindow();
     });
+    if (decisions) {
+      notification.on("action", (_event, index) => {
+        const decision = decisions[index]?.decision;
+        if (decision === "allow") this.deps.resolveApproval(request.requestId, true);
+        else if (decision === "deny") this.deps.resolveApproval(request.requestId, false);
+      });
+    }
     notification.show();
+  }
+
+  private now(): Date {
+    return this.deps.now?.() ?? new Date();
   }
 
   handleTask(task: Task): void {
@@ -97,10 +126,12 @@ export class DesktopManager {
 
     this.approvedTasks.delete(task.id);
     const main = this.deps.getMainWindow();
+    const settings = config.get("desktop");
     if (
-      !config.get("desktop").notifyOnComplete ||
-      !config.get("desktop").notifications ||
+      !settings.notifyOnComplete ||
+      !settings.notifications ||
       main?.isFocused() ||
+      withinQuietHours(this.now(), settings.quietHours) ||
       !Notification.isSupported()
     ) {
       return;

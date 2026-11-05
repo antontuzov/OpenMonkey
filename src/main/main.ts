@@ -259,6 +259,9 @@ async function initializeOpenMonkey(): Promise<void> {
     broadcast("approval-request", request);
     desktopManager?.notifyApproval(request);
   });
+  openMonkey.on("approval-resolved", (payload: { requestId: string }) => {
+    broadcast("approval-resolved", payload);
+  });
   openMonkey.on("chat", (event) => broadcast("chat-event", event));
   openMonkey.on("quick-ask-started", (payload) => broadcast("quick-ask-started", payload));
 
@@ -299,6 +302,7 @@ if (!app.requestSingleInstanceLock()) {
     desktopManager = new DesktopManager({
       getMainWindow: () => mainWindow,
       showMainWindow: () => showMainWindow(),
+      resolveApproval: (requestId, approved) => openMonkey?.resolveApproval(requestId, approved),
     });
 
     trayManager = new TrayManager(() => mainWindow, {

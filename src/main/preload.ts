@@ -139,6 +139,8 @@ const api: ElectronAPI = {
   onTaskUpdate: (callback: (task: Task) => void) => on<Task>("task-update", callback),
   onApprovalRequest: (callback: (request: ApprovalRequest) => void) =>
     on<ApprovalRequest>("approval-request", callback),
+  onApprovalResolved: (callback: (payload: { requestId: string }) => void) =>
+    on<{ requestId: string }>("approval-resolved", callback),
   onOpenSettings: (callback: () => void) => on<undefined>("open-settings", () => callback()),
   onHistoryReset: (callback: () => void) => on<undefined>("history-reset", () => callback()),
   onMenuCommand: (callback: (command: MenuCommand) => void) =>

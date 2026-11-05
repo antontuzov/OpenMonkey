@@ -395,6 +395,9 @@ export class TaskManager {
     logger.info("approval.resolved", { requestId, approved, remember });
     this.pendingApprovals.delete(requestId);
     this.closeStep(pending.taskId);
+    // The answer may have come from the notification rather than from a window, so
+    // every surface that is showing the dialog has to be told the wait is over.
+    this.agent.emit("approval-resolved", { requestId });
     pending.resolve({ approved, remember });
   }
 
@@ -405,6 +408,7 @@ export class TaskManager {
       logger.info("approval.cancelled", { taskId });
       this.pendingApprovals.delete(requestId);
       this.closeStep(taskId);
+      this.agent.emit("approval-resolved", { requestId });
       pending.resolve({ approved: false, remember: false, cancelled: true });
     }
     this.running.get(taskId)?.abort();
