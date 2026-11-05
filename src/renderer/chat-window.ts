@@ -118,6 +118,40 @@ export function computeWindow(input: ChatWindowInput): ChatWindowResult {
   };
 }
 
+/** How close to the newest message counts as being at the end of the chat. */
+export const BOTTOM_SLACK_PX = 96;
+
+/** A scroll shorter than this is the layout moving, not the reader. */
+const SCROLL_EPSILON_PX = 2;
+
+export interface FollowInput {
+  /** Where the reader is now. */
+  top: number;
+  /** The largest position the content allows. */
+  max: number;
+  /** Where the reader was before this change. */
+  previousTop: number;
+  /** Whether the chat is keeping its newest message in view. */
+  following: boolean;
+}
+
+/**
+ * Whether the chat should keep its newest message in view.
+ *
+ * A chat grows at the bottom, so the reader is at the end even when the
+ * content is taller than the window and the scrollbar is nowhere near the
+ * bottom. What stops the chat from following is the reader scrolling up to
+ * read the past — a layout that shrinks under them moves the scroll position
+ * too, and that is not them moving.
+ */
+export function shouldFollow(input: FollowInput): boolean {
+  if (input.max - input.top <= BOTTOM_SLACK_PX) return true;
+  const movedUp = input.top < input.previousTop - SCROLL_EPSILON_PX;
+  const clamped = input.max < input.previousTop - SCROLL_EPSILON_PX;
+  if (movedUp && !clamped) return false;
+  return input.following;
+}
+
 /**
  * The average height of the messages that have been measured, which is a better
  * guess for the ones that have not than a fixed number.

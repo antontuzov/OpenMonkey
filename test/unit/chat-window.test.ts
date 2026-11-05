@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { averageHeight, computeWindow, DEFAULT_ESTIMATE_PX } from "../../src/renderer/chat-window";
+import {
+  averageHeight,
+  computeWindow,
+  DEFAULT_ESTIMATE_PX,
+  shouldFollow,
+} from "../../src/renderer/chat-window";
 
 test("an empty chat mounts nothing", () => {
   const window = computeWindow({
@@ -92,4 +97,44 @@ test("the guess follows the messages that have been measured", () => {
   assert.equal(averageHeight([0, 0, 0]), DEFAULT_ESTIMATE_PX);
   assert.equal(averageHeight([100, 200]), 150);
   assert.equal(averageHeight([0, 300, 100]), 200);
+});
+
+test("a chat taller than the window keeps its newest message in view", () => {
+  // The reader is at the top of a chat that is far longer than the window:
+  // the chat grew at the bottom, so the newest message is still the one asked
+  // for.
+  assert.equal(
+    shouldFollow({ top: 0, max: 40_000, previousTop: 0, following: true }),
+    true
+  );
+});
+
+test("the reader scrolling up stops the chat from following", () => {
+  assert.equal(
+    shouldFollow({ top: 12_000, max: 40_000, previousTop: 39_000, following: true }),
+    false
+  );
+});
+
+test("a layout that shrinks under the reader does not stop the chat", () => {
+  // The content got shorter and the browser pulled the scroll position back:
+  // that is the layout moving, not the reader.
+  assert.equal(
+    shouldFollow({ top: 20_000, max: 20_000, previousTop: 39_000, following: true }),
+    true
+  );
+});
+
+test("the reader scrolling back to the end starts the chat following again", () => {
+  assert.equal(
+    shouldFollow({ top: 39_950, max: 40_000, previousTop: 12_000, following: false }),
+    true
+  );
+});
+
+test("a reader who scrolled up keeps reading the past", () => {
+  assert.equal(
+    shouldFollow({ top: 11_000, max: 40_000, previousTop: 12_000, following: false }),
+    false
+  );
 });

@@ -60,9 +60,13 @@ that produced the build.
   space they would take, so the scrollbar still tells the truth about how long the chat
   is. Every message is measured as it appears, so the space is its real height and not a
   guess, and the message you were reading is put back where it was when the rows around
-  it change size. Opening a chat lands on its newest message, as it always did. A
+  it change size. The chat keeps its newest message in view until you deliberately
+  scroll up into the past: a chat that grows while you watch it no longer leaves you
+  staring at the top of the history, and a layout that shrinks under you is not mistaken
+  for you leaving. Opening a chat lands on its newest message, as it always did. A
   history of six hundred messages mounts fewer than sixty of them; the end-to-end suite
-  measures that on every run and prints the number into the log.
+  measures that on every run and prints the number, and the scroll geometry, into the
+  log.
 - **Markdown is parsed while the answer arrives, not after it.** While the model is
   still writing, only the unfinished tail is parsed again — the blocks that are already
   finished are kept as they are, so a long answer stops being re-read on every token. A
@@ -116,16 +120,20 @@ that produced the build.
   stay away when they are turned off, a window that is in front gets no banner, quiet
   hours silence it and the morning brings it back. Five more cover the hours
   themselves, including a window that runs past midnight and a pair that means nothing.
-- Fourteen headless tests cover the chat window and the incremental parser without a
+- Nineteen headless tests cover the chat window and the incremental parser without a
   screen: a chat of five hundred messages mounts a screenful and nothing more, the
   space above and below adds up to the height of the whole list, a measured message
-  beats the guess, and a reader in the middle gets what is around them. The parser
-  keeps the blocks that are finished, produces the same blocks a full parse would, and
-  parses again when the answer is replaced, when a code fence is still open, or when a
-  quote is still growing. The end-to-end suite measures the same thing with a real
-  window: a history of six hundred messages mounts fewer than sixty message bodies, the
-  scroll height still covers all six hundred, and scrolling to the middle moves the
-  window there instead of mounting the lot.
+  beats the guess, and a reader in the middle gets what is around them. Five of them
+  cover when the chat follows its newest message: a chat taller than the window keeps
+  it in view, scrolling up into the past stops it, a layout that shrinks under the
+  reader is not mistaken for the reader leaving, and scrolling back to the end starts
+  it again. The parser keeps the blocks that are finished, produces the same blocks a
+  full parse would, and parses again when the answer is replaced, when a code fence is
+  still open, or when a quote is still growing. The end-to-end suite measures the same
+  thing with a real window: a history of six hundred messages mounts fewer than sixty
+  message bodies, the scroll height still covers all six hundred, the newest message
+  is the one left on screen, and scrolling to the middle moves the window there instead
+  of mounting the lot.
 
 ## 0.9.2 — 2026-11-05
 

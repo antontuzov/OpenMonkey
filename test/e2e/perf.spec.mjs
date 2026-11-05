@@ -130,6 +130,8 @@ test("a long history mounts only the messages near the reader", async () => {
   );
   expect(conversationId).toBeTruthy();
 
+  const scroll = page.locator("[data-chat-scroll]");
+  const before = Number(await scroll.getAttribute("data-message-count")) || 0;
   const count = 600;
   await app.evaluate(
     async ({ BrowserWindow }, { conversationId, count }) => {
@@ -152,32 +154,53 @@ test("a long history mounts only the messages near the reader", async () => {
     { conversationId, count }
   );
 
-  await expect(page.getByText(/history line 599/)).toBeVisible();
+  // Every message of the history is in the chat…
+  await expect
+    .poll(async () => Number(await scroll.getAttribute("data-message-count")))
+    .toBe(before + count);
+
+  // …and the newest one is the one the reader is left looking at.
+  await expect(page.locator('[data-message-id="hist_599"]')).toHaveCount(1);
 
   const mounted = await page.locator("[data-message-id]").count();
   const pads = await page.locator('[data-virtual-pad="top"]').count();
-  const scrollHeight = await page.evaluate(() => {
+  const geometry = await page.evaluate(() => {
     const element = document.querySelector("[data-chat-scroll]");
-    return element ? element.scrollHeight : 0;
+    if (!element) return null;
+    return {
+      scrollTop: element.scrollTop,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+    };
   });
-  console.log(`history of ${count}: ${mounted} mounted, scrollHeight ${scrollHeight}px`);
+  console.log(`history of ${count}: ${mounted} mounted, scrollHeight ${geometry?.scrollHeight}px`, geometry);
   test.info().annotations.push({
     type: "virtual",
-    description: JSON.stringify({ count, mounted, pads, scrollHeight }),
+    description: JSON.stringify({ count, mounted, pads, geometry }),
   });
 
   // The whole history still takes up room, so the scrollbar is honest.
-  expect(scrollHeight).toBeGreaterThan(2000);
+  expect(geometry.scrollHeight).toBeGreaterThan(2000);
   // But only a screenful of message bodies is built.
   expect(mounted).toBeLessThan(60);
   expect(pads).toBe(1);
+  // And the reader is at the newest message, not at the top of the history.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const element = document.querySelector("[data-chat-scroll]");
+        if (!element) return Number.MAX_SAFE_INTEGER;
+        return element.scrollHeight - element.scrollTop - element.clientHeight;
+      })
+    )
+    .toBeLessThanOrEqual(96);
 
   // Scrolling into the middle moves the window there rather than mounting everything.
   await page.evaluate(() => {
     const element = document.querySelector("[data-chat-scroll]");
     if (element) element.scrollTop = Math.floor(element.scrollHeight / 2);
   });
-  await expect(page.getByText(/history line 599/)).toBeHidden();
+  await expect(page.locator('[data-message-id="hist_599"]')).toHaveCount(0);
   const mountedMid = await page.locator("[data-message-id]").count();
   console.log(`history of ${count}: ${mountedMid} mounted in the middle`);
   expect(mountedMid).toBeLessThan(60);

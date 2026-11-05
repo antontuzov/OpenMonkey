@@ -542,7 +542,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [mentionIndex, setMentionIndex] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const stickRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const dragDepth = useRef(0);
   const pendingTokens = useRef("");
@@ -592,7 +591,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setIsSending(false);
     setLoadingMessages(true);
     // A chat that is opened shows its newest message, wherever the reader left off.
-    stickRef.current = true;
+    virtual.followEnd();
     setInput(sessionStorage.getItem(draftKey(conversationId)) ?? "");
 
     void window.electron
@@ -680,12 +679,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [conversationId]);
 
   useEffect(() => {
-    if (!stickRef.current) return;
-    const element = scrollRef.current;
-    if (element) element.scrollTop = element.scrollHeight;
-  }, [messages, stream?.content, failure, loadingMessages]);
-
-  useEffect(() => {
     const element = textareaRef.current;
     if (!element) return;
     element.style.height = "auto";
@@ -749,7 +742,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           const summary = await window.electron?.summarizeConversation(conversationId);
           if (summary) {
             setMessages((current) => [...current, summary]);
-            stickRef.current = true;
+            virtual.followEnd();
           }
         } catch (caught) {
           setNotice(caught instanceof Error ? caught.message : String(caught));
@@ -874,7 +867,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         : undefined,
     };
 
-    stickRef.current = true;
+    virtual.followEnd();
     setMessages((current) => [...current, userMessage]);
     setInput("");
     sessionStorage.removeItem(draftKey(conversationId));
@@ -907,7 +900,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setMessages((current) =>
       current[current.length - 1]?.role === "assistant" ? current.slice(0, -1) : current
     );
-    stickRef.current = true;
+    virtual.followEnd();
     setIsSending(true);
 
     try {
@@ -937,7 +930,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         content: text,
         timestamp: new Date(),
       };
-      stickRef.current = true;
+      virtual.followEnd();
       setMessages([...messages.slice(0, index), userMessage]);
       setFailure(null);
       setNotice(null);
@@ -1065,9 +1058,6 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [input]);
 
   const onScroll = () => {
-    const element = scrollRef.current;
-    if (!element) return;
-    stickRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
     virtual.onScroll();
   };
 
@@ -1131,6 +1121,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onScroll={onScroll}
         aria-busy={loadingMessages}
         data-chat-scroll="true"
+        data-message-count={messages.length}
         className="flex-1 overflow-y-auto px-8"
       >
         <span className="sr-only" role="status">
