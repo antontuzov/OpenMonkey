@@ -80,6 +80,11 @@ that produced the build.
   for upvotes, the hourly cap, the gap between two posts, the missing token and the
   missing target, the length limits of each channel, and nothing fetched at all when
   the network switch is off. The saved token never appears in what the model is told.
+- The settings pages check their own row titles against the search index without a
+  window. The end-to-end sweep types every row a page renders into the search box, but
+  it needs a screen; a headless test now reads the same titles out of the page source
+  and asks the index for them. It caught the publishing policy row, which had been
+  added to the Approvals page without being added to the index.
 
 ## 0.9.2 — 2026-11-05
 

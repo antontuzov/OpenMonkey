@@ -71,6 +71,7 @@ const ENTRIES: SettingEntry[] = [
   { page: "approvals", label: "Calendar", keywords: ["policy", "events", "apple events"] },
   { page: "approvals", label: "Mail", keywords: ["policy", "unread", "draft"] },
   { page: "approvals", label: "MCP tools", keywords: ["policy", "extension", "server"] },
+  { page: "approvals", label: "Publishing", keywords: ["policy", "post", "telegram", "reddit"] },
 
   // Memory
   { page: "memory", label: "Local memory", keywords: ["facts", "recall", "pin", "digest", "summary"] },
