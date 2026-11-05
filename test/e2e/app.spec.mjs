@@ -329,6 +329,10 @@ test("the empty chat offers starter prompts that fill the composer", async () =>
 });
 
 test("hiding the starter prompts sticks across a reload and can be restored", async () => {
+  // Hide and Show prompts are controls on the welcome panel, and that panel is the
+  // weights card when there is no model, so there is nothing to hide here.
+  test.skip(!weightsOnDisk, "no model, so the empty chat shows the weights card");
+
   await page.getByRole("button", { name: "Hide", exact: true }).click();
   await expect(page.getByRole("button", { name: "Read a folder", exact: true })).toHaveCount(0);
 

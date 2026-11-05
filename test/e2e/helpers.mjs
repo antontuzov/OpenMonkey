@@ -19,6 +19,15 @@ export const weightsOnDisk = existsSync(
 );
 
 /**
+ * Whether this run is on a CI runner instead of a developer's Mac.
+ *
+ * A GitHub runner has no display, so the window never composites and Chromium
+ * slows requestAnimationFrame for it. Frame gaps then measure the machine rather
+ * than the renderer, and a budget that holds on real hardware fails there.
+ */
+export const onCiRunner = Boolean(process.env.CI);
+
+/**
  * Empties the chat so the next model turn is asked without the failed attempts in
  * front of it.
  *
