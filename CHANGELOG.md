@@ -6,6 +6,20 @@ that produced the build.
 
 ## Unreleased
 
+### Added
+
+- **The agent can find pictures on the internet.** `web.image_search` asks two openly
+  licensed indexes — Openverse first, Wikimedia Commons behind it — and answers with the
+  direct image URL, the page the picture came from, its author and its licence, so a
+  result is something you may actually publish rather than a thumbnail of unknown
+  rights. DuckDuckGo's and Bing's image endpoints were tried first and rejected: they
+  bot-challenge most shared networks and return no rights information at all.
+  `web.save_image` downloads one of those hits into your own folders. The approval names
+  the destination, only `image/*` responses are written, the file is capped at 25 MB,
+  robots.txt is respected, and a path outside the folders you gave the agent is refused
+  before a single byte is fetched. Both actions sit behind Settings → Privacy → network
+  access, so with the switch off neither request leaves the Mac.
+
 ### Fixed
 
 - **Your chats are yours to read even before the model loads.** The sidebar's session
@@ -20,6 +34,13 @@ that produced the build.
   shared check instead of eight copies of the same path, and skips the rest on a runner
   that has never downloaded 546 MB. CI's e2e leg went from nine failures to none for
   every spec that does not actually ask the model for tokens.
+- The streaming test still measures frame gaps on a runner but no longer judges them:
+  without a display to composite for, the window is paced by the host and the same
+  stream that never exceeds 40 ms locally read 283 ms on CI.
+- Nine headless tests cover the image tools with every fetch stubbed: attribution and
+  licence in the answer, the fallback when the first index is down, a non-image refused,
+  an oversized file refused, a path outside the workspace refused without downloading,
+  and nothing fetched at all when the network switch is off.
 
 ## 0.9.2 — 2026-11-05
 

@@ -1,12 +1,25 @@
 import { shell } from "electron";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import type { TaskType } from "../../utils/types";
 import { assertNetworkAllowed } from "../../utils/network";
+import { resolveInWorkspace } from "./paths";
 
 const MAX_TEXT = 12_000;
+const MAX_IMAGE_BYTES = 25_000_000;
 const USER_AGENT = "OpenMonkey/1.0 (local agent)";
 const CACHE_TTL_MS = 10 * 60_000;
 const CACHE_ENTRIES = 30;
 const HOST_INTERVAL_MS = 750;
+
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/jpeg": ".jpg",
+  "image/png": ".png",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/avif": ".avif",
+  "image/svg+xml": ".svg",
+};
 
 interface CacheEntry {
   body: string;
@@ -16,6 +29,16 @@ interface CacheEntry {
 interface RobotsRule {
   allow: boolean;
   path: string;
+}
+
+interface ImageHit {
+  title: string;
+  image: string;
+  page: string;
+  credit: string;
+  license: string;
+  width: number;
+  height: number;
 }
 
 /**
@@ -32,12 +55,18 @@ export class WebBrowserTools {
   async execute(action: string, args: Record<string, unknown>): Promise<string> {
     // open_in_browser hands the URL to the user's own browser, so it is their request,
     // not the app's; only the fetches this class performs are behind the switch.
-    if (action === "fetch_page" || action === "search") assertNetworkAllowed(`web.${action}`);
+    if (action === "fetch_page" || action === "search" || action === "image_search" || action === "save_image") {
+      assertNetworkAllowed(`web.${action}`);
+    }
     switch (action) {
       case "fetch_page":
         return this.fetchPage(String(args.url ?? ""));
       case "search":
         return this.search(String(args.query ?? ""));
+      case "image_search":
+        return this.searchImages(String(args.query ?? ""), Number(args.count ?? 8));
+      case "save_image":
+        return this.saveImage(String(args.url ?? ""), String(args.path ?? ""));
       case "open_in_browser": {
         const url = this.assertHttpUrl(String(args.url ?? ""));
         await shell.openExternal(url);
@@ -56,7 +85,7 @@ export class WebBrowserTools {
     return parsed.toString();
   }
 
-  private async get(url: string, cacheKey: string): Promise<string> {
+  private async get(url: string, cacheKey: string, extraHeaders: Record<string, string> = {}): Promise<string> {
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expires > Date.now()) return cached.body;
 
@@ -64,7 +93,11 @@ export class WebBrowserTools {
     await this.waitTurn(parsed.host);
 
     const response = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT, Accept: "text/html,text/plain;q=0.9,*/*;q=0.5" },
+      headers: {
+        "User-Agent": USER_AGENT,
+        Accept: "text/html,text/plain;q=0.9,*/*;q=0.5",
+        ...extraHeaders,
+      },
       redirect: "follow",
       signal: AbortSignal.timeout(20_000),
     });
@@ -104,6 +137,104 @@ export class WebBrowserTools {
     return { title, url: parsed.toString(), text: readableText(html) };
   }
 
+  /**
+   * Two free indexes, tried in order, because a search tied to one service is only as
+   * reliable as that service: Openverse answered HTTP 500 for hours while this was
+   * being written. Both sources return JSON with a licence and an author attached,
+   * which is the point — DuckDuckGo's and Bing's image endpoints hand back thumbnails
+   * with no rights information and bot-challenge most shared networks, so a scraped
+   * result there is a picture the user cannot safely publish anywhere.
+   */
+  private async searchImages(query: string, count: number): Promise<string> {
+    const trimmed = query.trim();
+    if (!trimmed) throw new Error("Empty search query");
+    const wanted = Math.max(1, Math.min(20, Math.round(count)));
+
+    const sources: { label: string; find: (limit: number) => Promise<{ total: number; hits: ImageHit[] }> }[] = [
+      { label: "Openverse", find: (limit) => this.openverseImages(trimmed, limit) },
+      { label: "Wikimedia Commons", find: (limit) => this.commonsImages(trimmed, limit) },
+    ];
+
+    const failures: string[] = [];
+    for (const source of sources) {
+      try {
+        const { total, hits } = await source.find(wanted);
+        if (hits.length) return formatImages(trimmed, source.label, total, hits);
+        failures.push(`${source.label}: nothing licensed`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        failures.push(`${source.label}: ${/HTTP \d{3}/.exec(message)?.[0] ?? message}`);
+      }
+    }
+
+    if (failures.some((entry) => /429/.test(entry))) {
+      return "Image search is capped for this network today (429). Try again later; repeating the search only spends the cap faster.";
+    }
+    return `Image search found nothing for "${trimmed}" (${failures.join("; ")})`;
+  }
+
+  private async openverseImages(query: string, limit: number): Promise<{ total: number; hits: ImageHit[] }> {
+    const url = `https://api.openverse.org/v1/images/?query=${encodeURIComponent(query)}&page_size=${limit}&mature=false`;
+    const body = await this.get(url, `images:${query.toLowerCase()}`, { Accept: "application/json" });
+    const payload = parseJson(body);
+    const results = Array.isArray(payload.results) ? payload.results : [];
+    const hits = results
+      .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object")
+      .map((entry) => ({
+        title: decodeEntities(String(entry.title ?? "")),
+        image: typeof entry.url === "string" ? entry.url : "",
+        page: typeof entry.foreign_landing_url === "string" ? entry.foreign_landing_url : "",
+        credit: typeof entry.creator === "string" && entry.creator ? entry.creator : "author unknown",
+        license: [entry.license, entry.license_version].filter(Boolean).join(" "),
+        width: Number(entry.width ?? 0),
+        height: Number(entry.height ?? 0),
+      }))
+      .filter((hit) => /^https?:/i.test(hit.image))
+      .slice(0, limit);
+    return { total: Number(payload.result_count ?? hits.length), hits };
+  }
+
+  private async commonsImages(query: string, limit: number): Promise<{ total: number; hits: ImageHit[] }> {
+    const params = [
+      "action=query",
+      "format=json",
+      "generator=search",
+      `gsrsearch=${encodeURIComponent(`filetype:bitmap ${query}`)}`,
+      `gsrlimit=${limit}`,
+      "gsrnamespace=6",
+      "prop=imageinfo",
+      "iiprop=url|size|extmetadata",
+    ];
+    const body = await this.get(
+      `https://commons.wikimedia.org/w/api.php?${params.join("&")}`,
+      `commons:${query.toLowerCase()}`,
+      { Accept: "application/json" }
+    );
+    const payload = parseJson(body);
+    const pages = Object.values((payload.query as { pages?: Record<string, unknown> })?.pages ?? {})
+      .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === "object")
+      .sort((a, b) => Number(a.index ?? 0) - Number(b.index ?? 0));
+
+    const hits: ImageHit[] = [];
+    for (const page of pages) {
+      const info = (Array.isArray(page.imageinfo) ? page.imageinfo : [])[0] as Record<string, unknown> | undefined;
+      const image = typeof info?.url === "string" ? stripCommonsTracking(info.url) : "";
+      if (!/^https?:/i.test(image)) continue;
+      const meta = (info?.extmetadata ?? {}) as Record<string, { value?: string }>;
+      hits.push({
+        title: decodeEntities(String(page.title ?? image)).replace(/^File:/, ""),
+        image,
+        page: typeof page.descriptionurl === "string" ? page.descriptionurl : "",
+        credit: meta.Artist?.value ? stripHtml(meta.Artist.value) || "author unknown" : "author unknown",
+        license: meta.LicenseShortName?.value ? stripHtml(meta.LicenseShortName.value) : "",
+        width: Number(info?.width ?? 0),
+        height: Number(info?.height ?? 0),
+      });
+      if (hits.length >= limit) break;
+    }
+    return { total: hits.length, hits };
+  }
+
   /** DuckDuckGo's HTML-lite endpoint keeps search result parsing dependency-free. */
   private async search(query: string): Promise<string> {
     if (!query.trim()) throw new Error("Empty search query");
@@ -127,6 +258,42 @@ export class WebBrowserTools {
 
     if (!results.length) return `No results parsed for "${query}"`;
     return `Results for ${query}:\n${results.join("\n")}`;
+  }
+
+  /** Saves a found image into the workspace so a later task can attach or edit it. */
+  private async saveImage(url: string, target: string): Promise<string> {
+    const parsed = new URL(this.assertHttpUrl(url));
+    const file = await resolveInWorkspace(target);
+    if ((await fs.stat(file).catch(() => null))?.isDirectory()) throw new Error(`${file} is a folder`);
+    if (!(await this.allowedByRobots(parsed))) {
+      throw new Error(`robots.txt on ${parsed.host} disallows fetching ${parsed.pathname}`);
+    }
+
+    await this.waitTurn(parsed.host);
+    const response = await fetch(parsed.toString(), {
+      headers: { "User-Agent": USER_AGENT, Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status} from ${url}`);
+    if (response.url && !/^https?:/i.test(response.url)) throw new Error(`Refusing redirect to ${response.url}`);
+
+    const kind = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    const extension = IMAGE_EXTENSIONS[kind];
+    if (!extension) throw new Error(`${url} is ${kind || "an unknown type"}, not an image this app can save`);
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length) throw new Error(`${url} returned no bytes`);
+    if (buffer.length > MAX_IMAGE_BYTES) {
+      throw new Error(`${url} is ${buffer.length} bytes; the cap is ${MAX_IMAGE_BYTES}`);
+    }
+
+    const parsedFile = path.parse(file);
+    const destination =
+      parsedFile.ext.toLowerCase() === extension ? file : path.join(parsedFile.dir, `${parsedFile.name}${extension}`);
+    await fs.mkdir(path.dirname(destination), { recursive: true });
+    await fs.writeFile(destination, buffer);
+    return `Saved ${buffer.length} bytes (${kind}) to ${destination}\nSource: ${parsed.toString()}`;
   }
 
   /** Cached robots.txt lookup with longest-match rules and allow-on-tie. */
@@ -261,4 +428,38 @@ function decodeEntities(text: string): string {
 
 function truncate(text: string): string {
   return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT)}\n… truncated` : text;
+}
+
+function parseJson(body: string): Record<string, unknown> {
+  try {
+    return JSON.parse(body) as Record<string, unknown>;
+  } catch {
+    throw new Error("the answer is not JSON");
+  }
+}
+
+/** Commons appends its own tracking query to every URL it hands out; the file needs none of it. */
+function stripCommonsTracking(url: string): string {
+  return url.split("?utm_")[0];
+}
+
+function formatImages(query: string, source: string, total: number, hits: ImageHit[]): string {
+  const lines = hits.map((hit, index) => {
+    const size = hit.width && hit.height ? `${hit.width}x${hit.height}` : "size unknown";
+    return [
+      `${index + 1}. ${hit.title || hit.image} — ${size}, ${hit.license || "licence unlisted"}`,
+      `   image: ${hit.image}`,
+      hit.page ? `   source: ${hit.page}` : "",
+      `   credit: ${hit.credit}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  });
+
+  return [
+    `Openly licensed images for ${query} (${source}, ${total} found, ${hits.length} shown):`,
+    ...lines,
+    "",
+    "Check each licence before republishing; the credit line is part of what makes the image usable.",
+  ].join("\n");
 }

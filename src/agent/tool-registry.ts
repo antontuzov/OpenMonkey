@@ -129,6 +129,29 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     type: "web",
+    action: "image_search",
+    description: "Find images on the internet with their licence, author and source page",
+    args: {
+      query: { type: "string", required: true, description: "What to look for", maxLength: 512 },
+      count: { type: "number", description: "Results to return", min: 1, max: 20, default: 8 },
+    },
+    mutating: false,
+    // Two indexes, tried in order, so a dead first source still gets its answer.
+    timeoutMs: 50_000,
+  },
+  {
+    type: "web",
+    action: "save_image",
+    description: "Download an image URL into the workspace folder",
+    args: {
+      url: { type: "string", required: true, description: "Direct http(s) image URL", maxLength: 2_048 },
+      path: { type: "string", required: true, description: "Where to save it; the extension follows the real type", maxLength: 1_024 },
+    },
+    mutating: true,
+    timeoutMs: 60_000,
+  },
+  {
+    type: "web",
     action: "open_in_browser",
     description: "Open a URL in the user's default browser",
     args: { url: { type: "string", required: true, description: "http(s) URL", maxLength: 2_048 } },

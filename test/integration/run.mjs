@@ -40,6 +40,7 @@ try {
       path.join(here, "mlx-tokens.test.ts"),
       path.join(here, "updater.test.ts"),
       path.join(here, "asset-paths.test.ts"),
+      path.join(here, "web-images.test.ts"),
       path.join(here, "logger.test.ts"),
       path.join(here, "settings.test.ts"),
     ],
@@ -76,6 +77,7 @@ try {
     "mlx-tokens.test.cjs",
     "updater.test.cjs",
     "asset-paths.test.cjs",
+    "web-images.test.cjs",
     "logger.test.cjs",
     // Last: it writes config sections other suites read, and the runs are sequential.
     "settings.test.cjs",

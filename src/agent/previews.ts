@@ -259,6 +259,23 @@ export async function buildPreview(
           note: "The query goes to DuckDuckGo; the results come back as links and titles.",
         };
       }
+      if (action === "image_search") {
+        return {
+          kind: "fields",
+          title: "Search for images",
+          fields: present([field("Query", args.query), field("Count", args.count)]),
+          note: "The query goes to Openverse, which indexes only openly licensed images, so every result comes back with its licence and credit.",
+        };
+      }
+      if (action === "save_image") {
+        const target = typeof args.path === "string" ? expandPath(args.path) : "";
+        return {
+          kind: "fields",
+          title: "Save an image to a folder",
+          fields: present([field("From", args.url), field("To", target)]),
+          note: `The image is downloaded over HTTPS. The destination ${await describeTarget(target)}; the extension follows whatever the server actually returns.`,
+        };
+      }
       return {
         kind: "fields",
         title: "Open in your browser",

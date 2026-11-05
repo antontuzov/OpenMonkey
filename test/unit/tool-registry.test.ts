@@ -95,6 +95,25 @@ test("a non-object argument payload is refused", () => {
   assert.deepEqual(validateToolArguments(sample, null), { error: "arguments must be a JSON object" });
 });
 
+test("the image tools are declared the way the web tool reads them", () => {
+  const search = getToolDefinition("web", "image_search");
+  assert.ok(search);
+  assert.equal(search.mutating, false);
+  assert.deepEqual(validateToolArguments(search, { query: "snow leopard" }), {
+    arguments: { query: "snow leopard", count: 8 },
+  });
+  assert.match(
+    (validateToolArguments(search, { query: "cats", count: 500 }) as { error: string }).error,
+    /at most 20/
+  );
+
+  const save = getToolDefinition("web", "save_image");
+  assert.ok(save);
+  // A download writes a file, so it is the one image action the user approves.
+  assert.equal(save.mutating, true);
+  assert.match((validateToolArguments(save, { url: "https://x/y.png" }) as { error: string }).error, /"path"/);
+});
+
 test("JSON Schema validation covers the MCP subset", () => {
   const schema = {
     type: "object",
