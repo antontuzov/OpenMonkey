@@ -5,8 +5,10 @@ import {
   computeWindow,
   DEFAULT_ESTIMATE_PX,
   DEFAULT_OVERSCAN,
-  shouldFollow,
+  followState,
+  INITIAL_FOLLOW,
   type ChatWindowResult,
+  type FollowState,
 } from "./chat-window";
 
 /**
@@ -14,9 +16,6 @@ import {
  * guess is only trusted once a few messages have been measured.
  */
 const MIN_MEASURED = 3;
-
-/** A scroll shorter than this is the layout moving, not the reader. */
-const SCROLL_EPSILON_PX = 2;
 
 /**
  * The message the reader is looking at, and how far below the top of the window
@@ -76,8 +75,7 @@ export function useVirtualMessages(
   const observed = useRef(new Set<string>());
   const observer = useRef<ResizeObserver | null>(null);
   const anchor = useRef<Anchor | null>(null);
-  const following = useRef(true);
-  const previousTop = useRef(0);
+  const follow = useRef<FollowState>(INITIAL_FOLLOW);
   const resetRef = useRef(resetKey);
 
   // Another chat means another history: the reader starts at its newest message.
@@ -91,8 +89,7 @@ export function useVirtualMessages(
     observed.current.clear();
     callbacks.current.clear();
     anchor.current = null;
-    following.current = true;
-    previousTop.current = 0;
+    follow.current = INITIAL_FOLLOW;
     setHeights({});
     setScroll({ top: 0, height: 0, following: true });
   }
@@ -125,22 +122,17 @@ export function useVirtualMessages(
     const element = containerRef.current;
     if (!element) return;
     const top = element.scrollTop;
-    const height = element.clientHeight;
-    const max = Math.max(0, element.scrollHeight - height);
-    following.current = shouldFollow({
-      top,
-      max,
-      previousTop: previousTop.current,
-      following: following.current,
-    });
-    previousTop.current = top;
+    const height = element.scrollHeight;
+    const viewport = element.clientHeight;
+    const next = followState(follow.current, { top, height, viewport });
+    follow.current = next;
 
-    if (!following.current) {
+    if (!next.following) {
       // The reader is in the past: the message under their eye is the one that
       // has to stay put when the rows around it change height.
       anchor.current = captureAnchor(element, elements.current);
     }
-    setScroll({ top, height, following: following.current });
+    setScroll({ top, height: viewport, following: next.following });
   }, [containerRef]);
 
   // A message is measured as soon as it is on screen, so the observer has to
@@ -209,17 +201,20 @@ export function useVirtualMessages(
     const mark = anchor.current;
     anchor.current = null;
 
-    if (following.current) {
-      const max = Math.max(0, container.scrollHeight - container.clientHeight);
-      const movedUp = container.scrollTop < previousTop.current - SCROLL_EPSILON_PX;
-      const clamped = max < previousTop.current - SCROLL_EPSILON_PX;
-      if (movedUp && !clamped) {
+    if (follow.current.following) {
+      const top = container.scrollTop;
+      const height = container.scrollHeight;
+      const viewport = container.clientHeight;
+      const next = followState(follow.current, { top, height, viewport });
+      if (!next.following) {
         // The reader scrolled up between two frames: the chat stops following,
         // and the anchor keeps them where they are.
-        onScroll();
+        follow.current = next;
+        setScroll((current) => ({ ...current, following: false }));
       } else {
+        const max = Math.max(0, height - viewport);
         container.scrollTop = max;
-        previousTop.current = max;
+        follow.current = { following: true, top: max, height };
       }
     } else if (mark) {
       const element = elements.current.get(mark.id);
@@ -229,12 +224,12 @@ export function useVirtualMessages(
         const shift = now - mark.delta;
         if (Math.abs(shift) > 0.5) {
           container.scrollTop = Math.max(0, container.scrollTop + shift);
-          previousTop.current = container.scrollTop;
+          follow.current = { ...follow.current, top: container.scrollTop };
         }
       }
     }
 
-    if (!following.current) {
+    if (!follow.current.following) {
       anchor.current = captureAnchor(containerRef.current, elements.current);
     }
   });
@@ -260,13 +255,16 @@ export function useVirtualMessages(
   }, []);
 
   const followEnd = useCallback(() => {
-    following.current = true;
     const element = containerRef.current;
-    if (element) previousTop.current = element.scrollTop;
+    follow.current = {
+      following: true,
+      top: element?.scrollTop ?? 0,
+      height: element?.scrollHeight ?? 0,
+    };
     setScroll((current) => ({ ...current, following: true }));
   }, [containerRef]);
 
-  const followsEnd = useCallback(() => following.current, []);
+  const followsEnd = useCallback(() => follow.current.following, []);
 
   return {
     window,

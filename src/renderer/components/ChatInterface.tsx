@@ -1122,6 +1122,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         aria-busy={loadingMessages}
         data-chat-scroll="true"
         data-message-count={messages.length}
+        data-virtual-start={virtual.window.start}
+        data-virtual-end={virtual.window.end}
+        data-following={virtual.atBottom ? "true" : "false"}
         className="flex-1 overflow-y-auto px-8"
       >
         <span className="sr-only" role="status">

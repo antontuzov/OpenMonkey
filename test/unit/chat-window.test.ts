@@ -4,7 +4,9 @@ import {
   averageHeight,
   computeWindow,
   DEFAULT_ESTIMATE_PX,
-  shouldFollow,
+  followState,
+  INITIAL_FOLLOW,
+  type FollowState,
 } from "../../src/renderer/chat-window";
 
 test("an empty chat mounts nothing", () => {
@@ -99,42 +101,62 @@ test("the guess follows the messages that have been measured", () => {
   assert.equal(averageHeight([0, 300, 100]), 200);
 });
 
+/** The chat is 40,000 px of content in an 800 px window. */
+const TALL = { height: 40_800, viewport: 800 };
+
+/** The state of a chat that is following its newest message at the bottom. */
+const AT_END: FollowState = { following: true, top: 39_000, height: 40_800 };
+
 test("a chat taller than the window keeps its newest message in view", () => {
   // The reader is at the top of a chat that is far longer than the window:
   // the chat grew at the bottom, so the newest message is still the one asked
   // for.
-  assert.equal(
-    shouldFollow({ top: 0, max: 40_000, previousTop: 0, following: true }),
-    true
-  );
+  const next = followState(INITIAL_FOLLOW, { top: 0, ...TALL });
+  assert.equal(next.following, true);
 });
 
 test("the reader scrolling up stops the chat from following", () => {
-  assert.equal(
-    shouldFollow({ top: 12_000, max: 40_000, previousTop: 39_000, following: true }),
-    false
-  );
+  const next = followState(AT_END, { top: 12_000, ...TALL });
+  assert.equal(next.following, false);
 });
 
 test("a layout that shrinks under the reader does not stop the chat", () => {
   // The content got shorter and the browser pulled the scroll position back:
   // that is the layout moving, not the reader.
-  assert.equal(
-    shouldFollow({ top: 20_000, max: 20_000, previousTop: 39_000, following: true }),
-    true
-  );
+  const next = followState(AT_END, { top: 20_000, height: 20_800, viewport: 800 });
+  assert.equal(next.following, true);
+});
+
+test("a layout that grows under the reader does not stop the chat", () => {
+  const next = followState(AT_END, { top: 39_000, height: 60_800, viewport: 800 });
+  assert.equal(next.following, true);
+});
+
+test("a scroll of a few pixels is not the reader leaving", () => {
+  const next = followState(AT_END, { top: 38_995, ...TALL });
+  assert.equal(next.following, true);
 });
 
 test("the reader scrolling back to the end starts the chat following again", () => {
-  assert.equal(
-    shouldFollow({ top: 39_950, max: 40_000, previousTop: 12_000, following: false }),
-    true
-  );
+  const state: FollowState = { following: false, top: 12_000, height: 40_800 };
+  const next = followState(state, { top: 39_950, ...TALL });
+  assert.equal(next.following, true);
 });
 
 test("a reader who scrolled up keeps reading the past", () => {
-  assert.equal(
-    shouldFollow({ top: 11_000, max: 40_000, previousTop: 12_000, following: false }),
-    false
-  );
+  const state: FollowState = { following: false, top: 12_000, height: 40_800 };
+  const next = followState(state, { top: 11_000, ...TALL });
+  assert.equal(next.following, false);
+});
+
+test("a reader who scrolls down into the history keeps reading the past", () => {
+  const state: FollowState = { following: false, top: 12_000, height: 40_800 };
+  const next = followState(state, { top: 15_000, ...TALL });
+  assert.equal(next.following, false);
+});
+
+test("the chat remembers where the reader was", () => {
+  const next = followState(AT_END, { top: 30_000, ...TALL });
+  assert.equal(next.top, 30_000);
+  assert.equal(next.height, 40_800);
 });

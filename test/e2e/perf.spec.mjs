@@ -160,7 +160,17 @@ test("a long history mounts only the messages near the reader", async () => {
     .toBe(before + count);
 
   // …and the newest one is the one the reader is left looking at.
+  const windowState = async () => ({
+    start: Number(await scroll.getAttribute("data-virtual-start")),
+    end: Number(await scroll.getAttribute("data-virtual-end")),
+    following: await scroll.getAttribute("data-following"),
+    count: Number(await scroll.getAttribute("data-message-count")),
+  });
+  await expect
+    .poll(async () => (await windowState()).end, { timeout: 15000 })
+    .toBe(before + count);
   await expect(page.locator('[data-message-id="hist_599"]')).toHaveCount(1);
+  console.log("virtual window:", await windowState());
 
   const mounted = await page.locator("[data-message-id]").count();
   const pads = await page.locator('[data-virtual-pad="top"]').count();

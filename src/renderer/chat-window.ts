@@ -121,19 +121,29 @@ export function computeWindow(input: ChatWindowInput): ChatWindowResult {
 /** How close to the newest message counts as being at the end of the chat. */
 export const BOTTOM_SLACK_PX = 96;
 
-/** A scroll shorter than this is the layout moving, not the reader. */
-const SCROLL_EPSILON_PX = 2;
+/** How far the reader has to move before it counts as a scroll of their own. */
+export const READER_SLOP_PX = 12;
 
-export interface FollowInput {
+export interface FollowState {
+  /** True while the chat keeps its newest message in view. */
+  following: boolean;
+  /** Where the reader was the last time the chat looked. */
+  top: number;
+  /** How tall the content was the last time the chat looked. */
+  height: number;
+}
+
+export interface FollowObservation {
   /** Where the reader is now. */
   top: number;
-  /** The largest position the content allows. */
-  max: number;
-  /** Where the reader was before this change. */
-  previousTop: number;
-  /** Whether the chat is keeping its newest message in view. */
-  following: boolean;
+  /** How tall the content is now. */
+  height: number;
+  /** How tall the window is. */
+  viewport: number;
 }
+
+/** A chat that has just been opened follows its newest message. */
+export const INITIAL_FOLLOW: FollowState = { following: true, top: 0, height: 0 };
 
 /**
  * Whether the chat should keep its newest message in view.
@@ -141,15 +151,27 @@ export interface FollowInput {
  * A chat grows at the bottom, so the reader is at the end even when the
  * content is taller than the window and the scrollbar is nowhere near the
  * bottom. What stops the chat from following is the reader scrolling up to
- * read the past — a layout that shrinks under them moves the scroll position
- * too, and that is not them moving.
+ * read the past.
+ *
+ * The hard part is telling that apart from the layout moving under the
+ * reader: when the guess for a message that was never on screen is replaced
+ * by its real height, the content gets shorter and the browser pulls the
+ * scroll position back. That is not the reader moving, and the chat keeps
+ * following. So a move only counts as the reader's when the content did not
+ * shrink at the same time.
  */
-export function shouldFollow(input: FollowInput): boolean {
-  if (input.max - input.top <= BOTTOM_SLACK_PX) return true;
-  const movedUp = input.top < input.previousTop - SCROLL_EPSILON_PX;
-  const clamped = input.max < input.previousTop - SCROLL_EPSILON_PX;
-  if (movedUp && !clamped) return false;
-  return input.following;
+export function followState(state: FollowState, observation: FollowObservation): FollowState {
+  const max = Math.max(0, observation.height - observation.viewport);
+  const distance = max - observation.top;
+  const movedUp = observation.top < state.top - READER_SLOP_PX;
+  const movedDown = observation.top > state.top + READER_SLOP_PX;
+  const contentShrank = observation.height < state.height - 1;
+
+  let following = state.following;
+  if (movedUp && !contentShrank) following = false;
+  else if (movedDown && distance <= BOTTOM_SLACK_PX) following = true;
+
+  return { following, top: observation.top, height: observation.height };
 }
 
 /**
