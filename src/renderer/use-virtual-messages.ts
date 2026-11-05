@@ -7,6 +7,7 @@ import {
   DEFAULT_OVERSCAN,
   followState,
   INITIAL_FOLLOW,
+  pinnedFollow,
   type ChatWindowResult,
   type FollowState,
 } from "./chat-window";
@@ -242,6 +243,8 @@ export function useVirtualMessages(
       } else {
         const max = Math.max(0, height - viewport);
         container.scrollTop = max;
+        // The chat moved the page, so the reader stands where the chat put them.
+        follow.current = pinnedFollow(height, viewport);
         record(
           `l t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} w${shape.current.start}-${shape.current.end} p${shape.current.padTop}/${shape.current.padBottom} -> 1 pin${max}`
         );

@@ -175,6 +175,19 @@ export function followState(state: FollowState, observation: FollowObservation):
 }
 
 /**
+ * Where a chat that pinned to the newest message leaves the reader, as the
+ * machine's own idea of where they stand.
+ *
+ * The next frame is then compared against the place the chat just put them,
+ * not against the place it saw before the pin. Without this, the chat's own
+ * pin reads as the reader scrolling up: the content grows, the pinned position
+ * falls behind it, and the chat decides nobody asked for that.
+ */
+export function pinnedFollow(height: number, viewport: number): FollowState {
+  return { following: true, top: Math.max(0, height - viewport), height };
+}
+
+/**
  * The average height of the messages that have been measured, which is a better
  * guess for the ones that have not than a fixed number.
  */

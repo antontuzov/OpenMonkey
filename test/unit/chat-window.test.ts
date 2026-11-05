@@ -6,6 +6,7 @@ import {
   DEFAULT_ESTIMATE_PX,
   followState,
   INITIAL_FOLLOW,
+  pinnedFollow,
   type FollowState,
 } from "../../src/renderer/chat-window";
 
@@ -159,4 +160,25 @@ test("the chat remembers where the reader was", () => {
   const next = followState(AT_END, { top: 30_000, ...TALL });
   assert.equal(next.top, 30_000);
   assert.equal(next.height, 40_800);
+});
+
+test("a short chat pins to the top of its own content", () => {
+  assert.deepEqual(pinnedFollow(400, 626), { following: true, top: 0, height: 400 });
+});
+
+test("a pinned chat compares the next frame to where it put the reader", () => {
+  // The numbers a five-hundred-message history produced in CI: the content
+  // shrank as guesses became measurements, the chat pinned the reader to 12,683,
+  // then the history grew again and the position stayed there. The chat had
+  // moved the page itself, so this is not the reader leaving.
+  const pinned = pinnedFollow(13_309, 626);
+  assert.equal(pinned.top, 12_683);
+  const next = followState(pinned, { top: 12_683, height: 15_602, viewport: 626 });
+  assert.equal(next.following, true);
+});
+
+test("a reader who scrolls up after a pin still leaves", () => {
+  const pinned = pinnedFollow(13_309, 626);
+  const next = followState(pinned, { top: 12_483, height: 15_602, viewport: 626 });
+  assert.equal(next.following, false);
 });
