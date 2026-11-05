@@ -124,6 +124,78 @@ test("a long synthetic stream keeps frames inside the jank budget", async () => 
   if (!onCiRunner) expect(stats.maxFrameGap).toBeLessThan(120);
 });
 
+test("a long history mounts only the messages near the reader", async () => {
+  const conversationId = await page.evaluate(() =>
+    window.electron.getConversations().then((list) => list[0]?.id ?? null)
+  );
+  expect(conversationId).toBeTruthy();
+
+  const count = 600;
+  await app.evaluate(
+    async ({ BrowserWindow }, { conversationId, count }) => {
+      const send = (payload) => BrowserWindow.getAllWindows()[0].webContents.send("chat-event", payload);
+      for (let index = 0; index < count; index += 1) {
+        send({
+          type: "done",
+          conversationId,
+          message: {
+            id: `hist_${index}`,
+            role: index % 2 === 0 ? "user" : "assistant",
+            content: `history line ${index}`,
+            timestamp: new Date(),
+          },
+        });
+        // Give the renderer a frame now and then, so the queue does not drown it.
+        if (index % 25 === 0) await new Promise((resolve) => setTimeout(resolve, 16));
+      }
+    },
+    { conversationId, count }
+  );
+
+  await expect(page.getByText(/history line 599/)).toBeVisible();
+
+  const mounted = await page.locator("[data-message-id]").count();
+  const pads = await page.locator('[data-virtual-pad="top"]').count();
+  const scrollHeight = await page.evaluate(() => {
+    const element = document.querySelector("[data-chat-scroll]");
+    return element ? element.scrollHeight : 0;
+  });
+  console.log(`history of ${count}: ${mounted} mounted, scrollHeight ${scrollHeight}px`);
+  test.info().annotations.push({
+    type: "virtual",
+    description: JSON.stringify({ count, mounted, pads, scrollHeight }),
+  });
+
+  // The whole history still takes up room, so the scrollbar is honest.
+  expect(scrollHeight).toBeGreaterThan(2000);
+  // But only a screenful of message bodies is built.
+  expect(mounted).toBeLessThan(60);
+  expect(pads).toBe(1);
+
+  // Scrolling into the middle moves the window there rather than mounting everything.
+  await page.evaluate(() => {
+    const element = document.querySelector("[data-chat-scroll]");
+    if (element) element.scrollTop = Math.floor(element.scrollHeight / 2);
+  });
+  await expect(page.getByText(/history line 599/)).toBeHidden();
+  const mountedMid = await page.locator("[data-message-id]").count();
+  console.log(`history of ${count}: ${mountedMid} mounted in the middle`);
+  expect(mountedMid).toBeLessThan(60);
+
+  // And the message the reader scrolled to is one of the ones that is mounted.
+  const nearMiddle = await page.evaluate(() => {
+    const element = document.querySelector("[data-chat-scroll]");
+    if (!element) return null;
+    const middle = element.getBoundingClientRect().top + element.clientHeight / 2;
+    for (const node of document.querySelectorAll("[data-message-id]")) {
+      const rect = node.getBoundingClientRect();
+      if (rect.top <= middle && rect.bottom >= middle) return node.textContent ?? "";
+    }
+    return null;
+  });
+  expect(nearMiddle).toBeTruthy();
+});
+
 test("Settings loads from its own chunk after the first paint", async () => {
   await expect
     .poll(() => scriptRequests.some((entry) => /SettingsView/i.test(entry.url)), { timeout: 5000 })

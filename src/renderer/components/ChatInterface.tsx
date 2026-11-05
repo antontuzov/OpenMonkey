@@ -37,6 +37,7 @@ import { MessageContent } from "./MessageContent";
 import { moodLabel, t } from "../i18n";
 import { logoUrl } from "../assets";
 import { toast } from "./Toast";
+import { useVirtualMessages } from "../use-virtual-messages";
 
 interface ChatInterfaceProps {
   status: AgentStatus;
@@ -131,6 +132,8 @@ const ChatMessage: React.FC<{
   canEdit: boolean;
   canRegenerate: boolean;
   busy: boolean;
+  /** Only the newest message fades in; history that is mounted again must not. */
+  animate?: boolean;
   onRegenerate: () => void;
   onEdit: (text: string) => void;
   onQuote: () => void;
@@ -143,6 +146,7 @@ const ChatMessage: React.FC<{
   canEdit,
   canRegenerate,
   busy,
+  animate = false,
   onRegenerate,
   onEdit,
   onQuote,
@@ -214,7 +218,9 @@ const ChatMessage: React.FC<{
   };
 
   return (
-    <div className={`message-enter flex items-end gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}>
+    <div
+      className={`${animate ? "message-enter" : ""} flex items-end gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}
+    >
       {!isUser && (
         <img src={logoUrl(logoFile)} alt="" className="w-[26px] h-[26px] rounded-full mb-5 shrink-0" />
       )}
@@ -370,6 +376,7 @@ const StreamingMessage: React.FC<{ content: string; logoFile: string }> = ({ con
     <div className="flex flex-col items-start max-w-[78%]">
       <div className="message-assistant px-4 py-2.5">
         <MessageContent
+          incremental
           message={{ id: "stream", role: "assistant", content, timestamp: new Date() }}
         />
         {content.length > 0 && (
@@ -542,6 +549,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const tokenFrame = useRef(0);
   const mentionRequest = useRef(0);
 
+  // A long chat mounts only the messages near the reader; the rest are the space
+  // they would take.
+  const virtual = useVirtualMessages(messages, scrollRef, conversationId);
+
   // Tokens arrive faster than the display refreshes; batching them per frame
   // renders a long reply at screen rate instead of once per token.
   const cancelTokenFlush = () => {
@@ -580,6 +591,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setMentions([]);
     setIsSending(false);
     setLoadingMessages(true);
+    // A chat that is opened shows its newest message, wherever the reader left off.
+    stickRef.current = true;
     setInput(sessionStorage.getItem(draftKey(conversationId)) ?? "");
 
     void window.electron
@@ -1055,6 +1068,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const element = scrollRef.current;
     if (!element) return;
     stickRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+    virtual.onScroll();
   };
 
   const beginNewChat = () => {
@@ -1116,6 +1130,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         ref={scrollRef}
         onScroll={onScroll}
         aria-busy={loadingMessages}
+        data-chat-scroll="true"
         className="flex-1 overflow-y-auto px-8"
       >
         <span className="sr-only" role="status">
@@ -1204,39 +1219,69 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           )}
 
-          <div className="space-y-5">
-            {messages.map((message, index) => (
-              <ChatMessage
-                key={message.id}
-                message={message}
-                logoFile={logo.file}
-                canEdit={message.role === "user" && ready && !busy}
-                canRegenerate={index === lastAssistantIndex && index === messages.length - 1 && ready && !busy}
-                busy={busy}
-                onRegenerate={() => void regenerate()}
-                onEdit={(text) => void editAndResend(message.id, text)}
-                onQuote={() => quote(message.content)}
-                onBranch={() => void branch(message.id)}
-                onVariant={(from, next) => void showVariant(from, next)}
-                regenerating={busy && index === lastAssistantIndex}
-              />
-            ))}
-
-            {stream && <StreamingMessage content={stream.content} logoFile={logo.file} />}
-
-            {failure && (
-              <FailureCard
-                failure={failure}
-                canRetry={failure.origin === "stream"}
-                onRetry={() => void regenerate()}
-                onNewChat={beginNewChat}
-                onSettings={onOpenSettings}
-                onDismiss={() => setFailure(null)}
-              />
+          <div>
+            {virtual.window.padTop > 0 && (
+              <div style={{ height: virtual.window.padTop }} aria-hidden="true" data-virtual-pad="top" />
             )}
 
-            {!loadingMessages && status.state === "error" && messages.length > 0 && (
-              <ModelErrorCard message={status.message} onSettings={onOpenSettings} onRetry={retryModel} />
+            <div>
+              {messages.slice(virtual.window.start, virtual.window.end).map((message, offset) => {
+                const index = virtual.window.start + offset;
+                return (
+                  <div
+                    key={message.id}
+                    data-message-id={message.id}
+                    ref={virtual.measure(message.id)}
+                    className="pb-5"
+                  >
+                    <ChatMessage
+                      message={message}
+                      logoFile={logo.file}
+                      canEdit={message.role === "user" && ready && !busy}
+                      canRegenerate={
+                        index === lastAssistantIndex && index === messages.length - 1 && ready && !busy
+                      }
+                      animate={index === messages.length - 1}
+                      busy={busy}
+                      onRegenerate={() => void regenerate()}
+                      onEdit={(text) => void editAndResend(message.id, text)}
+                      onQuote={() => quote(message.content)}
+                      onBranch={() => void branch(message.id)}
+                      onVariant={(from, next) => void showVariant(from, next)}
+                      regenerating={busy && index === lastAssistantIndex}
+                    />
+                  </div>
+                );
+              })}
+
+              {stream && (
+                <div className="pb-5">
+                  <StreamingMessage content={stream.content} logoFile={logo.file} />
+                </div>
+              )}
+
+              {failure && (
+                <div className="pb-5">
+                  <FailureCard
+                    failure={failure}
+                    canRetry={failure.origin === "stream"}
+                    onRetry={() => void regenerate()}
+                    onNewChat={beginNewChat}
+                    onSettings={onOpenSettings}
+                    onDismiss={() => setFailure(null)}
+                  />
+                </div>
+              )}
+
+              {!loadingMessages && status.state === "error" && messages.length > 0 && (
+                <div className="pb-5">
+                  <ModelErrorCard message={status.message} onSettings={onOpenSettings} onRetry={retryModel} />
+                </div>
+              )}
+            </div>
+
+            {virtual.window.padBottom > 0 && (
+              <div style={{ height: virtual.window.padBottom }} aria-hidden="true" data-virtual-pad="bottom" />
             )}
           </div>
         </div>

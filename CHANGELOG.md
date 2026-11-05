@@ -53,6 +53,22 @@ that produced the build.
   waits for you. A window that is already in front still gets no banner at all, and the
   app never answers an approval twice.
 
+### Changed
+
+- **A long chat no longer builds every message.** The chat panel mounts only the messages
+  near the reader — a screenful of them — and the ones above and below stand in as the
+  space they would take, so the scrollbar still tells the truth about how long the chat
+  is. Every message is measured as it appears, so the space is its real height and not a
+  guess, and the message you were reading is put back where it was when the rows around
+  it change size. Opening a chat lands on its newest message, as it always did. A
+  history of six hundred messages mounts fewer than sixty of them; the end-to-end suite
+  measures that on every run and prints the number into the log.
+- **Markdown is parsed while the answer arrives, not after it.** While the model is
+  still writing, only the unfinished tail is parsed again — the blocks that are already
+  finished are kept as they are, so a long answer stops being re-read on every token. A
+  message that is opened again from the history is parsed once and kept in a bounded
+  cache, so a long history does not hold a copy of every answer it has ever shown.
+
 ### Fixed
 
 - **Your chats are yours to read even before the model loads.** The sidebar's session
@@ -100,6 +116,16 @@ that produced the build.
   stay away when they are turned off, a window that is in front gets no banner, quiet
   hours silence it and the morning brings it back. Five more cover the hours
   themselves, including a window that runs past midnight and a pair that means nothing.
+- Fourteen headless tests cover the chat window and the incremental parser without a
+  screen: a chat of five hundred messages mounts a screenful and nothing more, the
+  space above and below adds up to the height of the whole list, a measured message
+  beats the guess, and a reader in the middle gets what is around them. The parser
+  keeps the blocks that are finished, produces the same blocks a full parse would, and
+  parses again when the answer is replaced, when a code fence is still open, or when a
+  quote is still growing. The end-to-end suite measures the same thing with a real
+  window: a history of six hundred messages mounts fewer than sixty message bodies, the
+  scroll height still covers all six hundred, and scrolling to the middle moves the
+  window there instead of mounting the lot.
 
 ## 0.9.2 — 2026-11-05
 

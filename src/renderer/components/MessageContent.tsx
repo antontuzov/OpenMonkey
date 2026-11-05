@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Check, Copy, FileText, Image as ImageIcon, Quote } from "lucide-react";
 import type { CitationPreview, Message } from "../../utils/types";
 import { t } from "../i18n";
-import { isDiff, parseInline, parseMarkdown } from "../markdown";
+import { isDiff, parseInline, createIncrementalParser, type IncrementalParser } from "../markdown";
+import { parseMarkdownCached } from "../markdown-cache";
 import type { Block, InlineSpan, ListItem } from "../markdown";
 import { highlight } from "../highlight";
 import type { Token } from "../highlight";
@@ -327,8 +328,17 @@ const BlockView: React.FC<{ block: Block }> = ({ block }) => {
   }
 };
 
-export const MessageContent: React.FC<{ message: Message }> = ({ message }) => {
-  const blocks = useMemo(() => parseMarkdown(message.content), [message.content]);
+export const MessageContent: React.FC<{ message: Message; incremental?: boolean }> = ({
+  message,
+  incremental = false,
+}) => {
+  const parser = useRef<IncrementalParser | null>(null);
+  const blocks = useMemo(() => {
+    if (!incremental) return parseMarkdownCached(message.content);
+    // An answer that is still arriving is parsed once, not once per token.
+    parser.current ??= createIncrementalParser();
+    return parser.current.update(message.content);
+  }, [message.content, incremental]);
   const attachments = message.metadata?.attachments ?? [];
 
   return (

@@ -268,6 +268,73 @@ export function parseMarkdown(content: string): Block[] {
   return parseBlocks(lines, (index) => starts[index] ?? 0);
 }
 
+/** Move every offset of a block and the blocks inside it. */
+function shiftBlocks(blocks: Block[], delta: number): Block[] {
+  return blocks.map((block) => {
+    if (block.kind === "quote") {
+      return { ...block, offset: block.offset + delta, blocks: shiftBlocks(block.blocks, delta) };
+    }
+    return { ...block, offset: block.offset + delta };
+  });
+}
+
+/**
+ * Whether a block cannot change when more text arrives after it. A block that
+ * ends on a blank line is finished, and so is a fence that has been closed.
+ */
+function isFinishedBlock(raw: string, block: Block): boolean {
+  if (/\n[ \t]*\n$/.test(raw)) return true;
+  if (block.kind !== "code") return false;
+  const fence = FENCE.exec(raw);
+  if (!fence) return false;
+  const marker = fence[2][0];
+  return new RegExp(`^\\s*${marker}{3,}\\s*$`, "m").test(raw);
+}
+
+/**
+ * A parser that keeps the blocks it has already finished, so an answer that grows
+ * token by token is parsed once instead of once per token.
+ */
+export interface IncrementalParser {
+  /** The blocks for the text so far. */
+  blocks: Block[];
+  /** Parse a longer text, reusing the blocks that are already finished. */
+  update(text: string): Block[];
+}
+
+export function createIncrementalParser(): IncrementalParser {
+  let text = "";
+  let blocks: Block[] = [];
+
+  const update = (next: string): Block[] => {
+    if (next === text) return blocks;
+    // Anything but a longer text means the answer was replaced: start over.
+    if (!next.startsWith(text)) {
+      text = next;
+      blocks = parseMarkdown(next);
+      return blocks;
+    }
+
+    const last = blocks[blocks.length - 1];
+    const raw = last ? text.slice(last.offset) : "";
+    // Everything before the last unfinished block stays as it was.
+    const safeEnd = last && isFinishedBlock(raw, last) ? text.length : last ? last.offset : 0;
+    const kept = blocks.filter((block) => block.offset < safeEnd);
+    const rest = shiftBlocks(parseMarkdown(next.slice(safeEnd)), safeEnd);
+
+    text = next;
+    blocks = [...kept, ...rest];
+    return blocks;
+  };
+
+  return {
+    get blocks() {
+      return blocks;
+    },
+    update,
+  };
+}
+
 /** A fence is a diff when it says so, or when enough of its lines look like one. */
 export function isDiff(language: string, code: string): boolean {
   if (/^(diff|patch|u?diff)$/i.test(language.trim())) return true;
