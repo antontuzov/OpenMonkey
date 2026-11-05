@@ -176,6 +176,7 @@ test("a long history mounts only the messages near the reader", async () => {
         view: element?.clientHeight,
         first: mounted[0],
         last: mounted[mounted.length - 1],
+        log: element?.getAttribute("data-follow-log"),
       };
     };
     const timeline = [];
@@ -186,6 +187,7 @@ test("a long history mounts only the messages near the reader", async () => {
     return timeline;
   });
   console.log("virtual window:", JSON.stringify(samples));
+  console.log("follow trail:", samples[0].log, "→", samples[samples.length - 1].log);
 
   await expect
     .poll(async () => Number(await scroll.getAttribute("data-virtual-end")), { timeout: 15000 })

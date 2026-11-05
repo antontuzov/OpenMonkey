@@ -55,6 +55,8 @@ export interface VirtualMessages {
   followEnd: () => void;
   /** True while the newest message is being kept in view. */
   followsEnd: () => boolean;
+  /** A short trail of what the chat saw and decided, for the end-to-end spec. */
+  trace: () => string;
 }
 
 /**
@@ -77,6 +79,13 @@ export function useVirtualMessages(
   const anchor = useRef<Anchor | null>(null);
   const follow = useRef<FollowState>(INITIAL_FOLLOW);
   const resetRef = useRef(resetKey);
+  const trace = useRef<string[]>([]);
+
+  /** A short trail of what the chat saw and decided, for the end-to-end spec. */
+  const record = (entry: string) => {
+    trace.current.push(entry);
+    if (trace.current.length > 24) trace.current.shift();
+  };
 
   // Another chat means another history: the reader starts at its newest message.
   if (resetRef.current !== resetKey) {
@@ -124,8 +133,10 @@ export function useVirtualMessages(
     const top = element.scrollTop;
     const height = element.scrollHeight;
     const viewport = element.clientHeight;
-    const next = followState(follow.current, { top, height, viewport });
+    const before = follow.current;
+    const next = followState(before, { top, height, viewport });
     follow.current = next;
+    record(`o t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} -> ${next.following ? 1 : 0}`);
 
     if (!next.following) {
       // The reader is in the past: the message under their eye is the one that
@@ -205,16 +216,18 @@ export function useVirtualMessages(
       const top = container.scrollTop;
       const height = container.scrollHeight;
       const viewport = container.clientHeight;
-      const next = followState(follow.current, { top, height, viewport });
+      const before = follow.current;
+      const next = followState(before, { top, height, viewport });
       if (!next.following) {
         // The reader scrolled up between two frames: the chat stops following,
         // and the anchor keeps them where they are.
         follow.current = next;
+        record(`l t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} -> 0`);
         setScroll((current) => ({ ...current, following: false }));
       } else {
         const max = Math.max(0, height - viewport);
         container.scrollTop = max;
-        follow.current = { following: true, top: max, height };
+        record(`l t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} -> 1 pin${max}`);
       }
     } else if (mark) {
       const element = elements.current.get(mark.id);
@@ -266,6 +279,8 @@ export function useVirtualMessages(
 
   const followsEnd = useCallback(() => follow.current.following, []);
 
+  const readTrace = useCallback(() => trace.current.join(" | "), []);
+
   return {
     window,
     atBottom: scroll.following,
@@ -273,5 +288,6 @@ export function useVirtualMessages(
     measure,
     followEnd,
     followsEnd,
+    trace: readTrace,
   };
 }

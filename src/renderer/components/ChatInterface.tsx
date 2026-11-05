@@ -1125,6 +1125,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         data-virtual-start={virtual.window.start}
         data-virtual-end={virtual.window.end}
         data-following={virtual.atBottom ? "true" : "false"}
+        data-follow-log={virtual.trace()}
         className="flex-1 overflow-y-auto px-8"
       >
         <span className="sr-only" role="status">
