@@ -107,6 +107,11 @@ const ENTRIES: SettingEntry[] = [
   { page: "privacy", key: "privacy.backupFormatTitle", keywords: ["schema", "version", "format"] },
   { page: "privacy", key: "privacy.database", keywords: ["sqlite", "size", "file", "storage"] },
   { page: "privacy", key: "privacy.logs", keywords: ["file", "folder", "support"] },
+  {
+    page: "privacy",
+    key: "privacy.copies",
+    keywords: ["backup", "restore", "integrity", "crash", "corrupt", "recovery", "safe mode"],
+  },
   { page: "privacy", key: "diagnostics.logs", keywords: ["redacted", "rotate", "tail", "debug"] },
   { page: "privacy", key: "diagnostics.network", keywords: ["offline", "requests", "block network", "no internet"] },
 

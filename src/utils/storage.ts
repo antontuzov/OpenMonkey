@@ -17,12 +17,15 @@ import {
 } from "./secret-key";
 import type {
   AuditEntry,
+  BackupFile,
+  BackupStatus,
   Config,
   ConfigPatch,
   Conversation,
   ConversationKind,
   ConversationSearchHit,
   DiffLine,
+  IntegrityReport,
   MemoryFact,
   Message,
   MessageAttachment,
@@ -32,6 +35,14 @@ import type {
   TaskStep,
 } from "./types";
 import type { ExportBundle, ExportedMessage } from "./portability";
+import {
+  BACKUP_INTERVAL_MS,
+  backupFolder,
+  checkIntegrity,
+  isBackupName,
+  listBackups,
+  writeBackup,
+} from "./backup";
 
 const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
@@ -200,33 +211,42 @@ export class Storage {
   /** True when the database is closed and its contents unreadable until unlocked. */
   locked = false;
   private retentionTimer: NodeJS.Timeout | null = null;
+  private backupTimer: NodeJS.Timeout | null = null;
+  /** The last answer from SQLite, so the settings page does not have to re-read. */
+  private integrity: IntegrityReport | null = null;
 
   init(): void {
     if (this.db || this.locked) return;
-    if (!config.get("privacy").encryptData) {
-      this.keySource = "off";
-      this.openDatabase();
-      return;
-    }
-    let key: Buffer;
-    let source: KeySource;
     try {
-      ({ key, source } = loadOrCreateKey());
-    } catch (error) {
-      if (!(error instanceof HistoryLocked)) throw error;
-      // A passphrase-protected database is not opened at all until it is unlocked.
-      this.locked = true;
-      this.keySource = "locked";
-      logger.info("history.locked.at.start");
-      return;
+      if (!config.get("privacy").encryptData) {
+        this.keySource = "off";
+        this.openDatabase();
+        return;
+      }
+      let key: Buffer;
+      let source: KeySource;
+      try {
+        ({ key, source } = loadOrCreateKey());
+      } catch (error) {
+        if (!(error instanceof HistoryLocked)) throw error;
+        // A passphrase-protected database is not opened at all until it is unlocked.
+        this.locked = true;
+        this.keySource = "locked";
+        logger.info("history.locked.at.start");
+        return;
+      }
+      this.key = key;
+      this.keySource = source;
+      this.openDatabase();
+    } finally {
+      // The app keeps a copy of the database, so a crash is not the end of the
+      // history. A locked history is still a file worth copying.
+      this.backupOnLaunch();
     }
-    this.key = key;
-    this.keySource = source;
-    this.openDatabase();
   }
 
   private openDatabase(): void {
-    const file = path.join(dataRoot(), "openmonkey.db");
+    const file = this.databaseFile();
     this.db = new Database(file);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(`
@@ -365,8 +385,113 @@ export class Storage {
     this.runRetention();
     // A laptop that stays asleep for a week must still honour its retention policy,
     // so pruning is a timer as well as a launch step.
+    if (this.retentionTimer) clearInterval(this.retentionTimer);
     this.retentionTimer = setInterval(() => this.runRetention(), RETENTION_INTERVAL_MS);
     this.retentionTimer.unref();
+  }
+
+  /**
+   * A copy of the database, taken on a launch and every few hours after that.
+   * The copy is a file of its own, so a crash costs nothing but the last few
+   * minutes of history. A copy that is still fresh is not rewritten, and the
+   * work is done off the launch path so a big history cannot slow the start.
+   */
+  backupOnLaunch(): void {
+    const take = () => {
+      void this.backupNow().then((file) => {
+        if (file) logger.info("backup.written", { file: file.name });
+      });
+    };
+    const newest = listBackups()[0];
+    // A laptop that slept through its interval still gets a copy on the next launch.
+    if (!newest || Date.now() - newest.createdAt > BACKUP_INTERVAL_MS) take();
+    if (this.backupTimer) clearInterval(this.backupTimer);
+    this.backupTimer = setInterval(take, BACKUP_INTERVAL_MS);
+    this.backupTimer.unref();
+  }
+
+  /** The file the history lives in. */
+  private databaseFile(): string {
+    return path.join(dataRoot(), "openmonkey.db");
+  }
+
+  /**
+   * A second connection to the file, for the times the app's own is closed: a
+   * locked history is still a file worth copying and checking.
+   */
+  private detachedDatabase(): Database.Database | null {
+    const file = this.databaseFile();
+    if (!fs.existsSync(file)) return null;
+    try {
+      return new Database(file);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Take a copy of the database that stands on its own. */
+  async backupNow(): Promise<BackupFile | null> {
+    const own = this.db;
+    const db = own ?? this.detachedDatabase();
+    if (!db) return null;
+    try {
+      return await writeBackup(db);
+    } finally {
+      if (!own) db.close();
+    }
+  }
+
+  /** What SQLite thinks of the database. The answer is kept for the settings page. */
+  checkIntegrity(): IntegrityReport {
+    const own = this.db;
+    const db = own ?? this.detachedDatabase();
+    const report = db ? checkIntegrity(db) : { ok: false, detail: "There is no database to check yet." };
+    if (!own) db?.close();
+    this.integrity = report;
+    return report;
+  }
+
+  /**
+   * The copies the app keeps of its own database, and the state it believes the
+   * live one is in.
+   */
+  backupStatus(): BackupStatus {
+    const backups = listBackups();
+    return {
+      integrity: this.integrity,
+      backups,
+      intervalMs: BACKUP_INTERVAL_MS,
+      empty: !fs.existsSync(this.databaseFile()),
+    };
+  }
+
+  /**
+   * Puts a backup back in place of the live database. The key is not touched,
+   * so the rows the backup carries are readable again exactly as they were.
+   */
+  restoreBackup(name: string): { ok: boolean; detail: string } {
+    if (!isBackupName(name)) return { ok: false, detail: "That is not one of this app's backups." };
+    const source = path.join(backupFolder(), name);
+    if (!fs.existsSync(source)) return { ok: false, detail: "That backup is not there any more." };
+    const wasOpen = this.db !== null;
+    this.closeDatabase();
+    const file = this.databaseFile();
+    try {
+      fs.rmSync(`${file}-wal`, { force: true });
+      fs.rmSync(`${file}-shm`, { force: true });
+      fs.copyFileSync(source, file);
+      fs.chmodSync(file, 0o600);
+    } catch {
+      logger.error("backup.restore.failed");
+      if (wasOpen) this.openDatabase();
+      return { ok: false, detail: "The backup could not be put back." };
+    }
+    if (wasOpen) this.openDatabase();
+    // Whatever SQLite said about the file that was here before describes a file
+    // that no longer exists.
+    this.integrity = null;
+    logger.info("backup.restored", { file: name });
+    return { ok: true, detail: "The backup is back in place." };
   }
 
   /** Delete rows older than the configured window. Safe to call any time. */
@@ -1482,6 +1607,10 @@ export class Storage {
     if (this.retentionTimer) {
       clearInterval(this.retentionTimer);
       this.retentionTimer = null;
+    }
+    if (this.backupTimer) {
+      clearInterval(this.backupTimer);
+      this.backupTimer = null;
     }
     this.closeDatabase();
   }

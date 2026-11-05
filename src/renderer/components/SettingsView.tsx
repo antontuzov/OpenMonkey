@@ -60,8 +60,10 @@ import {
   type ApprovalPolicy,
   type AuditEntry,
   type AutomationProbe,
+  type BackupFile,
   type Config,
   type ConfigPatch,
+  type IntegrityReport,
   type McpServerConfig,
   type McpServerStatus,
   type MemorySnapshot,
@@ -304,6 +306,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [encryptBusy, setEncryptBusy] = useState(false);
   const [logText, setLogText] = useState<string | null>(null);
   const [logNotice, setLogNotice] = useState("");
+  const [copies, setCopies] = useState<BackupFile[]>([]);
+  const [copyIntervalMs, setCopyIntervalMs] = useState(0);
+  const [integrity, setIntegrity] = useState<IntegrityReport | null>(null);
+  const [copyNotice, setCopyNotice] = useState("");
+  const [copyBusy, setCopyBusy] = useState(false);
+  const [restoreArmed, setRestoreArmed] = useState<string | null>(null);
   const [resetArmed, setResetArmed] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -428,6 +436,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     void window.electron?.getModelStatus().then(setModels).catch(() => undefined);
     void window.electron?.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
     void window.electron?.getPublisherChannels().then(setPublishChannels).catch(() => undefined);
+    void refreshCopies();
   }, []);
 
   const refreshPublishChannels = async () => {
@@ -626,6 +635,71 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       await refreshPrivacy();
     } finally {
       setEncryptBusy(false);
+    }
+  };
+
+  /** The app's own copies of the database, and the check it last ran. */
+  const refreshCopies = async () => {
+    const status = await window.electron?.getBackupStatus().catch(() => null);
+    if (!status) return;
+    setCopies(status.backups);
+    setCopyIntervalMs(status.intervalMs);
+    setIntegrity(status.integrity);
+  };
+
+  const checkDatabase = async () => {
+    setCopyNotice("");
+    try {
+      const report = await window.electron?.checkDatabaseIntegrity();
+      if (!report) return;
+      setIntegrity(report);
+      setCopyNotice(report.ok ? t("privacy.copiesSound") : report.detail);
+    } catch (error) {
+      setCopyNotice(failureText(error));
+    }
+  };
+
+  const makeCopy = async () => {
+    setCopyNotice("");
+    setCopyBusy(true);
+    try {
+      const result = await window.electron?.backUpNow();
+      if (!result?.ok) {
+        setCopyNotice(result?.error ?? t("privacy.copiesFailed"));
+        return;
+      }
+      await refreshCopies();
+      setCopyNotice(t("privacy.copiesMade"));
+    } catch (error) {
+      setCopyNotice(failureText(error));
+    } finally {
+      setCopyBusy(false);
+    }
+  };
+
+  /**
+   * A copy going back in place of the live history is the one thing here that
+   * cannot be undone by the app, so it asks twice. The history it replaces is
+   * itself copied first, in the main process, so a change of mind is a second
+   * press of the same button.
+   */
+  const putBack = async (name: string) => {
+    if (restoreArmed !== name) {
+      setRestoreArmed(name);
+      return;
+    }
+    setRestoreArmed(null);
+    setCopyNotice("");
+    try {
+      const result = await window.electron?.restoreBackup(name);
+      if (!result?.ok) {
+        setCopyNotice(result?.error ?? t("privacy.copiesFailed"));
+        return;
+      }
+      await refreshCopies();
+      setCopyNotice(t("privacy.copiesRestored"));
+    } catch (error) {
+      setCopyNotice(failureText(error));
     }
   };
 
@@ -2927,7 +3001,53 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <SettingRow title={t("privacy.logs")} copy={t("privacy.logsCopy")}>
                       <span className="chip">local</span>
                     </SettingRow>
+                    <SettingRow title={t("privacy.copies")} copy={t("privacy.copiesCopy")}>
+                      <div className="flex items-center gap-2">
+                        <span className={`chip ${integrity && !integrity.ok ? "!text-danger" : ""}`}>
+                          {integrity === null
+                            ? t("privacy.copiesUnchecked")
+                            : integrity.ok
+                              ? t("privacy.copiesSound")
+                              : t("privacy.copiesDamaged")}
+                        </span>
+                        {copyIntervalMs > 0 && (
+                          <span className="chip">
+                            {t("privacy.copiesEvery")} {Math.round(copyIntervalMs / 3_600_000)} h
+                          </span>
+                        )}
+                        <button onClick={() => void checkDatabase()} className="btn">
+                          {t("privacy.copiesCheck")}
+                        </button>
+                        <button onClick={() => void makeCopy()} disabled={copyBusy} className="btn">
+                          {copyBusy ? t("privacy.copiesMaking") : t("privacy.copiesMake")}
+                        </button>
+                      </div>
+                    </SettingRow>
+                    {copies.map((file) => (
+                      <SettingRow
+                        key={file.name}
+                        title={new Date(file.createdAt).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                        copy={formatBytes(file.bytes)}
+                      >
+                        <button
+                          onClick={() => void putBack(file.name)}
+                          className={`btn ${restoreArmed === file.name ? "!text-danger" : ""}`}
+                        >
+                          {restoreArmed === file.name ? t("privacy.copiesConfirm") : t("privacy.copiesRestore")}
+                        </button>
+                      </SettingRow>
+                    ))}
                   </div>
+                  {copyNotice && (
+                    <p role="status" className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
+                      {copyNotice}
+                    </p>
+                  )}
                 </section>
 
                 <section>

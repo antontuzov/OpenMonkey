@@ -77,6 +77,10 @@ const api: ElectronAPI = {
   exportHistoryBackup: (passphrase: string) => ipcRenderer.invoke("export-history-backup", passphrase),
   importHistoryBackup: (passphrase: string, restoreSettings: boolean) =>
     ipcRenderer.invoke("import-history-backup", passphrase, restoreSettings),
+  getBackupStatus: () => ipcRenderer.invoke("get-backup-status"),
+  checkDatabaseIntegrity: () => ipcRenderer.invoke("check-database-integrity"),
+  backUpNow: () => ipcRenderer.invoke("back-up-now"),
+  restoreBackup: (name: string) => ipcRenderer.invoke("restore-backup", name),
   setConfig: (patch: ConfigPatch) => ipcRenderer.invoke("set-config", patch),
   resetSettingsSection: (page: SettingsPage) => ipcRenderer.invoke("reset-settings-section", page),
   approveTask: (requestId: string, approved: boolean, remember = false) =>

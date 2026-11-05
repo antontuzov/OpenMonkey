@@ -23,6 +23,7 @@ try {
     entryPoints: [
       path.join(here, "storage.test.ts"),
       path.join(here, "storage-migration.test.ts"),
+      path.join(here, "backup.test.ts"),
       // Not a suite: the migration test runs it in a child process.
       path.join(here, "migrate-legacy.ts"),
       path.join(here, "paths.test.ts"),
@@ -65,6 +66,7 @@ try {
   const files = [
     "storage.test.cjs",
     "storage-migration.test.cjs",
+    "backup.test.cjs",
     "paths.test.cjs",
     "approval.test.cjs",
     "task-diff.test.cjs",

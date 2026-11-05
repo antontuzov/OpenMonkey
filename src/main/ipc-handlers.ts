@@ -8,7 +8,9 @@ import {
   MOOD_LOGOS,
   RESETTABLE_PAGES,
   type Attachment,
+  type BackupStatus,
   type Config,
+  type IntegrityReport,
   type MenuCommand,
   type ModelPreference,
   type Mood,
@@ -628,6 +630,34 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       }
     }
   );
+
+  /**
+   * The app's own copies of its database. Unlike an encrypted export these never
+   * leave the machine, so they carry the same sealed rows the live file does and
+   * need no passphrase of their own to be read back.
+   */
+  ipcMain.handle("get-backup-status", (): BackupStatus => storage.backupStatus());
+
+  ipcMain.handle("check-database-integrity", (): IntegrityReport => storage.checkIntegrity());
+
+  ipcMain.handle("back-up-now", async (): Promise<PrivacyActionResult> => {
+    const file = await storage.backupNow();
+    if (!file) return { ok: false, error: "The copy could not be written." };
+    logger.info("backup.taken.by.hand", { file: file.name });
+    return { ok: true };
+  });
+
+  ipcMain.handle("restore-backup", async (_event, name: unknown): Promise<PrivacyActionResult> => {
+    if (typeof name !== "string") return { ok: false, error: "Choose one of the app's own copies." };
+    // Putting a copy back destroys what is in place now, so that goes into the
+    // rotation first: a restore is always undoable with the button on this page.
+    await storage.backupNow();
+    const result = storage.restoreBackup(name);
+    if (!result.ok) return { ok: false, error: result.detail };
+    // The chats underneath the open windows are the ones the backup carried.
+    deps.reloadHistoryViews();
+    return { ok: true };
+  });
 
   /**
    * A settings change and a section reset both land here, so a reset cannot skip the

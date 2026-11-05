@@ -52,6 +52,19 @@ that produced the build.
   and the notifications stay quiet inside them while the Dock badge still counts what
   waits for you. A window that is already in front still gets no banner at all, and the
   app never answers an approval twice.
+- **The app keeps copies of your history and says whether they are readable.** Settings →
+  Privacy now has a Storage row that runs SQLite's own integrity check against the
+  database, lists the copies the app has made and lets you put one back. A copy is taken
+  on launch when the newest one is older than twelve hours, so a laptop that slept
+  through its interval still gets one, and then every twelve hours while the app runs —
+  only while it runs, because nothing here is a background service. The five newest
+  copies are kept, each written `0600` in a folder that is `0700`, so another account on
+  the Mac cannot read them. Putting one back is undoable by design: the live database is
+  snapshotted into the rotation first, the button needs two presses, and a name that is
+  not one of the app's own copies is refused before the folder is opened. Copies work
+  while the history is locked with a passphrase, because the file is a plain SQLite
+  database and only the row values are sealed. A damaged database is named with the
+  verdict SQLite gave, not with a spinner.
 
 ### Changed
 
@@ -120,20 +133,36 @@ that produced the build.
   stay away when they are turned off, a window that is in front gets no banner, quiet
   hours silence it and the morning brings it back. Five more cover the hours
   themselves, including a window that runs past midnight and a pair that means nothing.
-- Twenty-four headless tests cover the chat window and the incremental parser without a
+- Twenty-seven headless tests cover the chat window and the incremental parser without a
   screen: a chat of five hundred messages mounts a screenful and nothing more, the
   space above and below adds up to the height of the whole list, a measured message
-  beats the guess, and a reader in the middle gets what is around them. Nine of them
+  beats the guess, and a reader in the middle gets what is around them. Twelve of them
   cover when the chat follows its newest message: a chat taller than the window keeps
   it in view, scrolling up into the past stops it, a layout that shrinks or grows
   under the reader is not mistaken for the reader leaving, a scroll of a few pixels is
-  not a scroll at all, and scrolling back to the end starts it again. The parser keeps
+  not a scroll at all, scrolling back to the end starts it again, and a pin the chat
+  made itself is not read as the reader leaving — the case the end-to-end run caught on
+  CI, where a five-hundred-message history pinned to 12,683 and the follow machine,
+  still holding 12,854 from before the pin, froze the window mid-history. The parser keeps
   the blocks that are finished, produces the same blocks a full parse would, and parses
   again when the answer is replaced, when a code fence is still open, or when a quote is
   still growing. The end-to-end suite measures the same thing with a real window: a
   history of six hundred messages mounts fewer than sixty message bodies, the scroll
   height still covers all six hundred, the newest message is the one left on screen,
   and scrolling to the middle moves the window there instead of mounting the lot.
+- Eight integration tests run the copies against real SQLite files: a launch writes one
+  and a launch with a fresh copy writes nothing, a copy stands on its own when it is
+  opened without the app (the chat written before it is read back out of the file),
+  only the five newest survive a rotation, a sound database says "ok", a database whose
+  second page has been scrambled over is reported as damaged with the verdict SQLite
+  gave, putting a copy back drops the chat that came after it and brings the one it
+  holds while the live connection keeps writing, a name that is not one of the app's
+  copies — `../../secret.key`, a nested folder, an empty string — is refused and leaves
+  the live file byte-for-byte unchanged, and the status names its own interval instead
+  of hardcoding one. Two end-to-end specs run the same thing through the page: the
+  Storage row checking a live database, copying it on demand and the files on disk
+  carrying `0700` and `0600`, and a restore that arms on the first press, completes on
+  the second, and drops the verdict it can no longer stand behind.
 
 ## 0.9.2 — 2026-11-05
 

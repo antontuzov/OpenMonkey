@@ -598,6 +598,39 @@ export interface PortabilityResult {
 }
 
 /**
+ * One of the app's own copies of the history database. These are plain SQLite
+ * files: the rows inside are sealed exactly as they are in the live database.
+ */
+export interface BackupFile {
+  /** The name inside the backup folder. */
+  name: string;
+  /** How much room it takes on disk. */
+  bytes: number;
+  /** When it was written. */
+  createdAt: number;
+}
+
+/** What SQLite thinks of the history database. */
+export interface IntegrityReport {
+  /** True when SQLite says the file is sound. */
+  ok: boolean;
+  /** What SQLite said, in its own words. */
+  detail: string;
+}
+
+/** The copies the app keeps of its own database, and how sound it believes them. */
+export interface BackupStatus {
+  /** The last check the app ran, or null when none has run since launch. */
+  integrity: IntegrityReport | null;
+  /** Every copy on disk, newest first. */
+  backups: BackupFile[];
+  /** How often the app takes one on its own, in milliseconds. */
+  intervalMs: number;
+  /** True when the database file is not there at all, which is not damage. */
+  empty: boolean;
+}
+
+/**
  * Persisted app settings. Defined here (not in utils/config.ts) because the renderer
  * type-checks against this file and must not pull in Electron or Node types.
  */
@@ -828,6 +861,14 @@ export interface ElectronAPI {
   eraseAllHistory: (confirmation: string) => Promise<PrivacyActionResult>;
   exportHistoryBackup: (passphrase: string) => Promise<PortabilityResult>;
   importHistoryBackup: (passphrase: string, restoreSettings: boolean) => Promise<PortabilityResult>;
+  /** The copies the app keeps of its own database, and the last check it ran. */
+  getBackupStatus: () => Promise<BackupStatus>;
+  /** Ask SQLite, right now, whether the history file is sound. */
+  checkDatabaseIntegrity: () => Promise<IntegrityReport>;
+  /** Take a copy to keep beside the live database. */
+  backUpNow: () => Promise<PrivacyActionResult>;
+  /** Put one of those copies back in place of the live database. */
+  restoreBackup: (name: string) => Promise<PrivacyActionResult>;
   setConfig: (patch: ConfigPatch) => Promise<Config>;
   /** Restore one page's own settings to their defaults. */
   resetSettingsSection: (page: SettingsPage) => Promise<Config>;
