@@ -1126,7 +1126,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         data-virtual-end={virtual.window.end}
         data-following={virtual.atBottom ? "true" : "false"}
         data-follow-log={virtual.trace()}
-        className="flex-1 overflow-y-auto px-8"
+        // The browser's own scroll anchoring moves the position when the mounted
+        // rows change, which reads as the reader leaving. This chat keeps its
+        // place itself.
+        className="flex-1 overflow-y-auto px-8 [overflow-anchor:none]"
       >
         <span className="sr-only" role="status">
           {loadingMessages ? t("chat.loadingHistory") : ""}

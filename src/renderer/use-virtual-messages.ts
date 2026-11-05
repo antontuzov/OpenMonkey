@@ -80,6 +80,7 @@ export function useVirtualMessages(
   const follow = useRef<FollowState>(INITIAL_FOLLOW);
   const resetRef = useRef(resetKey);
   const trace = useRef<string[]>([]);
+  const shape = useRef({ start: 0, end: 0, padTop: 0, padBottom: 0 });
 
   /** A short trail of what the chat saw and decided, for the end-to-end spec. */
   const record = (entry: string) => {
@@ -136,7 +137,9 @@ export function useVirtualMessages(
     const before = follow.current;
     const next = followState(before, { top, height, viewport });
     follow.current = next;
-    record(`o t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} -> ${next.following ? 1 : 0}`);
+    record(
+      `o t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} w${shape.current.start}-${shape.current.end} p${shape.current.padTop}/${shape.current.padBottom} -> ${next.following ? 1 : 0}`
+    );
 
     if (!next.following) {
       // The reader is in the past: the message under their eye is the one that
@@ -203,6 +206,16 @@ export function useVirtualMessages(
     return () => instance.disconnect();
   }, [containerRef, onScroll]);
 
+  // The window's own shape, kept for the trail the end-to-end spec prints.
+  useLayoutEffect(() => {
+    shape.current = {
+      start: window.start,
+      end: window.end,
+      padTop: window.padTop,
+      padBottom: window.padBottom,
+    };
+  });
+
   // The chat keeps its newest message in view until the reader scrolls up to
   // read the past. After the rows moved, the position they asked for is put
   // back: the end of the chat, or the message that was under the eye.
@@ -222,12 +235,16 @@ export function useVirtualMessages(
         // The reader scrolled up between two frames: the chat stops following,
         // and the anchor keeps them where they are.
         follow.current = next;
-        record(`l t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} -> 0`);
+        record(
+      `l t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} w${shape.current.start}-${shape.current.end} p${shape.current.padTop}/${shape.current.padBottom} -> 0`
+    );
         setScroll((current) => ({ ...current, following: false }));
       } else {
         const max = Math.max(0, height - viewport);
         container.scrollTop = max;
-        record(`l t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} -> 1 pin${max}`);
+        record(
+          `l t${top} h${height} v${viewport} s${before.top}/${before.height}/${before.following ? 1 : 0} w${shape.current.start}-${shape.current.end} p${shape.current.padTop}/${shape.current.padBottom} -> 1 pin${max}`
+        );
       }
     } else if (mark) {
       const element = elements.current.get(mark.id);
