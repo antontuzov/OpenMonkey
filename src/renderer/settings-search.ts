@@ -107,6 +107,14 @@ const ENTRIES: SettingEntry[] = [
   { page: "privacy", key: "diagnostics.logs", keywords: ["redacted", "rotate", "tail", "debug"] },
   { page: "privacy", key: "diagnostics.network", keywords: ["offline", "requests", "block network", "no internet"] },
 
+  // Publishing
+  { page: "publishing", label: "Telegram chat", keywords: ["telegram", "channel id", "chat id", "bot"] },
+  { page: "publishing", label: "Telegram bot token", keywords: ["token", "botfather", "secret", "keychain"] },
+  { page: "publishing", label: "Reddit subreddit", keywords: ["reddit", "subreddit", "community", "r/"] },
+  { page: "publishing", label: "Reddit credentials", keywords: ["reddit", "script app", "client id", "password", "login"] },
+  { page: "publishing", label: "Posting policy", keywords: ["approval", "audit", "upvote", "spam", "policy"] },
+  { page: "publishing", label: "Room left this hour", keywords: ["rate limit", "cap", "quota", "posts"] },
+
   // Model
   { page: "model", label: `${BONSAI_4B.name} GGUF`, keywords: ["weights", "download", "sha", "verify", "delete"] },
   { page: "model", label: "MLX server", keywords: ["runtime", "backend", "apple silicon"] },

@@ -3,6 +3,7 @@ import { FileSystemTools } from "./tools/file-system";
 import { WebBrowserTools } from "./tools/web-browser";
 import { ShellTools } from "./tools/shell-commands";
 import { CalendarEmailTools } from "./tools/calendar-email";
+import { PublishTools } from "./tools/publish";
 import { McpManager } from "./mcp-manager";
 import { MemoryManager } from "./memory-manager";
 import { buildPreview } from "./previews";
@@ -34,7 +35,16 @@ import type {
   ToolPreview,
 } from "../utils/types";
 
-const TOOL_TYPES = new Set<TaskType>(["file", "web", "shell", "calendar", "email", "mcp", "memory"]);
+const TOOL_TYPES = new Set<TaskType>([
+  "file",
+  "web",
+  "shell",
+  "calendar",
+  "email",
+  "mcp",
+  "memory",
+  "publish",
+]);
 
 interface ExecutableTool {
   execute(action: string, args: Record<string, unknown>, context?: ToolContext): Promise<string>;
@@ -52,6 +62,7 @@ export class TaskManager {
   private webBrowser = new WebBrowserTools();
   private shell = new ShellTools();
   private calendarEmail = new CalendarEmailTools();
+  private publisher = new PublishTools();
   private mcp = new McpManager();
   private memory = new MemoryManager();
   private activeTasks = new Map<string, Task>();
@@ -114,6 +125,8 @@ export class TaskManager {
       case "calendar":
       case "email":
         return this.calendarEmail;
+      case "publish":
+        return this.publisher;
       case "memory":
         return this.memory;
       default:

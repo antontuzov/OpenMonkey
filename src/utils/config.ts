@@ -65,8 +65,13 @@ const defaultConfig: Config = {
       calendar: "ask",
       email: "ask",
       mcp: "ask",
+      publish: "ask",
     },
     workspaceRoots: [],
+  },
+  publishing: {
+    telegramChat: "",
+    redditSubreddit: "",
   },
   mcp: {
     servers: [],
@@ -171,6 +176,12 @@ const PAGE_DEFAULTS: Partial<Record<SettingsPage, ConfigPatch>> = {
     },
   },
   extensions: { mcp: { servers: [] } },
+  publishing: {
+    publishing: {
+      telegramChat: defaultConfig.publishing.telegramChat,
+      redditSubreddit: defaultConfig.publishing.redditSubreddit,
+    },
+  },
   model: {
     model: {
       provider: defaultConfig.model.provider,

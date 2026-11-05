@@ -14,12 +14,15 @@ import {
   type Mood,
   type PrivacyActionResult,
   type PrivacyStatus,
+  type PublisherChannel,
   type SettingsPage,
 } from "../utils/types";
 import storage, { SCHEMA_VERSION } from "../utils/storage";
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TEXT, MAX_ATTACHMENTS_PER_MESSAGE } from "../utils/attachments";
 import { readFileAsAttachment, searchFiles } from "../utils/file-search";
 import { keychainAvailable } from "../utils/secret-key";
+import { publisherSecrets } from "../utils/publisher-secrets";
+import { PublishTools, buildSecret } from "../agent/tools/publish";
 import { networkActivity } from "../utils/network";
 import { EXPORT_FILE_SUFFIX, encryptBundle, readBundleFile } from "../utils/portability";
 import type { PortabilityResult } from "../utils/types";
@@ -689,6 +692,45 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     // Only http(s), so a model-generated string cannot reach file:// or a local socket.
     if (!/^https?:\/\//i.test(url)) throw new Error("Only http(s) links can be opened");
     return shell.openExternal(url);
+  });
+
+  // Publishing: the target lives in the settings file, the secret in the keychain.
+  const publisher = new PublishTools();
+
+  const publisherChannel = (value: unknown): PublisherChannel => {
+    if (value !== "telegram" && value !== "reddit") throw new Error("That publishing channel does not exist");
+    return value;
+  };
+
+  ipcMain.handle("get-publisher-channels", () => publisher.status());
+
+  ipcMain.handle("save-publisher-secret", (_event, channel: unknown, secret: unknown) => {
+    const name = publisherChannel(channel);
+    try {
+      publisherSecrets.write(name, buildSecret(name, secret));
+      logger.info("publisher.secret.saved", { channel: name });
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: errorText(error) };
+    }
+  });
+
+  ipcMain.handle("clear-publisher-secret", (_event, channel: unknown) => {
+    const name = publisherChannel(channel);
+    publisherSecrets.clear(name);
+    logger.info("publisher.secret.cleared", { channel: name });
+    return { ok: true };
+  });
+
+  ipcMain.handle("check-publisher-channel", async (_event, channel: unknown) => {
+    const name = publisherChannel(channel);
+    try {
+      const detail = await publisher.check(name);
+      logger.info("publisher.checked", { channel: name });
+      return { ok: true, detail };
+    } catch (error) {
+      return { ok: false, error: errorText(error) };
+    }
   });
 }
 

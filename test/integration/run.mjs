@@ -42,6 +42,7 @@ try {
       path.join(here, "asset-paths.test.ts"),
       path.join(here, "web-images.test.ts"),
       path.join(here, "file-inspect.test.ts"),
+      path.join(here, "publish.test.ts"),
       path.join(here, "logger.test.ts"),
       path.join(here, "settings.test.ts"),
     ],
@@ -80,6 +81,7 @@ try {
     "asset-paths.test.cjs",
     "web-images.test.cjs",
     "file-inspect.test.cjs",
+    "publish.test.cjs",
     "logger.test.cjs",
     // Last: it writes config sections other suites read, and the runs are sequential.
     "settings.test.cjs",

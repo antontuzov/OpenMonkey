@@ -12,6 +12,7 @@ export const TASK_EMOJIS: Record<TaskType, string> = {
   calendar: "📅",
   mcp: "🔌",
   memory: "🧠",
+  publish: "📣",
   search: "🔍",
   code: "⌨️",
   writing: "✍️",

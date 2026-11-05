@@ -27,6 +27,21 @@ that produced the build.
   `.txt` still gets measured. A file bigger than the 4 MB read cap is measured up to the
   cap and says so, binary files are named rather than parsed, the walk stops at 40 matches
   and reports the stop, and nothing is written: the action needs no approval.
+- **The agent can post to your own Telegram channel or Reddit account.** `publish.post`
+  goes out under your own account — never a third party's — and stops for approval
+  first, because a post cannot be taken back. The credentials live in the macOS
+  keychain: the Telegram bot token, and for Reddit the script app id, the app secret,
+  the account name and the account password. They are never written to the settings
+  file, and on a Mac with no keychain the app refuses to store them at all rather than
+  fall back to plaintext. The target — the chat id, the subreddit — comes from
+  Settings → Publishing, so the model cannot post to a channel you did not name. The
+  app also keeps itself slow, because a channel that answers every few minutes reads as
+  a bot: ten posts an hour on Telegram, two on Reddit, a quarter of an hour between
+  Reddit posts, and the count survives a restart. A post that asks for upvotes,
+  comments or follows is refused before it leaves the Mac, since that is what gets an
+  account removed. `publish.list_channels` reports what is set up and how much room is
+  left, without ever showing the token. Both actions sit behind Settings → Privacy →
+  network access.
 
 ### Fixed
 
@@ -60,6 +75,11 @@ that produced the build.
   folder of 45 matches. Writing the capped-file test is what found the first crash: min
   and max were taken with a spread over the whole column, so a 330 000-row export blew
   the call stack. They are folded in a loop now.
+- Fifteen tests cover the publisher with every request stubbed: the Telegram message and
+  the photo caption, the Reddit token and the submit call, the refusal of a post that asks
+  for upvotes, the hourly cap, the gap between two posts, the missing token and the
+  missing target, the length limits of each channel, and nothing fetched at all when
+  the network switch is off. The saved token never appears in what the model is told.
 
 ## 0.9.2 — 2026-11-05
 

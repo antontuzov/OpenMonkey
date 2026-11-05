@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { allowedRoots } from "../utils/config";
+import { allowedRoots, config } from "../utils/config";
 import { describeCommand } from "../utils/command-notes";
 import type { TaskRequest, ToolPreview } from "../utils/types";
 import { expandPath } from "./tools/paths";
@@ -229,6 +229,24 @@ export async function buildPreview(
         title: "Read the mailbox",
         fields: present([field("Account", args.account)]),
         note: "Nothing is changed.",
+      };
+    }
+
+    if (type === "publish") {
+      const channel = String(args.channel ?? "");
+      const publishing = config.get("publishing");
+      const target =
+        channel === "telegram" ? publishing?.telegramChat : channel === "reddit" ? publishing?.redditSubreddit : "";
+      return {
+        kind: "fields",
+        title: "Post to your own channel",
+        fields: present([
+          field("Channel", channel),
+          field("Title", args.title),
+          field("To", target ? (channel === "reddit" ? `r/${target.replace(/^\/?r\//i, "")}` : target) : "no target set"),
+        ]),
+        body: clip(String(args.text ?? "")),
+        note: "This goes out under your own account and the app cannot take it back. The token stays in the system keychain.",
       };
     }
 

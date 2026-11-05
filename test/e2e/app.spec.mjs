@@ -297,6 +297,7 @@ test("every row a settings page renders can be found by typing its own name", as
     "Workspace",
     "Permissions",
     "Privacy",
+    "Publishing",
     "MCP servers",
     "Model",
   ]) {

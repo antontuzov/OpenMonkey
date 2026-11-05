@@ -7,6 +7,8 @@ import type {
   ElectronAPI,
   MenuCommand,
   Mood,
+  PublisherChannel,
+  PublisherSecret,
   QuickAskResult,
   SettingsPage,
   Task,
@@ -124,6 +126,11 @@ const api: ElectronAPI = {
   openPermissionSettings: (area: "automation" | "notifications") =>
     ipcRenderer.invoke("open-permission-settings", area),
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
+  getPublisherChannels: () => ipcRenderer.invoke("get-publisher-channels"),
+  savePublisherSecret: (channel: PublisherChannel, secret: PublisherSecret) =>
+    ipcRenderer.invoke("save-publisher-secret", channel, secret),
+  clearPublisherSecret: (channel: PublisherChannel) => ipcRenderer.invoke("clear-publisher-secret", channel),
+  checkPublisherChannel: (channel: PublisherChannel) => ipcRenderer.invoke("check-publisher-channel", channel),
 
   onAgentReady: (callback: () => void) => on<undefined>("agent-ready", () => callback()),
   onAgentStatus: (callback: (status: AgentStatus) => void) => on<AgentStatus>("agent-status", callback),

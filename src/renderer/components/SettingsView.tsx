@@ -33,6 +33,7 @@ import {
   RotateCcw,
   RotateCw,
   Search,
+  Send,
   ShieldCheck,
   SquareTerminal,
   Terminal,
@@ -68,6 +69,8 @@ import {
   type ModelStatus,
   type Mood,
   type PrivacyStatus,
+  type PublisherChannel,
+  type PublisherChannelStatus,
   type SettingsPage,
   type WorkspaceHit,
 } from "../../utils/types";
@@ -88,13 +91,14 @@ interface SettingsViewProps {
 
 type Section = SettingsPage;
 
-const DEFAULT_POLICIES: Record<"file" | "web" | "shell" | "calendar" | "email" | "mcp", ApprovalPolicy> = {
+const DEFAULT_POLICIES: Record<"file" | "web" | "shell" | "calendar" | "email" | "mcp" | "publish", ApprovalPolicy> = {
   file: "ask",
   web: "ask",
   shell: "ask",
   calendar: "ask",
   email: "ask",
   mcp: "ask",
+  publish: "ask",
 };
 
 const POLICY_ROWS: Array<{
@@ -109,6 +113,7 @@ const POLICY_ROWS: Array<{
   { type: "calendar", icon: CalendarClock, name: "Calendar", copy: "Read events and create new ones." },
   { type: "email", icon: Mail, name: "Mail", copy: "Read unread mail and create drafts. Never sends." },
   { type: "mcp", icon: Plug, name: "MCP tools", copy: "Calls on local extension servers." },
+  { type: "publish", icon: Send, name: "Publishing", copy: "Post to your own Telegram channel or Reddit account." },
 ];
 
 const POLICY_OPTIONS: Array<{ value: ApprovalPolicy; label: string }> = [
@@ -171,6 +176,7 @@ const NAV = [
       { id: "workspace", labelKey: "settings.workspace", icon: FolderOpen },
       { id: "permissions", labelKey: "settings.permissions", icon: Fingerprint },
       { id: "privacy", labelKey: "settings.privacy", icon: Lock },
+      { id: "publishing", labelKey: "settings.publishing", icon: Send },
     ],
   },
   {
@@ -219,6 +225,10 @@ const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede?: string
   privacy: {
     titleKey: "settings.privacy",
     ledeKey: "privacy.lede",
+  },
+  publishing: {
+    titleKey: "settings.publishing",
+    lede: "Post to your own Telegram channel or Reddit account. The token goes into the macOS keychain, never into the settings file, and every post asks for approval first.",
   },
   model: {
     titleKey: "settings.model",
@@ -297,6 +307,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [resetArmed, setResetArmed] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
+  const [publishChannels, setPublishChannels] = useState<PublisherChannelStatus[]>([]);
+  const [publishBusy, setPublishBusy] = useState<PublisherChannel | null>(null);
+  const [publishNotice, setPublishNotice] = useState<{ text: string; error: boolean } | null>(null);
+  const [telegramToken, setTelegramToken] = useState("");
+  const [redditAppId, setRedditAppId] = useState("");
+  const [redditSecret, setRedditSecret] = useState("");
+  const [redditUser, setRedditUser] = useState("");
+  const [redditPassword, setRedditPassword] = useState("");
   const [online, setOnline] = useState(() => navigator.onLine);
 
   // A search result names a row, so the page it lives on opens and that row is marked.
@@ -326,7 +344,21 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const { model, agent, privacy } = config;
   const memoryConfig = config.memory ?? { enabled: true, workspaceSearch: false };
+  const publishing = config.publishing ?? { telegramChat: "", redditSubreddit: "" };
   const policies = { ...DEFAULT_POLICIES, ...(agent.approvalPolicies ?? {}) };
+  /** What the publishing policy really does right now, so the page cannot lie about it. */
+  const publishPolicy =
+    agent.autoExecuteTasks ? "allow" : policies.publish;
+  const publishPolicyText: Record<ApprovalPolicy, string> = {
+    ask: "Every post is previewed and asks for approval before it goes out, lands in the audit log, and never asks for upvotes, comments or follows.",
+    allow: "Every post is previewed and lands in the audit log, but the app sends it without asking. It never asks for upvotes, comments or follows.",
+    block: "Every post is refused. Nothing goes out until you change this in Settings → Approvals.",
+  };
+  const publishPolicyLabel: Record<ApprovalPolicy, string> = {
+    ask: "Approval first",
+    allow: "No approval",
+    block: "Blocked",
+  };
   const workspaceRoots = agent.workspaceRoots ?? [];
   const servers = config.mcp?.servers ?? [];
   const workspace = memory?.workspace;
@@ -349,6 +381,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           ? t("privacy.encryptFile")
           : t("privacy.encryptDefault");
   const providerLabel = status.provider === "mlx" ? "MLX" : "Bonsai 4B";
+  const telegramStatus = publishChannels.find((item) => item.channel === "telegram");
+  const redditStatus = publishChannels.find((item) => item.channel === "reddit");
   const modelMemory = models?.memory ?? null;
   const lastBenchmark = models?.lastBenchmark ?? null;
 
@@ -392,7 +426,75 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   useEffect(() => {
     void window.electron?.getModelStatus().then(setModels).catch(() => undefined);
     void window.electron?.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
+    void window.electron?.getPublisherChannels().then(setPublishChannels).catch(() => undefined);
   }, []);
+
+  const refreshPublishChannels = async () => {
+    const next = await window.electron?.getPublisherChannels();
+    if (next) setPublishChannels(next);
+  };
+
+  /** The token goes to the keychain; the form is cleared so it stays out of the DOM. */
+  const savePublishSecret = async (channel: PublisherChannel) => {
+    setPublishNotice(null);
+    setPublishBusy(channel);
+    try {
+      const result =
+        channel === "telegram"
+          ? await window.electron?.savePublisherSecret("telegram", { token: telegramToken })
+          : await window.electron?.savePublisherSecret("reddit", {
+              clientId: redditAppId,
+              clientSecret: redditSecret,
+              username: redditUser,
+              password: redditPassword,
+            });
+      if (!result?.ok) {
+        setPublishNotice({ text: result?.error ?? "The credentials could not be saved.", error: true });
+        return;
+      }
+      if (channel === "telegram") setTelegramToken("");
+      else {
+        setRedditSecret("");
+        setRedditPassword("");
+      }
+      setPublishNotice({
+        text:
+          channel === "telegram"
+            ? "The Telegram token is in the keychain."
+            : "The Reddit credentials are in the keychain.",
+        error: false,
+      });
+      await refreshPublishChannels();
+    } finally {
+      setPublishBusy(null);
+    }
+  };
+
+  const forgetPublishSecret = async (channel: PublisherChannel) => {
+    setPublishNotice(null);
+    const result = await window.electron?.clearPublisherSecret(channel);
+    setPublishNotice(
+      result?.ok
+        ? { text: "The stored token is gone.", error: false }
+        : { text: result?.error ?? "It could not be removed.", error: true }
+    );
+    await refreshPublishChannels();
+  };
+
+  const checkPublishChannel = async (channel: PublisherChannel) => {
+    setPublishNotice(null);
+    setPublishBusy(channel);
+    try {
+      const result = await window.electron?.checkPublisherChannel(channel);
+      setPublishNotice(
+        result?.ok
+          ? { text: result.detail ?? "The channel accepted the credentials.", error: false }
+          : { text: result?.error ?? "The check failed.", error: true }
+      );
+    } finally {
+      setPublishBusy(null);
+    }
+  };
 
   const refreshModels = async () => {
     const next = await window.electron?.getModelStatus();
@@ -1955,6 +2057,210 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     follow the per-tool policy, and the app never adds your entire home folder or filesystem root.
                   </p>
                 </div>
+              </>
+            )}
+
+            {section === "publishing" && (
+              <>
+                <section>
+                  <p className="section-label">Telegram</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Telegram chat</p>
+                        <p className="row-copy">
+                          Where the bot posts: a chat id like -1001234567890, or @your_channel.
+                        </p>
+                      </div>
+                      <input
+                        key={publishing.telegramChat}
+                        defaultValue={publishing.telegramChat}
+                        placeholder="-1001234567890"
+                        onBlur={(event) => {
+                          const value = event.target.value.trim();
+                          if (value !== publishing.telegramChat) {
+                            void onPatch({ publishing: { ...publishing, telegramChat: value } });
+                          }
+                        }}
+                        className="field w-[220px] font-mono !text-[11px]"
+                      />
+                    </div>
+
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Telegram bot token</p>
+                        <p className="row-copy">
+                          The token BotFather gave you. It goes into the macOS keychain, never into the settings file.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="password"
+                          value={telegramToken}
+                          onChange={(event) => setTelegramToken(event.target.value)}
+                          placeholder={telegramStatus?.hasSecret ? "Saved in the keychain" : "Paste the bot token"}
+                          className="field w-[200px] font-mono !text-[11px]"
+                        />
+                        <button
+                          onClick={() => void savePublishSecret("telegram")}
+                          disabled={publishBusy !== null}
+                          className="btn btn-primary"
+                        >
+                          {publishBusy === "telegram" ? <Loader size={12} className="animate-spin" /> : <Check size={12} />}
+                          Save
+                        </button>
+                        {telegramStatus?.hasSecret && (
+                          <>
+                            <button
+                              onClick={() => void checkPublishChannel("telegram")}
+                              disabled={publishBusy !== null}
+                              className="btn"
+                            >
+                              Check
+                            </button>
+                            <button onClick={() => void forgetPublishSecret("telegram")} className="btn">
+                              Forget
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">Reddit</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Reddit subreddit</p>
+                        <p className="row-copy">The community the account posts to, without the r/ prefix.</p>
+                      </div>
+                      <input
+                        key={publishing.redditSubreddit}
+                        defaultValue={publishing.redditSubreddit}
+                        placeholder="openmonkey"
+                        onBlur={(event) => {
+                          const value = event.target.value.trim().replace(/^\/?r\//i, "");
+                          if (value !== publishing.redditSubreddit) {
+                            void onPatch({ publishing: { ...publishing, redditSubreddit: value } });
+                          }
+                        }}
+                        className="field w-[220px] font-mono !text-[11px]"
+                      />
+                    </div>
+
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Reddit credentials</p>
+                        <p className="row-copy">
+                          A script app id and secret from reddit.com/prefs/apps, plus the account name and password. They
+                          go into the macOS keychain.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2.5 w-[340px]">
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="block">
+                            <span className="text-[10px] text-muted">App id</span>
+                            <input
+                              value={redditAppId}
+                              onChange={(event) => setRedditAppId(event.target.value)}
+                              placeholder="abc123"
+                              className="field w-full mt-1 font-mono !text-[11px]"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] text-muted">App secret</span>
+                            <input
+                              type="password"
+                              value={redditSecret}
+                              onChange={(event) => setRedditSecret(event.target.value)}
+                              placeholder="••••"
+                              className="field w-full mt-1 font-mono !text-[11px]"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] text-muted">Account name</span>
+                            <input
+                              value={redditUser}
+                              onChange={(event) => setRedditUser(event.target.value)}
+                              placeholder="openmonkey"
+                              className="field w-full mt-1 font-mono !text-[11px]"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] text-muted">Account password</span>
+                            <input
+                              type="password"
+                              value={redditPassword}
+                              onChange={(event) => setRedditPassword(event.target.value)}
+                              placeholder="••••"
+                              className="field w-full mt-1 font-mono !text-[11px]"
+                            />
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2 justify-end">
+                          <button
+                            onClick={() => void savePublishSecret("reddit")}
+                            disabled={publishBusy !== null}
+                            className="btn btn-primary"
+                          >
+                            {publishBusy === "reddit" ? <Loader size={12} className="animate-spin" /> : <Check size={12} />}
+                            Save
+                          </button>
+                          {redditStatus?.hasSecret && (
+                            <>
+                              <button
+                                onClick={() => void checkPublishChannel("reddit")}
+                                disabled={publishBusy !== null}
+                                className="btn"
+                              >
+                                Check
+                              </button>
+                              <button onClick={() => void forgetPublishSecret("reddit")} className="btn">
+                                Forget
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">How posting works</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Posting policy</p>
+                        <p className="row-copy">{publishPolicyText[publishPolicy]}</p>
+                      </div>
+                      <span className={`chip ${publishPolicy === "ask" ? "chip-accent" : ""}`}>
+                        {publishPolicyLabel[publishPolicy]}
+                      </span>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Room left this hour</p>
+                        <p className="row-copy">How many posts the app may still make on each channel.</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {publishChannels.map((item) => (
+                          <span key={item.channel} className="chip">
+                            {item.channel === "telegram" ? "Telegram" : "Reddit"}: {item.remaining} left
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {publishNotice && (
+                  <p className={`text-[10.5px] mt-2 ${publishNotice.error ? "!text-danger" : "text-muted"}`}>
+                    {publishNotice.text}
+                  </p>
+                )}
               </>
             )}
 

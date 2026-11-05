@@ -256,6 +256,41 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     mutating: true,
     timeoutMs: 35_000,
   },
+  {
+    type: "publish",
+    action: "list_channels",
+    description: "List the social channels this app can post to and how much room is left",
+    args: {},
+    mutating: false,
+    timeoutMs: 15_000,
+  },
+  {
+    type: "publish",
+    action: "post",
+    description: "Post a message to the user's own Telegram channel or Reddit account",
+    args: {
+      channel: {
+        type: "string",
+        required: true,
+        description: "Which channel to post to",
+        enum: ["telegram", "reddit"],
+        maxLength: 20,
+      },
+      text: { type: "string", required: true, description: "The text of the post", maxLength: 40_000 },
+      title: {
+        type: "string",
+        description: "Reddit post title; Telegram posts have no title",
+        maxLength: 300,
+      },
+      imageUrl: {
+        type: "string",
+        description: "Image URL for a Telegram post; Reddit posts cannot carry an image",
+        maxLength: 2_048,
+      },
+    },
+    mutating: true,
+    timeoutMs: 60_000,
+  },
 ];
 
 export const getToolDefinition = (type: TaskType, action: string): ToolDefinition | undefined =>

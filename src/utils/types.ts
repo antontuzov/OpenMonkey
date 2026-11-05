@@ -261,6 +261,7 @@ export type TaskType =
   | "calendar"
   | "mcp"
   | "memory"
+  | "publish"
   | "search"
   | "code"
   | "writing"
@@ -286,6 +287,51 @@ export interface TaskRequest {
   summary: string;
   /** True when the action touches files, runs commands, or sends anything off-device. */
   mutating: boolean;
+}
+
+/** The social channels the app can post to. */
+export type PublisherChannel = "telegram" | "reddit";
+
+/**
+ * What the user types for a channel. The secret parts go to the system keychain;
+ * only the fields this channel needs are read.
+ */
+export interface PublisherSecret {
+  /** Telegram bot token. */
+  token?: string;
+  /** Reddit script app id. */
+  clientId?: string;
+  /** Reddit script app secret. */
+  clientSecret?: string;
+  /** Reddit account name. */
+  username?: string;
+  /** Reddit account password. */
+  password?: string;
+}
+
+/** What the publishing page knows about one channel. Never holds a secret. */
+export interface PublisherChannelStatus {
+  channel: PublisherChannel;
+  /** True when both the secret and the target are in place. */
+  configured: boolean;
+  /** Where a post would land: the chat id, or the subreddit. */
+  target: string;
+  /** True when a secret is stored for this channel. */
+  hasSecret: boolean;
+  /** Posts this app made in the last hour. */
+  postedLastHour: number;
+  /** Posts still allowed this hour. */
+  remaining: number;
+  /** The last thing this channel complained about. */
+  error?: string;
+}
+
+/** Outcome of a publishing action the user started in Settings. */
+export interface PublisherActionResult {
+  ok: boolean;
+  error?: string;
+  /** A short line naming the account, e.g. the Telegram bot's name. */
+  detail?: string;
 }
 
 export type ApprovalPolicy = "ask" | "allow" | "block";
@@ -475,6 +521,7 @@ export type SettingsPage =
   | "workspace"
   | "permissions"
   | "privacy"
+  | "publishing"
   | "extensions"
   | "model";
 
@@ -488,6 +535,7 @@ export const SETTINGS_PAGES: SettingsPage[] = [
   "workspace",
   "permissions",
   "privacy",
+  "publishing",
   "extensions",
   "model",
 ];
@@ -504,6 +552,7 @@ export const RESETTABLE_PAGES: SettingsPage[] = [
   "memory",
   "workspace",
   "privacy",
+  "publishing",
   "extensions",
   "model",
 ];
@@ -616,9 +665,18 @@ export interface Config {
     /** Master switch: true authorizes every mutating tool call without prompting. */
     autoExecuteTasks: boolean;
     /** Per-tool policy used when the master switch is off. */
-    approvalPolicies: Record<"file" | "web" | "shell" | "calendar" | "email" | "mcp", ApprovalPolicy>;
+    approvalPolicies: Record<
+      "file" | "web" | "shell" | "calendar" | "email" | "mcp" | "publish",
+      ApprovalPolicy
+    >;
     /** Extra folders the user granted in Settings → Workspace. */
     workspaceRoots: string[];
+  };
+  publishing: {
+    /** Telegram chat the bot posts to: a channel id like -1001234567890, or @your_channel. */
+    telegramChat: string;
+    /** Reddit subreddit the account posts to, without the r/ prefix. */
+    redditSubreddit: string;
   };
   mcp: {
     servers: McpServerConfig[];
@@ -698,6 +756,7 @@ export type ConfigPatch = Partial<{
   memory: Partial<Config["memory"]>;
   desktop: Partial<Config["desktop"]>;
   agent: Partial<Config["agent"]>;
+  publishing: Partial<Config["publishing"]>;
   mcp: Partial<Config["mcp"]>;
 }>;
 
@@ -811,6 +870,14 @@ export interface ElectronAPI {
   probeAutomation: (area: "calendar" | "mail") => Promise<AutomationProbe>;
   openPermissionSettings: (area: "automation" | "notifications") => Promise<void>;
   openExternal: (url: string) => Promise<void>;
+  /** What each social channel needs before it can post. */
+  getPublisherChannels: () => Promise<PublisherChannelStatus[]>;
+  /** Store a channel secret in the system keychain; it never enters the config file. */
+  savePublisherSecret: (channel: PublisherChannel, secret: PublisherSecret) => Promise<PublisherActionResult>;
+  /** Forget the stored secret of one channel. */
+  clearPublisherSecret: (channel: PublisherChannel) => Promise<PublisherActionResult>;
+  /** Ask the channel who this account is, so the user can see the secret works. */
+  checkPublisherChannel: (channel: PublisherChannel) => Promise<PublisherActionResult>;
 
   /** Each subscription returns an unsubscribe function for the effect cleanup. */
   onAgentReady: (callback: () => void) => () => void;

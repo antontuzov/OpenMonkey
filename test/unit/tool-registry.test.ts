@@ -128,6 +128,24 @@ test("the inspect action is declared the way the file tool reads it", () => {
   assert.ok(describeBuiltInTools().includes("file.inspect"), "the prompt lists it, or the model cannot use it");
 });
 
+test("the publish action is declared the way the publisher reads it", () => {
+  const list = getToolDefinition("publish", "list_channels");
+  assert.ok(list);
+  // Listing the channels only reads the settings, so it must not stop for approval.
+  assert.equal(list.mutating, false);
+
+  const post = getToolDefinition("publish", "post");
+  assert.ok(post);
+  // A post goes out under the user's own account and cannot be taken back.
+  assert.equal(post.mutating, true);
+  const channel = post.args.channel;
+  assert.equal(channel?.required, true);
+  assert.deepEqual(channel?.enum, ["telegram", "reddit"]);
+  assert.equal(post.args.title?.required, undefined);
+  assert.equal(post.args.imageUrl?.required, undefined);
+  assert.ok(describeBuiltInTools().includes("publish.post"), "the prompt lists it, or the model cannot use it");
+});
+
 test("JSON Schema validation covers the MCP subset", () => {
   const schema = {
     type: "object",
