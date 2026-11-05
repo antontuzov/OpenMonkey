@@ -39,6 +39,7 @@ try {
       path.join(here, "mcp-manager.test.ts"),
       path.join(here, "mlx-tokens.test.ts"),
       path.join(here, "updater.test.ts"),
+      path.join(here, "asset-paths.test.ts"),
       path.join(here, "logger.test.ts"),
       path.join(here, "settings.test.ts"),
     ],
@@ -74,6 +75,7 @@ try {
     "mcp-manager.test.cjs",
     "mlx-tokens.test.cjs",
     "updater.test.cjs",
+    "asset-paths.test.cjs",
     "logger.test.cjs",
     // Last: it writes config sections other suites read, and the runs are sequential.
     "settings.test.cjs",

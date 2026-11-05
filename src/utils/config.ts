@@ -194,10 +194,13 @@ export function resetPatch(page: SettingsPage): ConfigPatch {
 }
 
 const isPackaged = (): boolean => !!app.isPackaged;
-/** `assets/` ships via electron-builder extraResources, so it moves in packaged builds. */
+/**
+ * extraResources copies the repository's `assets/` folder to `Contents/Resources/assets`,
+ * so in both layouts the files sit one level below the base joined here.
+ */
 export function assetPath(...segments: string[]): string {
-  const base = isPackaged() ? process.resourcesPath : path.resolve(app.getAppPath(), "assets");
-  return path.join(base, ...segments);
+  const base = isPackaged() ? process.resourcesPath : app.getAppPath();
+  return path.join(base, "assets", ...segments);
 }
 
 /** Downloaded weights are user data: never inside the app bundle. */
