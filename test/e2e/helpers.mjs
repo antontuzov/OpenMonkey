@@ -1,6 +1,22 @@
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect } from "@playwright/test";
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+/**
+ * Whether the pinned Bonsai weights are on this machine.
+ *
+ * A spec that asks the model for a real answer has nothing to assert without them,
+ * and a CI runner is not going to fetch 546 MB of weights to prove the UI works. The
+ * suite therefore splits in two: everything the app can show from its own storage
+ * runs everywhere, and the turns that need tokens run only where the weights are.
+ */
+export const weightsOnDisk = existsSync(
+  path.join(repoRoot, "models", "Bonsai-4B-gguf", "Bonsai-4B.gguf")
+);
 
 /**
  * Empties the chat so the next model turn is asked without the failed attempts in

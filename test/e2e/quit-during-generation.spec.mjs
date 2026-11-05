@@ -1,13 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { quitApp } from "./helpers.mjs";
+import { quitApp, weightsOnDisk } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const weightsOnDisk = existsSync(path.join(root, "models", "Bonsai-4B-gguf", "Bonsai-4B.gguf"));
 
 /**
  * Quitting is where the app used to abort: node-llama-cpp runs its work on a libuv

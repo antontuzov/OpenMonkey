@@ -1,13 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { quitApp } from "./helpers.mjs";
+import { quitApp, weightsOnDisk } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const weightsOnDisk = existsSync(path.join(root, "models", "Bonsai-4B-gguf", "Bonsai-4B.gguf"));
 
 async function launch() {
   const profile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-onboarding-"));

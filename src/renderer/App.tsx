@@ -170,7 +170,11 @@ export default function App() {
   }, [refreshConversations]);
 
   useEffect(() => {
-    if (status.state !== "ready" || !config?.onboarding.completed || privacyStatus?.locked) return;
+    // Chats live in storage, which opens before the model does. Waiting for "ready"
+    // hid a user's whole history from anyone whose weights are missing or still
+    // downloading, which is every first run from the DMG. "starting" is the only
+    // state where there is no agent yet to answer get-conversations.
+    if (status.state === "starting" || !config?.onboarding.completed || privacyStatus?.locked) return;
 
     let cancelled = false;
     void (async () => {

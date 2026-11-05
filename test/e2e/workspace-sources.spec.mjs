@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { quitApp } from "./helpers.mjs";
+import { quitApp, weightsOnDisk } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -7,6 +7,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+// The index is built by the agent, which stops at a missing model, so this page has
+// nothing to list until the weights load.
+test.skip(!weightsOnDisk, "the memory index is built only after the model loads");
 
 /**
  * The app reads the folders it may touch from HOME, so the test points it at a

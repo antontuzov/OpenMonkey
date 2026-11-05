@@ -5,9 +5,9 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { weightsOnDisk } from "./helpers.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const weightsOnDisk = existsSync(path.join(root, "models", "Bonsai-4B-gguf", "Bonsai-4B.gguf"));
 
 test.describe.configure({ mode: "serial" });
 
@@ -306,6 +306,11 @@ test("every row a settings page renders can be found by typing its own name", as
 });
 
 test("the empty chat offers starter prompts that fill the composer", async () => {
+  // Until the agent is ready, the empty chat shows the card that says where the
+  // weights come from instead of the welcome panel; that card is the honest answer
+  // for a machine with no model, so the panel is only checked where one exists.
+  test.skip(!weightsOnDisk, "no model, so the empty chat shows the weights card");
+
   await page.getByRole("button", { name: /Back to app/ }).click();
   await expect(page.getByRole("textbox", { name: "Message OpenMonkey" })).toBeVisible();
   await expect(page.getByText(/^Mood: /)).toBeVisible();

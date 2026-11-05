@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { quitApp } from "./helpers.mjs";
+import { quitApp, weightsOnDisk } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import Database from "better-sqlite3";
 import { existsSync, mkdtempSync } from "node:fs";
@@ -8,7 +8,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const weightsOnDisk = existsSync(path.join(root, "models", "Bonsai-4B-gguf", "Bonsai-4B.gguf"));
 
 test.describe.configure({ mode: "serial" });
 

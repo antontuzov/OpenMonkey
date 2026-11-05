@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { quitApp } from "./helpers.mjs";
+import { quitApp, weightsOnDisk } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -9,6 +9,14 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const fixture = path.join(root, "test", "fixtures", "mcp-server.mjs");
 const node = process.execPath;
+
+/**
+ * The MCP servers are started by the agent, and the agent stops at the model when
+ * the weights are missing. Without them there is no server to read health from, so
+ * a runner that never downloaded 546 MB of weights skips the page rather than
+ * failing it.
+ */
+test.skip(!weightsOnDisk, "the agent starts MCP servers only after the model loads");
 
 async function launch(servers) {
   const profile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-mcp-"));

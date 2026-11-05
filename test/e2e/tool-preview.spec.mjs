@@ -1,13 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { quitApp, resetChat } from "./helpers.mjs";
+import { quitApp, resetChat, weightsOnDisk } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const weightsOnDisk = existsSync(path.join(root, "models", "Bonsai-4B-gguf", "Bonsai-4B.gguf"));
 const documents = path.join(os.homedir(), "Documents");
 
 async function launch(extraConfig = {}) {

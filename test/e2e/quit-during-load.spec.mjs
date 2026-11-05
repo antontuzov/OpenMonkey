@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { quitApp } from "./helpers.mjs";
+import { quitApp, weightsOnDisk } from "./helpers.mjs";
 import { _electron as electron } from "playwright-core";
 import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import os from "node:os";
@@ -7,6 +7,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+// The whole point is a quit that lands mid-load, and with no weights there is no
+// load to land in.
+test.skip(!weightsOnDisk, "no weights on disk, so nothing to quit during");
 
 /**
  * Quitting mid-load used to free the Node environment under llama.cpp's load worker.

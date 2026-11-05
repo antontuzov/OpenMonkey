@@ -4,6 +4,23 @@ All notable changes to OpenMonkey are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions match the tag
 that produced the build.
 
+## Unreleased
+
+### Fixed
+
+- **Your chats are yours to read even before the model loads.** The sidebar's session
+  list and the open tabs were restored only after the agent reported `ready`, so a Mac
+  with no weights on disk — every first run from the DMG, and every machine still
+  downloading them — opened the app to "No chats yet" over conversations that were
+  sitting in its own database. The list now loads as soon as there is an agent to ask.
+
+### Testing
+
+- The end-to-end suite says which of its specs need the pinned Bonsai weights, from one
+  shared check instead of eight copies of the same path, and skips the rest on a runner
+  that has never downloaded 546 MB. CI's e2e leg went from nine failures to none for
+  every spec that does not actually ask the model for tokens.
+
 ## 0.9.2 — 2026-11-05
 
 The tag whose pipeline actually publishes. 0.9.1's build died before it could upload
