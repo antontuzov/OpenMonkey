@@ -7,6 +7,7 @@ import { TabStrip } from "./components/TabStrip";
 import { Onboarding } from "./components/Onboarding";
 import { ApprovalDialog } from "./components/ApprovalDialog";
 import { LockScreen } from "./components/LockScreen";
+import { SafeModeBanner } from "./components/SafeModeBanner";
 import { useAppearance } from "./theme";
 import { logoUrl } from "./assets";
 import { moodLabel, setLanguage, t } from "./i18n";
@@ -32,6 +33,7 @@ import {
   type ConversationSearchHit,
   type Mood,
   type PrivacyStatus,
+  type SafeModeInfo,
   type SettingsPage,
 } from "../utils/types";
 
@@ -75,6 +77,8 @@ export default function App() {
   const storedTabs = useRef<{ openTabs: string[]; activeTab: string | null } | null>(null);
   const [busyConversationId, setBusyConversationId] = useState<string | null>(null);
   const [privacyStatus, setPrivacyStatus] = useState<PrivacyStatus | null>(null);
+  /** How this launch was started, and whether it came up without its extras. */
+  const [safeMode, setSafeMode] = useState<SafeModeInfo | null>(null);
   /** The command palette: one box for the chats, the settings and the commands. */
   const [paletteOpen, setPaletteOpen] = useState(false);
   /** Where the palette sends the user inside the settings. */
@@ -142,6 +146,7 @@ export default function App() {
       })
       .catch(() => undefined);
     void api.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
+    void api.getSafeMode().then(setSafeMode).catch(() => undefined);
 
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
   }, []);
@@ -526,6 +531,7 @@ export default function App() {
         status={status}
         mood={mood}
         config={config}
+        safeMode={safeMode}
         onPatch={patchConfig}
         onRefreshStatus={refreshStatus}
       />
@@ -606,6 +612,8 @@ export default function App() {
             </button>
           </div>
         </header>
+
+        {safeMode?.active && <SafeModeBanner safeMode={safeMode} />}
 
         <TabStrip
           tabs={tabConversations}

@@ -81,6 +81,9 @@ const api: ElectronAPI = {
   checkDatabaseIntegrity: () => ipcRenderer.invoke("check-database-integrity"),
   backUpNow: () => ipcRenderer.invoke("back-up-now"),
   restoreBackup: (name: string) => ipcRenderer.invoke("restore-backup", name),
+  getSafeMode: () => ipcRenderer.invoke("get-safe-mode"),
+  restartInSafeMode: () => ipcRenderer.invoke("restart-in-safe-mode"),
+  restartNormally: () => ipcRenderer.invoke("restart-normally"),
   setConfig: (patch: ConfigPatch) => ipcRenderer.invoke("set-config", patch),
   resetSettingsSection: (page: SettingsPage) => ipcRenderer.invoke("reset-settings-section", page),
   approveTask: (requestId: string, approved: boolean, remember = false) =>

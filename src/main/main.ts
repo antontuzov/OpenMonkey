@@ -1,4 +1,5 @@
 import "./bootstrap";
+import { crashRecordFile, safeMode } from "./bootstrap";
 import { app, BrowserWindow, nativeTheme, session } from "electron";
 import * as path from "node:path";
 import { TrayManager } from "./tray-manager";
@@ -12,6 +13,7 @@ import { OpenMonkey } from "../agent/OpenMonkey";
 import config, { assetPath } from "../utils/config";
 import logger from "../utils/logger";
 import storage from "../utils/storage";
+import { SAFE_MODE_ENV, clearCrashes, markRunning, noteCleanExit, restartArgs } from "../utils/safe-mode";
 import type { ApprovalRequest, MenuCommand, Mood } from "../utils/types";
 
 let mainWindow: BrowserWindow | null = null;
@@ -266,12 +268,33 @@ async function initializeOpenMonkey(): Promise<void> {
   openMonkey.on("quick-ask-started", (payload) => broadcast("quick-ask-started", payload));
 
   try {
-    await openMonkey.initialize();
+    // Safe mode opens the app without the model and without the MCP servers, so a
+    // broken one of them cannot keep the window from opening at all.
+    await openMonkey.initialize({ skipModel: safeMode.active, skipMcp: safeMode.active });
+    if (safeMode.active) logger.info("app.safe.mode", { reason: safeMode.reason });
   } catch (error) {
     // The window stays usable so the user can read the fix (npm run download-models).
     logger.error("agent.bootstrap.failed", { error });
     broadcast("agent-status", openMonkey.getStatus());
   }
+}
+
+/**
+ * Relaunches the app, with or without the safe-mode switch.
+ *
+ * The child inherits this process's environment, so the switch has to be taken out
+ * of it before the relaunch, not after: a launch asked for safe mode through the
+ * environment would otherwise come back in safe mode after the user asked to leave.
+ */
+function relaunch(safe: boolean): void {
+  if (!safe) {
+    delete process.env[SAFE_MODE_ENV];
+    // Leaving safe mode is the user saying the app is fine now: the count of
+    // launches that died starts again from nothing.
+    clearCrashes(crashRecordFile);
+  }
+  app.relaunch({ args: restartArgs(process.argv, safe) });
+  app.quit();
 }
 
 registerIpcHandlers({
@@ -285,6 +308,9 @@ registerIpcHandlers({
   onConfigChanged: applyDesktopSettings,
   lockHistory,
   reloadHistoryViews: refreshHistoryViews,
+  getSafeMode: () => safeMode,
+  restartInSafeMode: () => relaunch(true),
+  restartNormally: () => relaunch(false),
 });
 
 if (!app.requestSingleInstanceLock()) {
@@ -322,13 +348,17 @@ if (!app.requestSingleInstanceLock()) {
     applyDesktopSettings();
     // The renderer follows the OS in system mode; the native window backdrop must too.
     nativeTheme.on("updated", syncWindowBackground);
-    startUpdates();
+    // Safe mode asks the network for nothing, not even the update check.
+    if (!safeMode.active) startUpdates();
 
     app.on("browser-window-created", (_event, window) => {
       window.webContents.on("did-finish-load", () => applyZoom(window));
     });
 
     await initializeOpenMonkey();
+    // The app came up, one way or the other: a model that failed to load is not a
+    // crash, and a crash before this line is the one safe mode is there for.
+    markRunning(crashRecordFile);
     startLockWatcher(lockHistory);
 
     app.on("activate", () => {
@@ -361,6 +391,8 @@ app.on("before-quit", (event) => {
     .finally(() => {
       clearTimeout(warning);
       clearTimeout(watchdog);
+      // The app was closed on purpose: the next launch starts from nothing.
+      noteCleanExit(crashRecordFile);
       desktopManager?.destroy();
       trayManager?.destroy();
       app.quit();

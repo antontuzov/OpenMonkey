@@ -806,6 +806,17 @@ export type MenuCommand =
   | "command-palette"
   | "focus-composer";
 
+/** Why the app opened the way it did. */
+export type SafeModeReason = "flag" | "crashes";
+
+export interface SafeModeInfo {
+  /** True when the app opened without the model, without MCP servers and without updates. */
+  active: boolean;
+  reason: SafeModeReason | null;
+  /** How many launches in a row died before the app was ready. */
+  crashes: number;
+}
+
 export interface ElectronAPI {
   processMessage: (conversationId: string, message: string, attachments?: Attachment[]) => Promise<Message | null>;
   /** Compact-window turn: a thread of its own, tagged so approvals show in the popover. */
@@ -869,6 +880,12 @@ export interface ElectronAPI {
   backUpNow: () => Promise<PrivacyActionResult>;
   /** Put one of those copies back in place of the live database. */
   restoreBackup: (name: string) => Promise<PrivacyActionResult>;
+  /** How this launch was started, and whether it came up without its extras. */
+  getSafeMode: () => Promise<SafeModeInfo>;
+  /** Relaunch the app with the model, the MCP servers and the update check off. */
+  restartInSafeMode: () => Promise<void>;
+  /** Relaunch the app the ordinary way and forget the count of launches that died. */
+  restartNormally: () => Promise<void>;
   setConfig: (patch: ConfigPatch) => Promise<Config>;
   /** Restore one page's own settings to their defaults. */
   resetSettingsSection: (page: SettingsPage) => Promise<Config>;

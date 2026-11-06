@@ -17,6 +17,7 @@ import {
   type PrivacyActionResult,
   type PrivacyStatus,
   type PublisherChannel,
+  type SafeModeInfo,
   type SettingsPage,
 } from "../utils/types";
 import storage, { SCHEMA_VERSION } from "../utils/storage";
@@ -47,6 +48,12 @@ export interface IpcDeps {
   lockHistory: () => void;
   /** Rebuilds the windows after the history opened or disappeared. */
   reloadHistoryViews: () => void;
+  /** How this launch was started, and whether it came up without its extras. */
+  getSafeMode: () => SafeModeInfo;
+  /** Relaunches the app with the model, the MCP servers and the update check off. */
+  restartInSafeMode: () => void;
+  /** Relaunches the app the ordinary way. */
+  restartNormally: () => void;
 }
 
 /** The word the privacy page asks the user to type before history is destroyed. */
@@ -329,6 +336,16 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   });
 
   ipcMain.handle("get-agent-status", () => deps.getAgent()?.getStatus() ?? { state: "starting" as const });
+
+  ipcMain.handle("get-safe-mode", () => deps.getSafeMode());
+
+  ipcMain.handle("restart-in-safe-mode", () => {
+    deps.restartInSafeMode();
+  });
+
+  ipcMain.handle("restart-normally", () => {
+    deps.restartNormally();
+  });
 
   ipcMain.handle("get-model-status", async () => {
     const instance = deps.getAgent();

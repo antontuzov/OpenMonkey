@@ -113,6 +113,7 @@ const ENTRIES: SettingEntry[] = [
     keywords: ["backup", "restore", "integrity", "crash", "corrupt", "recovery", "safe mode"],
   },
   { page: "privacy", key: "diagnostics.logs", keywords: ["redacted", "rotate", "tail", "debug"] },
+  { page: "privacy", key: "safeMode.title", keywords: ["safe mode", "restart", "startup", "crash", "broken"] },
   { page: "privacy", key: "diagnostics.network", keywords: ["offline", "requests", "block network", "no internet"] },
 
   // Publishing

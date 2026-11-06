@@ -75,7 +75,7 @@ export class TaskManager {
     this.agent = agent;
   }
 
-  async initialize(): Promise<void> {
+  async initialize(options: { skipMcp?: boolean } = {}): Promise<void> {
     for (const task of storage.getTasks(20).filter((t) => t.status === "running" || t.status === "awaiting-approval")) {
       const interrupted: Task = {
         ...task,
@@ -87,7 +87,9 @@ export class TaskManager {
       storage.saveTask(interrupted);
       this.activeTasks.set(task.id, interrupted);
     }
-    await this.mcp.initialize();
+    // Safe mode leaves the servers alone: a server that cannot start is one of the
+    // reasons to be in safe mode at all.
+    if (!options.skipMcp) await this.mcp.initialize();
     logger.info("tasks.initialized", { restored: this.activeTasks.size });
   }
 

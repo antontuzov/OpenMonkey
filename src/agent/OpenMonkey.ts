@@ -73,7 +73,14 @@ export class OpenMonkey extends EventEmitter {
     this.logoManager = new LogoManager((mood) => this.emit("mood-change", mood));
   }
 
-  async initialize(): Promise<void> {
+  /**
+   * Brings the app up.
+   *
+   * Safe mode starts the app without the parts that can be broken: the model is
+   * not loaded and the MCP servers are not started, so the window opens even when
+   * one of them is what keeps failing.
+   */
+  async initialize(options: { skipModel?: boolean; skipMcp?: boolean } = {}): Promise<void> {
     this.setStatus({ state: "loading-model" });
     storage.init();
     const savedMood = config.get("ui").currentMood;
@@ -87,8 +94,15 @@ export class OpenMonkey extends EventEmitter {
     }
 
     try {
-      await this.modelManager.initialize();
-      await this.taskManager.initialize();
+      if (!options.skipModel) await this.modelManager.initialize();
+      await this.taskManager.initialize({ skipMcp: options.skipMcp });
+      if (options.skipModel) {
+        // There is nothing to answer with, and saying so is better than a chat that
+        // waits for a token that will never come. The card that says this offers
+        // to start the model anyway.
+        this.setStatus({ state: "error", message: "Safe mode: the local model was not started." });
+        return;
+      }
       this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
       this.setStatus({ state: "ready", provider: this.modelManager.active ?? undefined });
       this.emit("ready");

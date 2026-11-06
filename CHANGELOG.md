@@ -65,6 +65,16 @@ that produced the build.
   while the history is locked with a passphrase, because the file is a plain SQLite
   database and only the row values are sealed. A damaged database is named with the
   verdict SQLite gave, not with a spinner.
+- **A launch that cannot be bricked by its own config.** OpenMonkey now comes up in safe
+  mode when a launch asks for it — `--safe-mode` on the command line,
+  `OPENMONKEY_SAFE_MODE=1` in the environment, or the button in Settings → Privacy →
+  Diagnostics — and when the app died twice in a row before it could mark itself running.
+  A safe launch opens the window without the local model, without the MCP servers and
+  without the update check, and the banner at the top of the app says exactly that, with
+  a button that restarts the app the ordinary way. The count of launches that died is
+  kept in `safe-mode.json` in the app's own profile folder, and a launch that reaches the
+  point of being usable clears it: only a launch that keeps failing is answered with one.
+  The chat is still there — the history is the one thing safe mode does not take away.
 
 ### Changed
 
@@ -166,6 +176,14 @@ that produced the build.
   a mark saying their title is data, so the cross-page search sweep reads the rows that
   name a setting instead of typing out a timestamp — which is exactly what it caught on
   the first run.
+- Ten headless tests cover safe mode without a window: the flag on the command line and
+  the variable in the environment both ask for it, a launch that never got past its start
+  is counted while a launch that came up is counted for nothing, a clean exit and a
+  manual clear wipe the count, a marker file that is missing or unreadable does not stop
+  the app, and a restart adds the switch once or takes it away again. One integration
+  test runs the real start-up path against a profile that died last time, and one
+  end-to-end spec launches the app with the switch on and reads the banner, the agent
+  status, the empty MCP list and the marker file behind them.
 
 ## 0.9.2 — 2026-11-05
 

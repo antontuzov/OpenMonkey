@@ -12,6 +12,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { ModelDownloadCard } from "./ModelDownloadCard";
+import { SafeModeBanner } from "./SafeModeBanner";
 import { ACCENTS } from "../constants";
 import { logoUrl } from "../assets";
 import {
@@ -21,12 +22,15 @@ import {
   type ConfigPatch,
   type ModelStatus,
   type Mood,
+  type SafeModeInfo,
 } from "../../utils/types";
 
 interface OnboardingProps {
   status: AgentStatus;
   mood: Mood;
   config: Config;
+  /** Set when the app came up without its extras, so the first screen says why. */
+  safeMode?: SafeModeInfo | null;
   onPatch: (patch: ConfigPatch) => Promise<void>;
   onRefreshStatus: () => Promise<void>;
 }
@@ -54,7 +58,14 @@ const FEATURES = [
   },
 ];
 
-export const Onboarding: React.FC<OnboardingProps> = ({ status, mood, config, onPatch, onRefreshStatus }) => {
+export const Onboarding: React.FC<OnboardingProps> = ({
+  status,
+  mood,
+  config,
+  safeMode,
+  onPatch,
+  onRefreshStatus,
+}) => {
   const [step, setStep] = useState(0);
   const [name, setName] = useState(config.agent.name);
   const [personality, setPersonality] = useState(config.agent.personality);
@@ -192,6 +203,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ status, mood, config, on
 
       <main className="flex-1 min-w-0 flex flex-col">
         <div className="drag-region h-10 shrink-0" />
+
+        {safeMode?.active && <SafeModeBanner safeMode={safeMode} />}
 
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-[620px] mx-auto px-10 pb-10">

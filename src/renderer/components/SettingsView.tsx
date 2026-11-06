@@ -73,6 +73,7 @@ import {
   type PrivacyStatus,
   type PublisherChannel,
   type PublisherChannelStatus,
+  type SafeModeInfo,
   type SettingsPage,
   type WorkspaceHit,
 } from "../../utils/types";
@@ -324,6 +325,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [redditUser, setRedditUser] = useState("");
   const [redditPassword, setRedditPassword] = useState("");
   const [online, setOnline] = useState(() => navigator.onLine);
+  /** How this launch was started, and whether it came up without its extras. */
+  const [safeMode, setSafeMode] = useState<SafeModeInfo | null>(null);
+
+  useEffect(() => {
+    void window.electron?.getSafeMode().then(setSafeMode).catch(() => undefined);
+  }, []);
 
   // A search result names a row, so the page it lives on opens and that row is marked.
   useEffect(() => {
@@ -3074,6 +3081,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </pre>
                       </div>
                     )}
+                    <SettingRow title={t("safeMode.title")} copy={t("safeMode.rowCopy")}>
+                      <button
+                        onClick={() =>
+                          void (safeMode?.active
+                            ? window.electron?.restartNormally()
+                            : window.electron?.restartInSafeMode())
+                        }
+                        className="btn"
+                      >
+                        {safeMode?.active ? t("safeMode.restart") : t("safeMode.enter")}
+                      </button>
+                    </SettingRow>
                     <SettingRow
                       title={t("diagnostics.network")}
                       copy={networkAllowed ? t("diagnostics.networkCopy") : t("diagnostics.networkOffCopy")}
