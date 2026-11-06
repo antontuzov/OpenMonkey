@@ -8,6 +8,20 @@ that produced the build.
 
 ### Added
 
+- **Accessibility is checked, not promised.** The app now reads its own screen the way a
+  reader does: the name of every control, the label of every field, the alt text of every
+  image, the focus path inside a dialog, and the contrast of each run of text against what is
+  actually painted behind it — judged at the size it is drawn, 4.5 to 1 for body text and 3 to
+  1 for large. The rules live in `src/utils/a11y.ts` with no DOM in them, so they are
+  unit-tested; the browser is only asked what it is currently showing. The colour half of the
+  gate reads the stylesheet itself: the token cascade in `global.css` is resolved the way a
+  browser resolves it and every text token is contrasted against every surface, for all eight
+  accent swatches in both themes. That is what moved the palette — `muted`, `faint`,
+  `accent-ink`, `danger` and `warn` now hold values that clear AA at 11.5px, and paint on the
+  accent comes from one `--color-on-accent` token instead of a hardcoded near-black that read
+  4.46 to 1 under the Slate swatch. Settings → Privacy → Diagnostics carries a "Check this
+  screen" row that runs the same audit over the window in front of you and lists what it found,
+  and CI runs it against the real app in both themes and fails on any finding.
 - **The agent can find pictures on the internet.** `web.image_search` asks two openly
   licensed indexes — Openverse first, Wikimedia Commons behind it — and answers with the
   direct image URL, the page the picture came from, its author and its licence, so a

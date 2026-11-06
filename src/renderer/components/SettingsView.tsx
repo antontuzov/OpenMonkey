@@ -48,6 +48,8 @@ import { SourceManager } from "./SourceManager";
 import { SettingRow, Toggle } from "./controls";
 import { ACCENTS } from "../constants";
 import { checkAccent } from "../theme";
+import { runAccessibilityAudit } from "../a11y";
+import type { A11yReport } from "../../utils/a11y";
 import { logoUrl } from "../assets";
 import { moodLabel, t } from "../i18n";
 import { toast } from "./Toast";
@@ -307,6 +309,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [encryptBusy, setEncryptBusy] = useState(false);
   const [logText, setLogText] = useState<string | null>(null);
   const [logNotice, setLogNotice] = useState("");
+  const [a11y, setA11y] = useState<A11yReport | null>(null);
   const [copies, setCopies] = useState<BackupFile[]>([]);
   const [copyIntervalMs, setCopyIntervalMs] = useState(0);
   const [integrity, setIntegrity] = useState<IntegrityReport | null>(null);
@@ -733,6 +736,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setLogNotice(failureText(error));
     }
   };
+
+  const runA11yCheck = () => setA11y(runAccessibilityAudit());
 
   const refreshAudit = async () => {
     const entries = await window.electron?.getAuditLog(100).catch(() => []);
@@ -1367,6 +1372,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <input
                         key={agent.name}
                         defaultValue={agent.name}
+                        aria-label="Display name"
                         onBlur={(event) => {
                           const name = event.target.value.trim();
                           if (name && name !== agent.name) void onPatch({ agent: { ...agent, name } });
@@ -1383,6 +1389,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <div className="select-wrap">
                         <select
                           value={agent.personality}
+                          aria-label="Personality"
                           onChange={(event) => void onPatch({ agent: { ...agent, personality: event.target.value } })}
                           className="field w-[180px]"
                         >
@@ -2035,6 +2042,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="p-3 border-t border-line flex flex-wrap gap-2">
                       <input
                         value={workspaceQuery}
+                        aria-label="Search workspace files"
                         onChange={(event) => setWorkspaceQuery(event.target.value)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter") {
@@ -2199,6 +2207,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <input
                         key={publishing.telegramChat}
                         defaultValue={publishing.telegramChat}
+                        aria-label="Telegram chat"
                         placeholder="-1001234567890"
                         onBlur={(event) => {
                           const value = event.target.value.trim();
@@ -2221,6 +2230,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <input
                           type="password"
                           value={telegramToken}
+                          aria-label="Telegram bot token"
                           onChange={(event) => setTelegramToken(event.target.value)}
                           placeholder={telegramStatus?.hasSecret ? "Saved in the keychain" : "Paste the bot token"}
                           className="field w-[200px] font-mono !text-[11px]"
@@ -2263,6 +2273,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <input
                         key={publishing.redditSubreddit}
                         defaultValue={publishing.redditSubreddit}
+                        aria-label="Reddit subreddit"
                         placeholder="openmonkey"
                         onBlur={(event) => {
                           const value = event.target.value.trim().replace(/^\/?r\//i, "");
@@ -3093,6 +3104,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         {safeMode?.active ? t("safeMode.restart") : t("safeMode.enter")}
                       </button>
                     </SettingRow>
+                    <SettingRow title={t("diagnostics.a11y")} copy={t("diagnostics.a11yCopy")}>
+                      <button onClick={runA11yCheck} className="btn">
+                        {t("diagnostics.a11yRun")}
+                      </button>
+                    </SettingRow>
+                    {a11y && (
+                      <div className="px-4 pb-3">
+                        <p role="status" className="text-[10.5px] text-muted leading-relaxed">
+                          {a11y.findings.length
+                            ? t("diagnostics.a11yResult", {
+                                checked: a11y.checked,
+                                problems: a11y.findings.length,
+                              })
+                            : t("diagnostics.a11yClean", { checked: a11y.checked })}
+                        </p>
+                        <ul className="mt-1.5 space-y-1">
+                          {a11y.findings.slice(0, 12).map((finding, index) => (
+                            <li
+                              key={`${finding.rule}-${index}`}
+                              className="text-[10px] font-mono text-faint break-words"
+                            >
+                              {finding.rule} — {finding.detail}
+                              {finding.ratio !== undefined && ` (${finding.ratio} to 1, needs ${finding.required})`}
+                              {` · ${finding.path}`}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     <SettingRow
                       title={t("diagnostics.network")}
                       copy={networkAllowed ? t("diagnostics.networkCopy") : t("diagnostics.networkOffCopy")}
@@ -3304,6 +3344,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           max={1.5}
                           step={0.05}
                           value={model.temperature}
+                          aria-label="Temperature"
                           onChange={(event) =>
                             void onPatch({
                               model: { ...model, temperature: Number(event.target.value) },
@@ -3321,6 +3362,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         max={8192}
                         step={128}
                         value={model.maxTokens}
+                        aria-label="Max tokens"
                         onChange={(event) =>
                           void onPatch({
                             model: {

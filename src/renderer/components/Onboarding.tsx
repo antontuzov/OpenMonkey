@@ -365,7 +365,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
                   >
                     <span
                       className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                        !autoExecute ? "border-accent bg-accent text-[#06251a]" : "border-line"
+                        !autoExecute ? "border-accent bg-accent text-on-accent" : "border-line"
                       }`}
                     >
                       {!autoExecute && <Check size={12} strokeWidth={3} />}
@@ -390,7 +390,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
                   >
                     <span
                       className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                        autoExecute ? "border-accent bg-accent text-[#06251a]" : "border-line"
+                        autoExecute ? "border-accent bg-accent text-on-accent" : "border-line"
                       }`}
                     >
                       {autoExecute && <Check size={12} strokeWidth={3} />}

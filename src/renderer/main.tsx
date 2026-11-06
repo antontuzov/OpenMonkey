@@ -3,7 +3,10 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { QuickAsk } from "./QuickAsk";
 import { ToastHost } from "./components/Toast";
+import { installAuditHook } from "./a11y";
 import "./styles/global.css";
+
+installAuditHook();
 
 const quick = new URLSearchParams(window.location.search).get("quick") === "1";
 

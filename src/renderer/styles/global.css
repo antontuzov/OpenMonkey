@@ -8,14 +8,15 @@
   --color-card-2: #f0f2ec;
   --color-line: #e3e6de;
   --color-ink: #1f241f;
-  --color-muted: #687066;
-  --color-faint: #97a095;
+  --color-muted: #5c6459;
+  --color-faint: #646c62;
   --color-accent: #3ecf8e;
-  --color-accent-ink: #2c9c6c;
-  --color-accent-soft: #e6f6ee;
-  --color-bubble: #e2f3ea;
-  --color-danger: #c2453d;
-  --color-warn: #b07a1f;
+  --color-accent-ink: #217752;
+  --color-on-accent: #0b1e14;
+  --color-accent-soft: #eaf8f0;
+  --color-bubble: #eaf8f0;
+  --color-danger: #b74139;
+  --color-warn: #8a6018;
   --color-sidebar: #f0f2ec;
 
   --font-mono:
@@ -25,9 +26,9 @@
 :root {
   --shadow-card: 0 1px 2px rgb(31 36 31 / 0.05);
   --shadow-pop: 0 18px 50px -12px rgb(31 36 31 / 0.28);
-  --color-accent-ink: color-mix(in srgb, var(--color-accent) 66%, #06251a);
-  --color-accent-soft: color-mix(in srgb, var(--color-accent) 13%, var(--color-card));
-  --color-bubble: color-mix(in srgb, var(--color-accent) 16%, var(--color-card));
+  --color-accent-ink: color-mix(in srgb, var(--color-accent) 48%, #06251a);
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 10%, var(--color-card));
+  --color-bubble: color-mix(in srgb, var(--color-accent) 10%, var(--color-card));
   /* One spring for every panel and view change: it leaves fast and settles slowly,
      the way a Mac window does. */
   --motion-spring: cubic-bezier(0.32, 0.72, 0, 1);
@@ -53,16 +54,16 @@ html[data-vibrant="true"] body {
   --color-card-2: #1e231d;
   --color-line: #2b322b;
   --color-ink: #e8ece4;
-  --color-muted: #a0a89e;
-  --color-faint: #6f776d;
-  --color-danger: #ef7a70;
+  --color-muted: #a6aea5;
+  --color-faint: #96a096;
+  --color-danger: #f18d84;
   --color-warn: #d8a24a;
   --color-sidebar: #1e231d;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.35);
   --shadow-pop: 0 18px 50px -12px rgb(0 0 0 / 0.6);
   --color-accent-ink: color-mix(in srgb, var(--color-accent) 52%, #ffffff);
-  --color-accent-soft: color-mix(in srgb, var(--color-accent) 17%, var(--color-card));
-  --color-bubble: color-mix(in srgb, var(--color-accent) 21%, var(--color-card));
+  --color-accent-soft: color-mix(in srgb, var(--color-accent) 12%, var(--color-card));
+  --color-bubble: color-mix(in srgb, var(--color-accent) 13%, var(--color-card));
   color-scheme: dark;
 }
 
@@ -262,7 +263,7 @@ html[data-vibrant="true"] body {
   .btn-primary {
     background: var(--color-accent);
     border-color: transparent;
-    color: #06251a;
+    color: var(--color-on-accent);
     font-weight: 600;
   }
 
@@ -537,7 +538,7 @@ html[data-vibrant="true"] body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #fff;
+    color: var(--color-on-accent);
     transition: transform 0.12s ease;
   }
 
@@ -779,7 +780,7 @@ input[type="range"] {
   color: var(--color-accent-ink);
 }
 .tok-number {
-  color: color-mix(in srgb, var(--color-accent) 58%, var(--color-ink));
+  color: color-mix(in srgb, var(--color-accent) 45%, var(--color-ink));
 }
 .tok-type {
   color: color-mix(in srgb, var(--color-warn) 62%, var(--color-ink));
@@ -789,7 +790,7 @@ input[type="range"] {
   font-weight: 600;
 }
 .tok-punct {
-  color: color-mix(in srgb, var(--color-muted) 65%, transparent);
+  color: var(--color-muted);
 }
 
 .diff-add {

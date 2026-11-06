@@ -41,7 +41,7 @@ export function contrastRatio(a: string, b: string): number {
 
 /** The accent as text on a card, mirroring the CSS color-mix tokens. */
 export function accentInk(accent: string, dark: boolean): string {
-  return mixHex(accent, dark ? "#ffffff" : "#06251a", dark ? 0.52 : 0.66);
+  return mixHex(accent, dark ? "#ffffff" : "#06251a", dark ? 0.52 : 0.48);
 }
 
 export interface ContrastReport {

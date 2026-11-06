@@ -265,7 +265,11 @@ default config is memory on, workspace search off.
     `aria-modal`, labelled and described headings, autofocus, Tab/Shift+Tab wrap, Escape to
     deny and focus restore; icon-only controls carry `aria-label`s and toasts/streaming text
     use live regions (53 labelled controls and 11 live regions on the chat surface). Long
-    explanatory copy, the onboarding flow and the welcome/failure cards stay English. *(L)*
+    explanatory copy, the onboarding flow and the welcome/failure cards stay English. The same
+    claims are now a gate rather than a note: `src/utils/a11y.ts` holds the rules with no DOM in
+    them, the palette is contrasted from `global.css` itself for all eight swatches in both
+    themes, Settings → Privacy → Diagnostics runs the audit over the screen in front of you, and
+    CI runs it against the real app and fails on any finding. *(L)*
 26. ✅ **Micro-interactions**: streaming caret and held-back fence tail while answering, message
     skeletons on history load, inline task progress in the rail, and toasts instead of modals
     for success (copy, fact saved/removed, folder added, audit exported, reindex) with no sound
