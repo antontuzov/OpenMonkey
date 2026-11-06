@@ -3026,6 +3026,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {copies.map((file) => (
                       <SettingRow
                         key={file.name}
+                        dynamic
                         title={new Date(file.createdAt).toLocaleString([], {
                           month: "short",
                           day: "numeric",

@@ -162,7 +162,10 @@ that produced the build.
   of hardcoding one. Two end-to-end specs run the same thing through the page: the
   Storage row checking a live database, copying it on demand and the files on disk
   carrying `0700` and `0600`, and a restore that arms on the first press, completes on
-  the second, and drops the verdict it can no longer stand behind.
+  the second, and drops the verdict it can no longer stand behind. The copy rows carry
+  a mark saying their title is data, so the cross-page search sweep reads the rows that
+  name a setting instead of typing out a timestamp — which is exactly what it caught on
+  the first run.
 
 ## 0.9.2 — 2026-11-05
 

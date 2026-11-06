@@ -302,7 +302,10 @@ test("every row a settings page renders can be found by typing its own name", as
     "Model",
   ]) {
     await nav.getByRole("button", { name: pageName, exact: true }).click();
-    const titles = await page.locator("main .row-title").evaluateAll((elements) => [
+    // A row whose title is data — the date of a backup, the name of a file — has
+    // nothing to index under a name the app cannot know in advance, so the sweep
+    // reads only the rows that name a setting.
+    const titles = await page.locator("main .row-title:not([data-dynamic])").evaluateAll((elements) => [
       ...new Set(elements.map((element) => element.textContent?.trim()).filter(Boolean)),
     ]);
     rowsSeen += titles.length;
