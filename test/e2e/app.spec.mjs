@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { weightsOnDisk } from "./helpers.mjs";
+import { weightsOnDisk, pinWindowSize } from "./helpers.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -137,7 +137,9 @@ test("Settings → Privacy states its rows and switches, and every switch has a 
   for (const element of await switches.all()) await expect(element).toBeEnabled();
 
   // The History card, not the whole page: the dashboard above it prints the clock, and a
-  // capture that changes every minute is not a check.
+  // capture that changes every minute is not a check. The window is put at the app's
+  // own size first, because the runner's display is smaller and would narrow the card.
+  await pinWindowSize(app);
   const historyCard = page.locator("main section").filter({ hasText: "Save conversation history" }).first();
   await expect(historyCard).toBeVisible();
   await expect(historyCard).toHaveScreenshot("settings-privacy.png");

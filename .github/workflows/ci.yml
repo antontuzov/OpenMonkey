@@ -5,6 +5,12 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      update_snapshots:
+        description: "Rewrite the visual baselines instead of comparing against them"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,7 +50,16 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run test:e2e
+      - name: Run the end-to-end suite
+        # The baselines are pictures of the app, so they belong to the machine that drew
+        # them. A run asked to rewrite them replaces the pictures instead of comparing
+        # against them, and the new ones are uploaded to be committed.
+        run: |
+          if [ "${{ inputs.update_snapshots }}" = "true" ]; then
+            npm run test:e2e -- --update-snapshots
+          else
+            npm run test:e2e
+          fi
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -53,6 +68,12 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-snapshots
+          path: test/e2e/*-snapshots/
+          retention-days: 14
 
   package:
     name: package

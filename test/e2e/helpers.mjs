@@ -28,6 +28,22 @@ export const weightsOnDisk = existsSync(
 export const onCiRunner = Boolean(process.env.CI);
 
 /**
+ * Puts the window at the size the app asks for.
+ *
+ * The app opens at 1360 × 860, but a CI runner's display is smaller than that, so the
+ * window comes up narrower there and every layout that is measured in pixels shifts —
+ * a card that is 700 px wide on a Mac is 635 px on the runner, and a capture taken
+ * against one of them fails against the other. macOS lets a window be wider than the
+ * display it sits on, so the size is set again once the window is open and the page
+ * renders at the width the app ships with.
+ */
+export async function pinWindowSize(app, width = 1360, height = 860) {
+  await app.evaluate(({ BrowserWindow }, size) => {
+    for (const window of BrowserWindow.getAllWindows()) window.setSize(size.width, size.height);
+  }, { width, height });
+}
+
+/**
  * Empties the chat so the next model turn is asked without the failed attempts in
  * front of it.
  *
