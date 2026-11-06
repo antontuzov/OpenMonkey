@@ -48,7 +48,7 @@ const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** Bumped when the table layout changes; an export carries it so a newer file is refused. */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 interface MessageRow {
   id: string;
@@ -62,6 +62,8 @@ interface MessageRow {
   attachments: string | null;
   duration_ms: number | null;
   stopped: number | null;
+  /** Set while the answer is still being written; a crash leaves it behind. */
+  unfinished: number | null;
   tokens: number | null;
   /** The first answer of a regenerated group; null when nothing has replaced this row. */
   variant_of: string | null;
@@ -270,6 +272,7 @@ export class Storage {
         attachments TEXT,
         duration_ms INTEGER,
         stopped INTEGER,
+        unfinished INTEGER,
         tokens INTEGER,
         variant_of TEXT,
         active INTEGER NOT NULL DEFAULT 1,
@@ -349,6 +352,7 @@ export class Storage {
     if (!names.has("prompt")) this.db.exec("ALTER TABLE messages ADD COLUMN prompt TEXT");
     if (!names.has("duration_ms")) this.db.exec("ALTER TABLE messages ADD COLUMN duration_ms INTEGER");
     if (!names.has("stopped")) this.db.exec("ALTER TABLE messages ADD COLUMN stopped INTEGER");
+    if (!names.has("unfinished")) this.db.exec("ALTER TABLE messages ADD COLUMN unfinished INTEGER");
     if (!names.has("tokens")) this.db.exec("ALTER TABLE messages ADD COLUMN tokens INTEGER");
     if (!names.has("variant_of")) this.db.exec("ALTER TABLE messages ADD COLUMN variant_of TEXT");
     if (!names.has("active")) this.db.exec("ALTER TABLE messages ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
@@ -908,8 +912,8 @@ export class Storage {
       .prepare(
         `INSERT OR REPLACE INTO messages
           (id, conversation_id, role, content, prompt, mood, task_type, attachments,
-           duration_ms, stopped, tokens, variant_of, active, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
+           duration_ms, stopped, unfinished, tokens, variant_of, active, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`
       )
       .run(
         message.id,
@@ -922,6 +926,7 @@ export class Storage {
         attachmentsColumn(message.metadata?.attachments),
         message.metadata?.durationMs ?? null,
         message.metadata?.stopped ? 1 : null,
+        message.metadata?.unfinished ? 1 : null,
         message.metadata?.tokens ?? null,
         variantOf ?? null,
         message.timestamp.getTime()
@@ -996,6 +1001,7 @@ export class Storage {
       taskType: row.task_type ?? undefined,
       durationMs: row.duration_ms ?? undefined,
       stopped: row.stopped === 1 ? true : undefined,
+      unfinished: row.unfinished === 1 ? true : undefined,
       attachments: attachments.length ? attachments : undefined,
       tokens: row.tokens ?? undefined,
       variantOf: row.variant_of ?? undefined,

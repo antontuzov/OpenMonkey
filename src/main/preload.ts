@@ -40,6 +40,7 @@ const api: ElectronAPI = {
   hideQuickAsk: () => ipcRenderer.invoke("hide-quick-ask"),
   platform: process.platform,
   regenerate: (conversationId) => ipcRenderer.invoke("regenerate", conversationId),
+  resumeAnswer: (conversationId, messageId) => ipcRenderer.invoke("resume-answer", conversationId, messageId),
   editMessage: (conversationId, messageId, message) =>
     ipcRenderer.invoke("edit-message", conversationId, messageId, message),
   branchConversation: (conversationId, messageId, title) =>

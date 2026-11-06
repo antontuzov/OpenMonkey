@@ -7,6 +7,7 @@ import config, { allowedRoots } from "../utils/config";
 import storage from "../utils/storage";
 import logger from "../utils/logger";
 import { buildAttachmentPrompt, MAX_ATTACHMENTS_PER_MESSAGE } from "../utils/attachments";
+import { dropRepeatedStart } from "../utils/continuation";
 import { MOODS } from "../utils/types";
 import type {
   AgentStatus,
@@ -379,6 +380,42 @@ export class OpenMonkey extends EventEmitter {
   }
 
   /**
+   * Carry on with an answer the app lost halfway through.
+   *
+   * The part that was written is kept as it is, the model is asked to pick the thread
+   * up where it stopped, and the answer grows on the same row instead of starting
+   * again. The turn the model left off in is put back in front of it, or it writes the
+   * whole thing over.
+   */
+  async resumeAnswer(conversationId: string, messageId: string): Promise<Message | null> {
+    if (this.statusInfo.state !== "ready") {
+      throw new Error(this.statusInfo.message ?? "OpenMonkey is still loading its model");
+    }
+    if (this.controller) throw new Error("OpenMonkey is already answering. Stop that reply first.");
+    const conversation = storage.getConversation(conversationId);
+    if (!conversation) throw new Error("That conversation no longer exists");
+    const target = storage.getMessage(messageId);
+    if (!target || target.role !== "assistant") throw new Error("That answer no longer exists");
+    if (!target.metadata?.unfinished) throw new Error("That answer has already ended");
+    const partial = target.content;
+    if (!partial.trim()) throw new Error("There is nothing to continue");
+
+    if (this.activeConversationId !== conversationId) this.activateConversation(conversationId);
+    this.conversationHistory = this.historyFor(conversationId);
+    if (this.modelManager.active === "bonsai") {
+      this.modelManager.restoreConversation(this.conversationHistory, this.buildSystemPrompt());
+    }
+
+    logger.info("chat.resumed", { conversationId, chars: partial.length });
+    const prompt =
+      "Continue the answer above from exactly where it stopped. Write only what comes next — do not repeat what is already written.";
+    return await this.generateReply(conversationId, prompt, partial, undefined, "main", target.metadata?.variantOf, {
+      id: messageId,
+      content: partial,
+    });
+  }
+
+  /**
    * Rewrite a question that was already sent. The answer and every turn after it are
    * dropped, and the new wording is sent in their place.
    */
@@ -429,11 +466,13 @@ export class OpenMonkey extends EventEmitter {
     titleCandidate: string,
     retrieval?: string,
     origin: "main" | "quick" = "main",
-    variantOf?: string
+    variantOf?: string,
+    resume?: { id: string; content: string }
   ): Promise<Message | null> {
     if (retrieval) logger.info("memory.context.injected", { conversationId, chars: retrieval.length });
     const systemPrompt = this.buildSystemPrompt();
-    const assistantId = messageId();
+    const assistantId = resume?.id ?? messageId();
+    const prefix = resume?.content ?? "";
     const startedAt = Date.now();
     let generatedTokens = 0;
     const controller = new AbortController();
@@ -442,12 +481,42 @@ export class OpenMonkey extends EventEmitter {
     this.emitChat({
       type: "start",
       conversationId,
-      message: { id: assistantId, role: "assistant", content: "", timestamp: new Date() },
+      message: { id: assistantId, role: "assistant", content: prefix, timestamp: new Date() },
     });
 
     let accumulated = "";
     let pending = "";
     let toolSeen = false;
+
+    // The answer is put on the disk while it is being written, so a crash does not
+    // take the whole reply with it. The row is marked unfinished until the answer
+    // ends, and a launch that finds one offers to carry on from where it stopped.
+    let writtenAt = 0;
+    let writtenLength = 0;
+    const writePartial = () => {
+      const now = Date.now();
+      const first = writtenAt === 0;
+      if (!first && now - writtenAt < 900) return;
+      if (!first && accumulated.length - writtenLength < 120) return;
+      const visible = this.taskManager.parseTaskBlocks(accumulated).visibleText;
+      const text = prefix + visible;
+      if (!text.trim()) return;
+      writtenAt = now;
+      writtenLength = accumulated.length;
+      storage.saveMessage(conversationId, {
+        id: assistantId,
+        role: "assistant",
+        content: text,
+        timestamp: new Date(),
+        metadata: {
+          durationMs: now - startedAt,
+          tokens: generatedTokens || undefined,
+          mood: this.currentMood,
+          variantOf,
+          unfinished: true,
+        },
+      });
+    };
 
     const emitToken = (token: string) => {
       if (!token) return;
@@ -456,6 +525,7 @@ export class OpenMonkey extends EventEmitter {
 
     const onTextChunk = (chunk: string) => {
       accumulated += chunk;
+      writePartial();
       if (toolSeen) return;
       pending += chunk;
       const fence = pending.indexOf(TOOL_FENCE);
@@ -475,7 +545,14 @@ export class OpenMonkey extends EventEmitter {
     try {
       const response = await this.modelManager.generateResponse(prompt, {
         systemPrompt,
-        history: this.modelManager.active === "mlx" ? this.promptHistory() : undefined,
+        // A resumed answer needs the part that was already written in front of the
+        // model, or it writes the whole thing again instead of carrying on.
+        history:
+          this.modelManager.active === "mlx"
+            ? resume
+              ? this.conversationHistory.slice(-HISTORY_TURNS)
+              : this.promptHistory()
+            : undefined,
         temperature: config.get("model").temperature,
         maxTokens: config.get("model").maxTokens,
         signal: controller.signal,
@@ -493,6 +570,9 @@ export class OpenMonkey extends EventEmitter {
 
       const { visibleText, requests, errors } = this.taskManager.parseTaskBlocks(accumulated);
       let finalText = visibleText.trim();
+      // A model that starts the answer again instead of continuing it repeats the
+      // beginning of what is already written; that repeat is dropped.
+      if (prefix) finalText = dropRepeatedStart(prefix, finalText);
 
       if (retrieval && (requests.length || errors.length || !finalText)) {
         // The small model often reaches for a file tool even when retrieval already
@@ -505,7 +585,7 @@ export class OpenMonkey extends EventEmitter {
           type: "replace",
           conversationId,
           messageId: assistantId,
-          content: finalText,
+          content: prefix + finalText,
         });
       } else if (requests.length || errors.length) {
         const outcomes = [];
@@ -521,7 +601,7 @@ export class OpenMonkey extends EventEmitter {
           type: "replace",
           conversationId,
           messageId: assistantId,
-          content: finalText,
+          content: prefix + finalText,
         });
       } else if (retrieval) {
         finalText = this.groundCitations(finalText, retrieval);
@@ -530,7 +610,7 @@ export class OpenMonkey extends EventEmitter {
       const message: Message = {
         id: assistantId,
         role: "assistant",
-        content: finalText || "(no text)",
+        content: prefix ? prefix + finalText : finalText || "(no text)",
         timestamp: new Date(),
         metadata: {
           durationMs: Date.now() - startedAt,
@@ -541,7 +621,8 @@ export class OpenMonkey extends EventEmitter {
       };
       storage.saveMessage(conversationId, message);
       if (this.activeConversationId === conversationId) {
-        this.pushHistory({ role: "assistant", content: finalText || "(no text)" });
+        if (resume) this.replaceLastAssistantTurn(message.content);
+        else this.pushHistory({ role: "assistant", content: message.content });
       }
       if (variantOf) {
         // The group only exists once this row is stored, so the switcher's position in it
@@ -568,7 +649,7 @@ export class OpenMonkey extends EventEmitter {
         const message: Message = {
           id: assistantId,
           role: "assistant",
-          content: visible,
+          content: prefix + visible,
           timestamp: new Date(),
           metadata: {
             stopped: true,
@@ -581,7 +662,8 @@ export class OpenMonkey extends EventEmitter {
         if (visible) {
           storage.saveMessage(conversationId, message);
           if (this.activeConversationId === conversationId) {
-            this.pushHistory({ role: "assistant", content: visible });
+            if (resume) this.replaceLastAssistantTurn(message.content);
+            else this.pushHistory({ role: "assistant", content: message.content });
           }
         }
         this.emitChat({ type: "stopped", conversationId, message });
@@ -598,7 +680,7 @@ export class OpenMonkey extends EventEmitter {
         partial = {
           id: assistantId,
           role: "assistant",
-          content: visible,
+          content: prefix + visible,
           timestamp: new Date(),
           metadata: {
             stopped: true,
@@ -606,11 +688,14 @@ export class OpenMonkey extends EventEmitter {
             tokens: generatedTokens || undefined,
             mood: this.currentMood,
             variantOf,
+            // The answer did not end on its own, so it can be carried on.
+            unfinished: true,
           },
         };
         storage.saveMessage(conversationId, partial);
         if (this.activeConversationId === conversationId) {
-          this.pushHistory({ role: "assistant", content: visible });
+          if (resume) this.replaceLastAssistantTurn(partial.content);
+          else this.pushHistory({ role: "assistant", content: partial.content });
         }
       }
 
@@ -749,6 +834,16 @@ say the action is still running.`,
     if (this.conversationHistory.length > HISTORY_TURNS * 2) {
       this.conversationHistory = this.conversationHistory.slice(-HISTORY_TURNS * 2);
     }
+  }
+
+  /** Swaps the answer the chat already holds for the one that has just finished. */
+  private replaceLastAssistantTurn(content: string): void {
+    const last = this.conversationHistory[this.conversationHistory.length - 1];
+    if (last?.role === "assistant") {
+      this.conversationHistory[this.conversationHistory.length - 1] = { role: "assistant", content };
+      return;
+    }
+    this.pushHistory({ role: "assistant", content });
   }
 
   private emitChat(event: ChatEvent): void {

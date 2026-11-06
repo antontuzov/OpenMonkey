@@ -75,6 +75,17 @@ that produced the build.
   kept in `safe-mode.json` in the app's own profile folder, and a launch that reaches the
   point of being usable clears it: only a launch that keeps failing is answered with one.
   The chat is still there — the history is the one thing safe mode does not take away.
+- **An answer that was cut off can be carried on.** The answer is written to the disk
+  while the model is still writing it, so a crash, a quit or a lost connection no longer
+  takes the whole reply with it: the part that was written is there when the app comes
+  back, marked as unfinished. Such an answer carries a **Continue** button that asks the
+  model to pick the thread up where it stopped — the part already written is kept, the
+  new text grows on the same row instead of becoming a second answer, and the turn the
+  model left off in is put back in front of it so it does not write the whole thing
+  again. A model that starts the answer over anyway has that repeat taken off; one that
+  only resembles what is written is left alone rather than cut in the wrong place. An
+  answer you stopped yourself is recorded as stopped and is not offered for a carry-on:
+  only an answer the app lost is.
 
 ### Changed
 
@@ -189,6 +200,16 @@ that produced the build.
   test runs the real start-up path against a profile that died last time, and one
   end-to-end spec launches the app with the switch on and reads the banner, the agent
   status, the empty MCP list and the marker file behind them.
+- Six unit tests cover the repeat that is taken off a carried-on answer: a continuation
+  that picks up where the answer stopped, one that writes the answer again and then goes
+  on, one that only repeats, one that stops in the middle of the repeat, one that merely
+  resembles the answer and is therefore left whole, and an empty continuation. Seven
+  integration tests drive the agent itself with a stand-in model: an answer is on the
+  disk and marked unfinished while it is still being written, a cut-off answer keeps its
+  part and grows on the same row when it is carried on, the model is asked to continue
+  rather than to start again, and an answer that has ended, an answer that is not there
+  and a question of the user are each refused. One end-to-end spec reads the button in
+  the page: the cut-off answer offers it and the finished one does not.
 
 ## 0.9.2 — 2026-11-05
 

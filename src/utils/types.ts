@@ -5,6 +5,8 @@ export interface MessageMetadata {
   /** Tokens the model actually generated for this reply. */
   tokens?: number;
   stopped?: boolean;
+  /** The answer was cut off before it ended — the app went away while it was written. */
+  unfinished?: boolean;
   /** Every file that came with the message; the body itself is not kept here. */
   attachments?: MessageAttachment[];
   /** Set on every answer of a regenerated group; the first answer's own id. */
@@ -832,6 +834,8 @@ export interface ElectronAPI {
   hideQuickAsk: () => Promise<void>;
   platform: string;
   regenerate: (conversationId: string) => Promise<Message | null>;
+  /** Carry on with an answer the app lost halfway through. */
+  resumeAnswer: (conversationId: string, messageId: string) => Promise<Message | null>;
   /** Rewrite a sent question: everything after it goes, and the answer runs again. */
   editMessage: (conversationId: string, messageId: string, message: string) => Promise<Message | null>;
   /** A copy of the chat up to one message, as a conversation of its own. */

@@ -15,6 +15,7 @@ import {
   Loader,
   Paperclip,
   Pencil,
+  Play,
   Plus,
   Quote,
   RefreshCw,
@@ -135,6 +136,7 @@ const ChatMessage: React.FC<{
   /** Only the newest message fades in; history that is mounted again must not. */
   animate?: boolean;
   onRegenerate: () => void;
+  onResume: () => void;
   onEdit: (text: string) => void;
   onQuote: () => void;
   onBranch: () => void;
@@ -148,6 +150,7 @@ const ChatMessage: React.FC<{
   busy,
   animate = false,
   onRegenerate,
+  onResume,
   onEdit,
   onQuote,
   onBranch,
@@ -288,6 +291,20 @@ const ChatMessage: React.FC<{
                 <Square size={8} />
                 {t("chat.stopped")}
               </span>
+            </>
+          )}
+          {message.metadata?.unfinished && (
+            <>
+              <span>·</span>
+              <button
+                onClick={onResume}
+                disabled={busy}
+                className="inline-flex items-center gap-1 text-accent-ink hover:underline disabled:opacity-40"
+                title={t("chat.resumeHint")}
+              >
+                <Play size={8} />
+                {t("chat.resume")}
+              </button>
             </>
           )}
           {group && position >= 0 && (
@@ -637,7 +654,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
         case "start":
           cancelTokenFlush();
           setFailure(null);
-          setStream({ id: event.message.id, content: "" });
+          // A resumed answer starts with the part that was already written.
+          setStream({ id: event.message.id, content: event.message.content ?? "" });
           break;
         case "token":
           pendingTokens.current += event.token;
@@ -913,6 +931,31 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       onConversationsChanged();
     }
   }, [busy, conversationId, onConversationsChanged, ready]);
+
+  /**
+   * Carry on with an answer the app lost halfway through. The part that was written
+   * stays on screen and the new text is added to it.
+   */
+  const resumeAnswer = useCallback(
+    async (messageId: string) => {
+      if (!conversationId || !ready || busy) return;
+      setFailure(null);
+      setNotice(null);
+      virtual.followEnd();
+      setIsSending(true);
+
+      try {
+        await window.electron?.resumeAnswer(conversationId, messageId);
+      } catch (caught) {
+        const detail = caught instanceof Error ? caught.message : String(caught);
+        setFailure({ code: classifyError(detail), text: detail, origin: "stream" });
+      } finally {
+        setIsSending(false);
+        onConversationsChanged();
+      }
+    },
+    [busy, conversationId, onConversationsChanged, ready]
+  );
 
   /**
    * Rewrite a sent question. The chat drops that turn and everything after it at once,
@@ -1242,6 +1285,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       animate={index === messages.length - 1}
                       busy={busy}
                       onRegenerate={() => void regenerate()}
+                      onResume={() => void resumeAnswer(message.id)}
                       onEdit={(text) => void editAndResend(message.id, text)}
                       onQuote={() => quote(message.content)}
                       onBranch={() => void branch(message.id)}

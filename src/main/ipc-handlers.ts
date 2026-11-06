@@ -138,6 +138,10 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle("regenerate", (_event, id: unknown) => agent().regenerate(conversationId(id)));
 
+  ipcMain.handle("resume-answer", async (_event, id: unknown, target: unknown) => {
+    return await agent().resumeAnswer(conversationId(id), messageId(target));
+  });
+
   ipcMain.handle("edit-message", async (_event, id: unknown, target: unknown, message: unknown) => {
     if (typeof message !== "string") throw new Error("Message must be text");
     return await agent().editAndResend(conversationId(id), messageId(target), message);
