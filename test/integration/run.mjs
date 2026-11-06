@@ -97,7 +97,17 @@ try {
     stdio: "inherit",
     timeout: 120_000,
     killSignal: "SIGKILL",
-    env: { ...process.env, OM_STUB_HOME: home, HOME: path.join(home, "home"), NODE_NO_WARNINGS: "1" },
+    env: {
+      ...process.env,
+      OM_STUB_HOME: home,
+      HOME: path.join(home, "home"),
+      NODE_NO_WARNINGS: "1",
+      // electron-store asks the real electron package where the app lives, and that
+      // package downloads itself when its binary is missing — a hundred megabytes in
+      // the middle of a test run, on a machine that never needs it. The override
+      // makes it answer without looking at the disk.
+      ELECTRON_OVERRIDE_DIST_PATH: path.join(home, "electron"),
+    },
   });
   if (run.error) throw run.error;
   process.exitCode = run.status ?? 1;
