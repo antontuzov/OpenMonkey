@@ -479,8 +479,9 @@ snapshot portability across machines (the baseline is this Mac's rendering).
 `npm run typecheck` and `npm run build` are clean.
 
 **Phase 7 verification (32):** `.github/workflows/ci.yml` has three jobs. `verify` runs on a
-`macos-14` (arm64) and a `macos-13` (x64) runner with Node 24 and npm cache: `npm ci`,
-`npm run typecheck`, `npm test`, `npm run build`. `e2e` runs `npm run test:e2e` on `macos-14` and
+`macos-latest` (arm64) runner with Node 24 and npm cache: `npm ci`,
+`npm run typecheck`, `npm test`, `npm run build`. `e2e` runs `npm run test:e2e` on the same
+runner and
 uploads `test-results/` and `playwright-report/` only on failure. `package` runs only for `v*` tags,
 after `verify`, on both runners: it builds and calls
 `electron-builder --mac --arm64|x64 --publish never`, reading `CSC_LINK`, `CSC_KEY_PASSWORD`,

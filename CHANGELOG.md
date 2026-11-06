@@ -103,6 +103,11 @@ that produced the build.
   with no weights on disk — every first run from the DMG, and every machine still
   downloading them — opened the app to "No chats yet" over conversations that were
   sitting in its own database. The list now loads as soon as there is an agent to ask.
+- **CI runs on a runner image that still exists.** GitHub retired the macOS 14 arm64
+  image on 2 November 2026, and a job that names a retired image is cancelled a second
+  after it starts, with no log to read — two pushes in a row looked like a build that had
+  silently done nothing. The jobs ask for `macos-latest`, which always names the current
+  arm64 image.
 
 ### Testing
 
