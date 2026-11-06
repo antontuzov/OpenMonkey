@@ -138,12 +138,25 @@ function backgroundOf(element: Element): Rgb {
 
 let paper: Rgb | null = null;
 
+/**
+ * The colour the window itself is painted with.
+ *
+ * A vibrant window is backed by the desktop material, which the app cannot see, and
+ * a CI runner never composites at all. The page's own `--color-paper` is the closest
+ * honest stand-in — and unlike a fixed grey it is the light one in the light theme
+ * and the dark one in the dark theme.
+ */
 function paperColor(): Rgb {
   if (paper) return paper;
-  const declared = parseCssColor(getComputedStyle(document.documentElement).backgroundColor);
-  // A vibrant window is painted by the desktop behind it, which the app cannot
-  // see; its own paper is the closest honest stand-in.
-  paper = declared?.alpha === 1 ? declared : { r: 246, g: 247, b: 243, alpha: 1 };
+  const style = getComputedStyle(document.documentElement);
+  const painted = parseCssColor(style.backgroundColor);
+  const declared = parseCssColor(style.getPropertyValue("--color-paper"));
+  paper =
+    painted?.alpha === 1
+      ? painted
+      : declared?.alpha === 1
+        ? declared
+        : { r: 246, g: 247, b: 243, alpha: 1 };
   return paper;
 }
 
