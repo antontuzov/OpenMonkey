@@ -1614,6 +1614,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         );
                       })}
                     </div>
+                    <div className="mt-5 pt-4 border-t border-line">
+                      <SettingRow title={t("appearance.oled")} copy={t("appearance.oledCopy")}>
+                        <Toggle
+                          on={config.ui.oled}
+                          label={t("appearance.oled")}
+                          onChange={() => patchUi({ oled: !config.ui.oled })}
+                        />
+                      </SettingRow>
+                    </div>
                   </div>
                 </section>
 

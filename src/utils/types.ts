@@ -654,6 +654,8 @@ export interface Config {
     density: UiDensity;
     /** Extra override on top of the OS Reduce Motion setting. */
     reduceMotion: boolean;
+    /** Paints the dark theme on true black, so an OLED screen keeps its pixels off. */
+    oled: boolean;
     /** The empty chat keeps its starter prompts until the user hides them. */
     starterPromptsHidden: boolean;
     language: AppLanguage;

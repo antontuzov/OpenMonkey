@@ -25,7 +25,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
  * painted on the accent. The unit test already proves every swatch pair by pair; this
  * checks the app is wearing the palette it claims to.
  */
-async function launch(theme) {
+async function launch(theme, ui = {}) {
   const profile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-a11y-"));
   writeFileSync(
     path.join(profile, "openmonkey-config.json"),
@@ -33,7 +33,7 @@ async function launch(theme) {
       onboarding: { completed: true },
       model: { provider: "bonsai" },
       memory: { enabled: false, workspaceSearch: false },
-      ui: { theme, accent: "#7b8794", language: "en" },
+      ui: { theme, accent: "#7b8794", language: "en", ...ui },
     })
   );
   const app = await electron.launch({
@@ -127,3 +127,29 @@ for (const theme of ["light", "dark"]) {
     }
   });
 }
+
+test("the true-black app is painted on black and passes the same check", async () => {
+  // True black is a scheme of its own, so it is audited as one: the paper under
+  // the text is black, and the text still has to be readable on it.
+  const { app, page, profile } = await launch("dark", { oled: true });
+  try {
+    await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
+    await page.getByRole("navigation").first().waitFor();
+    const painted = await page.evaluate(() => ({
+      oled: document.documentElement.dataset.oled,
+      paper: getComputedStyle(document.body).backgroundColor,
+    }));
+    expect(painted.oled, "the true-black scheme was never applied").toBe("true");
+    expect(painted.paper, "the app was not painted on true black").toBe("rgb(0, 0, 0)");
+    await audit(page, "chat-oled", FLOORS.chat);
+
+    await page.getByRole("button", { name: "Settings", exact: true }).first().click();
+    await expect(page.getByRole("heading").first()).toBeVisible();
+    await page.getByRole("navigation").first().getByRole("button", { name: "Appearance", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+    await audit(page, "settings-appearance-oled", FLOORS.appearance);
+  } finally {
+    await quitApp(app, profile);
+    rmSync(profile, { recursive: true, force: true });
+  }
+});

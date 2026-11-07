@@ -66,6 +66,7 @@ export function useAppearance(config: Config | null): void {
   const accent = config?.ui.accent ?? "#3ecf8e";
   const density = config?.ui.density ?? "comfortable";
   const reduceMotion = config?.ui.reduceMotion ?? false;
+  const oled = config?.ui.oled ?? false;
   const language = config?.ui.language ?? "en";
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export function useAppearance(config: Config | null): void {
     root.style.setProperty("--color-accent", parseHex(accent) ? accent : "#3ecf8e");
     root.dataset.density = density;
     root.dataset.reduceMotion = reduceMotion ? "true" : "false";
+    root.dataset.oled = oled ? "true" : "false";
     root.lang = language;
     // macOS backs the window with a material; only there is the sidebar thin
     // enough to let it through.
@@ -85,5 +87,5 @@ export function useAppearance(config: Config | null): void {
     apply();
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [accent, density, language, reduceMotion, theme]);
+  }, [accent, density, language, oled, reduceMotion, theme]);
 }

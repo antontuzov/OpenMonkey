@@ -165,23 +165,37 @@ test("text is judged at the size it is drawn", () => {
   assert.match(report.findings[0].detail, /reads 2.65 to 1/);
 });
 
-test("the stylesheet's own palette clears AA for every swatch in both themes", () => {
+test("the stylesheet's own palette clears AA for every swatch in every scheme", () => {
   // The gate reads the real global.css, resolves the token cascade the way the
   // browser does, and contrasts every text token against every surface it can
   // be drawn on — so a colour regression fails here, without a window.
   const css = readFileSync(new URL("../../src/renderer/styles/global.css", import.meta.url), "utf8");
-  for (const theme of ["light", "dark"] as const) {
+  for (const variant of ["light", "dark", "oled"] as const) {
     for (const accent of ACCENTS) {
-      const palette = resolvePalette(css, accent.value, theme);
-      assert.ok(palette.size > 10, `${theme}: the tokens did not resolve`);
+      const palette = resolvePalette(css, accent.value, variant);
+      assert.ok(palette.size > 10, `${variant}: the tokens did not resolve`);
       const problems = paletteProblems(palette);
       assert.deepEqual(
         problems.map((p) => `${p.text} on ${p.surface} = ${p.ratio}`),
         [],
-        `${theme} theme with the ${accent.name} (${accent.value}) swatch`
+        `${variant} scheme with the ${accent.name} (${accent.value}) swatch`
       );
     }
   }
+});
+
+test("true black paints the paper black and leaves the dark palette alone", () => {
+  const css = readFileSync(new URL("../../src/renderer/styles/global.css", import.meta.url), "utf8");
+  const accent = ACCENTS[0].value;
+  const oled = resolvePalette(css, accent, "oled");
+  const dark = resolvePalette(css, accent, "dark");
+  assert.equal(oled.get("--color-paper"), "#000000");
+  assert.equal(oled.get("--color-card"), "#000000");
+  // The dark scheme keeps its own greys: the true-black block must not leak into it.
+  assert.equal(dark.get("--color-paper"), "#121512");
+  assert.equal(dark.get("--color-card"), "#191d18");
+  // Black is not a colour scheme of its own: the ink is the dark theme's ink.
+  assert.equal(oled.get("--color-ink"), dark.get("--color-ink"));
 });
 
 test("the accent ink the settings preview promises is the ink the stylesheet paints", () => {

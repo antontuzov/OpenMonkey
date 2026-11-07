@@ -257,7 +257,9 @@ default config is memory on, workspace search off.
     picker with a WCAG report (`checkAccent` mixes the accent the same way the CSS tokens do
     and grades AA / large-text / low), and a Reduce Motion switch that also honours the system
     setting. Settings patches are partial per section, so changing one field cannot revive a
-    stale sibling. *(M)*
+    stale sibling. A True black switch repaints the dark theme on `#000000` — paper, cards and
+    sidebar — so an OLED panel keeps its pixels off, and the vibrant window stops letting the
+    desktop through when it is on. *(M)*
 25. ✅ **Accessibility & i18n**: EN/RU dictionary with `t()`/`locale()`, `documentElement.lang`,
     locale-formatted times (12-hour en-US, 24-hour ru-RU) and RU mood names shared with the
     native tray through `MOOD_LOGOS.labelRu`; the keyboard map is shown in Settings and echoed
@@ -267,9 +269,9 @@ default config is memory on, workspace search off.
     use live regions (53 labelled controls and 11 live regions on the chat surface). Long
     explanatory copy, the onboarding flow and the welcome/failure cards stay English. The same
     claims are now a gate rather than a note: `src/utils/a11y.ts` holds the rules with no DOM in
-    them, the palette is contrasted from `global.css` itself for all eight swatches in both
-    themes, Settings → Privacy → Diagnostics runs the audit over the screen in front of you, and
-    CI runs it against the real app and fails on any finding. *(L)*
+    them, the palette is contrasted from `global.css` itself for all eight swatches in all three
+    schemes — light, dark and true black — Settings → Privacy → Diagnostics runs the audit over
+    the screen in front of you, and CI runs it against the real app and fails on any finding. *(L)*
 26. ✅ **Micro-interactions**: streaming caret and held-back fence tail while answering, message
     skeletons on history load, inline task progress in the rail, and toasts instead of modals
     for success (copy, fact saved/removed, folder added, audit exported, reindex) with no sound

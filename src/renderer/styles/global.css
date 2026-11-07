@@ -67,6 +67,25 @@ html[data-vibrant="true"] body {
   color-scheme: dark;
 }
 
+/* True black, for a screen that keeps its pixels off. The dark theme is the one
+   that has a black to keep off, so this is what it becomes when the switch is
+   on: the paper and the cards are the same black and the hairlines are the
+   only thing left to tell them apart. */
+[data-theme="dark"][data-oled="true"] {
+  --color-paper: #000000;
+  --color-card: #000000;
+  --color-card-2: #0c0f0c;
+  --color-line: #232823;
+  --color-sidebar: #000000;
+}
+
+/* A vibrant window lets the desktop through the paper, which on an OLED screen
+   is the one thing that cannot be true black — so true black paints it. */
+html[data-vibrant="true"][data-oled="true"],
+html[data-vibrant="true"][data-oled="true"] body {
+  background-color: var(--color-paper);
+}
+
 /* Layer matters: an unlayered reset would outrank every Tailwind spacing utility. */
 @layer base {
   * {

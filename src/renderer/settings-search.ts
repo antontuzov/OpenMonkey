@@ -36,6 +36,7 @@ const ENTRIES: SettingEntry[] = [
 
   // Appearance
   { page: "appearance", key: "appearance.theme", keywords: ["dark mode", "light", "system", "surface"] },
+  { page: "appearance", key: "appearance.oled", keywords: ["oled", "true black", "pixels off", "dark mode"] },
   { page: "appearance", key: "appearance.textSize", keywords: ["zoom", "scale", "font", "bigger text"] },
   { page: "appearance", key: "appearance.density", keywords: ["compact", "spacing", "roomy"] },
   { page: "appearance", key: "appearance.motion", keywords: ["reduce motion", "animation", "springs"] },

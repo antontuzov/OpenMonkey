@@ -22,6 +22,13 @@ that produced the build.
   4.46 to 1 under the Slate swatch. Settings → Privacy → Diagnostics carries a "Check this
   screen" row that runs the same audit over the window in front of you and lists what it found,
   and CI runs it against the real app in both themes and fails on any finding.
+- **True black, for a screen that keeps its pixels off.** Settings → Appearance has a
+  "True black" switch that repaints the dark theme on `#000000` — the paper, the cards and
+  the sidebar — so an OLED panel draws nothing where there is nothing to read, and the
+  window stops letting the desktop through it. The palette gate measures it as a scheme
+  of its own: the true-black tokens are resolved from the same stylesheet and contrasted
+  against every text token for all eight accent swatches, and the e2e opens the app in
+  true black to confirm the screen is painted on black and still passes the audit.
 - **The agent can find pictures on the internet.** `web.image_search` asks two openly
   licensed indexes — Openverse first, Wikimedia Commons behind it — and answers with the
   direct image URL, the page the picture came from, its author and its licence, so a

@@ -38,18 +38,27 @@ export const FIXED_PAIRS: ReadonlyArray<readonly [string, string, string]> = [
   ["selected swatch tick", "--color-on-accent", "--color-accent"],
 ];
 
+/** The three colour schemes the app can paint. */
+export type PaletteVariant = "light" | "dark" | "oled";
+
 interface Declaration {
   name: string;
   value: string;
 }
 
-/** Every `--x: value` inside the braces of a block whose selector matches. */
-function declarations(css: string, wanted: RegExp): Declaration[] {
+/**
+ * Every `--x: value` inside the braces of a block whose selector matches.
+ *
+ * The selector is matched in full, not as a fragment: the true-black block is
+ * `[data-theme="dark"][data-oled="true"]`, and a fragment match would let it
+ * leak into the plain dark palette.
+ */
+function declarations(css: string, wanted: (selector: string) => boolean): Declaration[] {
   const found: Declaration[] = [];
   for (const match of css.matchAll(/([^\r\n{}]+)\{([^{}]*)\}/g)) {
     // The capture starts at the previous block's closing brace.
     const selector = match[1].slice(match[1].lastIndexOf("}") + 1).trim();
-    if (!wanted.test(selector)) continue;
+    if (!wanted(selector)) continue;
     for (const rule of match[2].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
       found.push({ name: rule[1], value: rule[2].trim() });
     }
@@ -100,19 +109,24 @@ export function blend(from: string, to: string, weight: number): string | null {
 }
 
 /**
- * The palette as it will be painted, for one accent in one theme.
+ * The palette as it will be painted, for one accent in one scheme.
  *
  * `:root` and `[data-theme="dark"]` come after `@theme`, the same order the
  * cascade uses, so a token the dark block re-declares resolves to the dark value.
+ * The true-black block comes after that one, so the dark palette keeps its own
+ * greys and only the OLED variant is painted on black.
  * The vibrant sidebar is left out: it is mixed with `transparent` so the desktop
  * shows through it, and what is behind it is not the app's to judge.
  */
-export function resolvePalette(css: string, accent: string, theme: "light" | "dark"): Map<string, string> {
+export function resolvePalette(css: string, accent: string, variant: PaletteVariant): Map<string, string> {
   const declared = new Map<string, string>();
-  const blocks: RegExp[] =
-    theme === "dark"
-      ? [/@theme/, /:root/, /\[data-theme="dark"\]/]
-      : [/@theme/, /:root/];
+  const blocks: Array<(selector: string) => boolean> = [(selector) => selector === "@theme", (selector) => selector === ":root"];
+  if (variant !== "light") {
+    blocks.push((selector) => selector === '[data-theme="dark"]');
+  }
+  if (variant === "oled") {
+    blocks.push((selector) => selector === '[data-theme="dark"][data-oled="true"]');
+  }
   for (const block of blocks) for (const rule of declarations(css, block)) declared.set(rule.name, rule.value);
   declared.set("--color-accent", accent);
 
