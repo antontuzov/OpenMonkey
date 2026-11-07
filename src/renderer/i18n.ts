@@ -266,7 +266,7 @@ const EN = {
   "appearance.coloursFailing": "{count} pairings fall below AA: {list}.",
   "appearance.coloursBuiltIn": "Built-in colour",
   "appearance.tokenColour": "{name} colour",
-  "appearance.tokenHex": "{name} hex",
+  "appearance.tokenHex": "Hex: {name}",
   "appearance.token.paper": "Paper",
   "appearance.token.paperCopy": "The page behind everything.",
   "appearance.token.card": "Card",
