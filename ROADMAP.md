@@ -253,7 +253,9 @@ default config is memory on, workspace search off.
     tray click that recreates the window if it was destroyed. *(M)*
 24. ✅ **Appearance v2**: theme cards (Light / Dark / System, where System tracks
     `prefers-color-scheme` live), text scale S/M/L applied as `setZoomFactor` (0.9 / 1 / 1.12)
-    so chat scales too, comfortable/compact density through `data-density`, a free-form accent
+    so chat scales too, a comfortable/compact density per theme through `data-density`
+    (the app follows the theme it is showing, and a config written before the split
+    keeps the density it had in both), a free-form accent
     picker with a WCAG report (`checkAccent` mixes the accent the same way the CSS tokens do
     and grades AA / large-text / low), and a Reduce Motion switch that also honours the system
     setting. Settings patches are partial per section, so changing one field cannot revive a

@@ -245,12 +245,15 @@ const Segmented: React.FC<{
   options: Array<{ value: string; label: string; disabled?: boolean }>;
   value: string;
   onChange: (value: string) => void;
-}> = ({ options, value, onChange }) => (
-  <div className="segmented">
+  /** Names the group, so a reader knows which of two like-looking sets this is. */
+  label?: string;
+}> = ({ options, value, onChange, label }) => (
+  <div className="segmented" role={label ? "group" : undefined} aria-label={label}>
     {options.map((option) => (
       <button
         key={option.value}
         disabled={option.disabled}
+        aria-pressed={value === option.value}
         onClick={() => onChange(option.value)}
         className={value === option.value ? "segmented-active" : ""}
       >
@@ -1690,10 +1693,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         ]}
                       />
                     </SettingRow>
-                    <SettingRow title={t("appearance.density")} copy={t("appearance.densityCopy")}>
+                    <SettingRow title={t("appearance.densityLight")} copy={t("appearance.densityLightCopy")}>
                       <Segmented
-                        value={config.ui.density}
-                        onChange={(value) => patchUi({ density: value as Config["ui"]["density"] })}
+                        value={config.ui.density.light}
+                        label={t("appearance.densityLight")}
+                        onChange={(value) =>
+                          patchUi({
+                            density: { ...config.ui.density, light: value as Config["ui"]["density"]["light"] },
+                          })
+                        }
+                        options={[
+                          { value: "comfortable", label: t("appearance.comfortable") },
+                          { value: "compact", label: t("appearance.compact") },
+                        ]}
+                      />
+                    </SettingRow>
+                    <SettingRow title={t("appearance.densityDark")} copy={t("appearance.densityDarkCopy")}>
+                      <Segmented
+                        value={config.ui.density.dark}
+                        label={t("appearance.densityDark")}
+                        onChange={(value) =>
+                          patchUi({
+                            density: { ...config.ui.density, dark: value as Config["ui"]["density"]["dark"] },
+                          })
+                        }
                         options={[
                           { value: "comfortable", label: t("appearance.comfortable") },
                           { value: "compact", label: t("appearance.compact") },

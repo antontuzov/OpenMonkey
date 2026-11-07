@@ -29,6 +29,12 @@ that produced the build.
   of its own: the true-black tokens are resolved from the same stylesheet and contrasted
   against every text token for all eight accent swatches, and the e2e opens the app in
   true black to confirm the screen is painted on black and still passes the audit.
+- **Each theme is packed as tightly as its own setting says.** Density used to be one
+  switch for the whole app, so a compact dark theme meant a cramped light one too.
+  Settings → Appearance now has a density row per theme, and the app follows the theme
+  it is actually showing: pack the dark theme and the light theme does not move. A
+  config written before the split keeps the density it had — in both themes — so
+  nothing is quietly reset on upgrade.
 - **The agent can find pictures on the internet.** `web.image_search` asks two openly
   licensed indexes — Openverse first, Wikimedia Commons behind it — and answers with the
   direct image URL, the page the picture came from, its author and its licence, so a

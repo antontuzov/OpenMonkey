@@ -64,15 +64,16 @@ export function checkAccent(accent: string): ContrastReport {
 export function useAppearance(config: Config | null): void {
   const theme = config?.ui.theme ?? "system";
   const accent = config?.ui.accent ?? "#3ecf8e";
-  const density = config?.ui.density ?? "comfortable";
+  const density = config?.ui.density ?? { light: "comfortable", dark: "comfortable" };
   const reduceMotion = config?.ui.reduceMotion ?? false;
   const oled = config?.ui.oled ?? false;
   const language = config?.ui.language ?? "en";
+  const lightDensity = density.light;
+  const darkDensity = density.dark;
 
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--color-accent", parseHex(accent) ? accent : "#3ecf8e");
-    root.dataset.density = density;
     root.dataset.reduceMotion = reduceMotion ? "true" : "false";
     root.dataset.oled = oled ? "true" : "false";
     root.lang = language;
@@ -82,10 +83,13 @@ export function useAppearance(config: Config | null): void {
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
-      root.dataset.theme = theme === "system" ? (media.matches ? "dark" : "light") : theme;
+      const resolved = theme === "system" ? (media.matches ? "dark" : "light") : theme;
+      root.dataset.theme = resolved;
+      // Each theme is packed as tightly as its own setting says.
+      root.dataset.density = resolved === "dark" ? darkDensity : lightDensity;
     };
     apply();
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [accent, density, language, oled, reduceMotion, theme]);
+  }, [accent, darkDensity, language, lightDensity, oled, reduceMotion, theme]);
 }

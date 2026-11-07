@@ -651,7 +651,8 @@ export interface Config {
     currentMood: string;
     /** Display scale; implemented as a native webContents zoom factor. */
     textScale: UiTextScale;
-    density: UiDensity;
+    /** How tightly the rows are packed, one density per theme. */
+    density: { light: UiDensity; dark: UiDensity };
     /** Extra override on top of the OS Reduce Motion setting. */
     reduceMotion: boolean;
     /** Paints the dark theme on true black, so an OLED screen keeps its pixels off. */

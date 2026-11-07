@@ -2,7 +2,7 @@ import Store from "electron-store";
 import { app } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import type { Config, ConfigPatch, SettingsPage } from "./types";
+import type { Config, ConfigPatch, SettingsPage, UiDensity } from "./types";
 import { BONSAI_4B } from "../models/catalog";
 
 const defaultConfig: Config = {
@@ -19,7 +19,7 @@ const defaultConfig: Config = {
     accent: "#3ecf8e",
     currentMood: "neutral",
     textScale: "m",
-    density: "comfortable",
+    density: { light: "comfortable", dark: "comfortable" },
     reduceMotion: false,
     oled: false,
     starterPromptsHidden: false,
@@ -90,10 +90,33 @@ const store = new Store<Config>({
   name: "openmonkey-config",
 });
 
+/**
+ * The look of the app, with the parts that used to be one value still readable.
+ *
+ * A density used to be one setting for both themes; it is now one per theme, so a
+ * config written before that keeps the density it had — in both themes.
+ */
+function normaliseUi(stored: unknown): Config["ui"] {
+  const base = defaultConfig.ui;
+  if (!stored || typeof stored !== "object") return { ...base };
+  const ui = { ...base, ...(stored as Partial<Config["ui"]>) } as Config["ui"];
+  const density = (stored as { density?: unknown }).density;
+  if (typeof density === "string") {
+    ui.density = { light: density as UiDensity, dark: density as UiDensity };
+  } else if (density && typeof density === "object") {
+    ui.density = {
+      light: (density as { light?: UiDensity }).light ?? base.density.light,
+      dark: (density as { dark?: UiDensity }).dark ?? base.density.dark,
+    };
+  }
+  return ui;
+}
+
 /** electron-store only fills whole missing keys; new sub-fields need this merge. */
 const withDefaults = <K extends keyof Config>(key: K): Config[K] => {
   const base = defaultConfig[key];
   const stored = store.get(key);
+  if (key === "ui") return normaliseUi(stored) as Config[K];
   if (base && typeof base === "object" && !Array.isArray(base) && stored && typeof stored === "object") {
     return { ...base, ...stored } as Config[K];
   }

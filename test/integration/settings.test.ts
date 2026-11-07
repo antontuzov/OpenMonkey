@@ -49,6 +49,17 @@ test("resetting one page leaves every other choice alone", () => {
   assert.equal(privacy().autoDeleteAfter, 7);
 });
 
+test("a density written before the themes had their own keeps the density it had", () => {
+  // Before the split, one density was written for both themes. A config from then
+  // must not come back as two halves of nothing.
+  config.set("ui", { ...config.get("ui"), density: "compact" as never });
+
+  assert.deepEqual(config.get("ui").density, { light: "compact", dark: "compact" });
+
+  config.set("ui", { ...config.get("ui"), density: { light: "compact", dark: "comfortable" } });
+  assert.deepEqual(config.get("ui").density, { light: "compact", dark: "comfortable" });
+});
+
 test("the model page owns only the generation settings", () => {
   config.set("ui", { ...config.get("ui"), language: "ru" });
   config.set("model", { provider: "mlx", temperature: 1.9, maxTokens: 4096 });
