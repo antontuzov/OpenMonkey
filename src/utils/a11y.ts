@@ -144,6 +144,14 @@ export interface A11yReport {
   findings: A11yFinding[];
   /** How many elements the rules were applied to. */
   checked: number;
+  /**
+   * How many of each kind were looked at.
+   *
+   * A total says how much was read but not what, and a report that read only
+   * buttons proves nothing about the text. The tally says which of the rules
+   * were given something to judge.
+   */
+  kinds: Record<AuditableElement["kind"], number>;
 }
 
 const clip = (value: string, length = 48) => {
@@ -159,7 +167,9 @@ const clip = (value: string, length = 48) => {
  */
 export function auditElements(elements: AuditableElement[]): A11yReport {
   const findings: A11yFinding[] = [];
+  const kinds: Record<AuditableElement["kind"], number> = { control: 0, field: 0, image: 0, dialog: 0, text: 0 };
   for (const element of elements) {
+    kinds[element.kind] += 1;
     switch (element.kind) {
       case "control": {
         if (!element.name.trim()) {
@@ -226,5 +236,5 @@ export function auditElements(elements: AuditableElement[]): A11yReport {
       }
     }
   }
-  return { findings, checked: elements.length };
+  return { findings, checked: elements.length, kinds };
 }

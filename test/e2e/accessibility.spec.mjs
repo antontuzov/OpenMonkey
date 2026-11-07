@@ -47,15 +47,58 @@ async function launch(theme) {
   return { app, page, profile };
 }
 
-async function audit(page, title) {
-  await page.waitForTimeout(500);
-  const report = await page.evaluate(() => window.openmonkeyAudit?.());
+/**
+ * Waits for the screen to stop painting before it is judged.
+ *
+ * The app fades its panels in, and an element at zero opacity is one nobody can read,
+ * so a report taken during the fade describes half a screen. The count is read until
+ * two readings agree and the screen has had a moment to settle, which is the point at
+ * which what is on the screen is the whole of it.
+ */
+async function settledReport(page) {
+  let previous = -1;
+  let stable = 0;
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const report = await page.evaluate(() => window.openmonkeyAudit?.());
+    if (report && report.checked === previous) {
+      stable += 1;
+      if (stable >= 2 && attempt >= 4) return report;
+    } else {
+      stable = 0;
+    }
+    previous = report?.checked ?? -1;
+    await page.waitForTimeout(250);
+  }
+  return page.evaluate(() => window.openmonkeyAudit?.());
+}
+
+/**
+ * What each screen has to contain for the report to count as a reading of it.
+ *
+ * These are floors, not counts: the chat has a composer and a row of controls, and a
+ * settings page has a row of them. A report that found none of these has not looked
+ * at the screen, and passing it on an empty list would be a gate that never fires.
+ */
+const FLOORS = {
+  chat: { control: 4, field: 1, text: 6 },
+  landing: { control: 3, text: 5 },
+  appearance: { control: 3, text: 5 },
+  privacy: { control: 3, text: 5 },
+};
+
+async function audit(page, title, floors) {
+  const report = await settledReport(page);
   await test.info().attach(title, {
     body: JSON.stringify(report ?? { error: "no audit hook on the window" }, null, 2),
     contentType: "application/json",
   });
   expect(report, "the renderer did not install its audit hook").toBeTruthy();
-  expect(report.checked, "the audit walked nothing, so it proved nothing").toBeGreaterThan(120);
+  for (const [kind, floor] of Object.entries(floors)) {
+    expect(
+      report.kinds[kind],
+      `the ${title} screen was read without a single ${kind} in it`
+    ).toBeGreaterThanOrEqual(floor);
+  }
   expect(report.findings, JSON.stringify(report.findings, null, 2)).toEqual([]);
 }
 
@@ -65,19 +108,19 @@ for (const theme of ["light", "dark"]) {
     try {
       await page.getByRole("textbox", { name: "Message OpenMonkey" }).waitFor();
       await page.getByRole("navigation").first().waitFor();
-      await audit(page, `chat-${theme}`);
+      await audit(page, `chat-${theme}`, FLOORS.chat);
 
       await page.getByRole("button", { name: "Settings", exact: true }).first().click();
       await expect(page.getByRole("heading").first()).toBeVisible();
-      await audit(page, `settings-landing-${theme}`);
+      await audit(page, `settings-landing-${theme}`, FLOORS.landing);
 
       await page.getByRole("navigation").first().getByRole("button", { name: "Appearance", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
-      await audit(page, `settings-appearance-${theme}`);
+      await audit(page, `settings-appearance-${theme}`, FLOORS.appearance);
 
       await page.getByRole("navigation").first().getByRole("button", { name: "Privacy", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Privacy" })).toBeVisible();
-      await audit(page, `settings-privacy-${theme}`);
+      await audit(page, `settings-privacy-${theme}`, FLOORS.privacy);
     } finally {
       await quitApp(app, profile);
       rmSync(profile, { recursive: true, force: true });

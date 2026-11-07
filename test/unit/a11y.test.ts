@@ -78,6 +78,16 @@ test("a control with nothing to read out is reported and a named one is not", ()
     ["control-name", "control-name"]
   );
   assert.equal(report.checked, 6);
+  assert.deepEqual(report.kinds, { control: 3, field: 1, image: 1, dialog: 1, text: 0 });
+});
+
+test("the report says what it looked at, so a half-read screen cannot pass for a whole one", () => {
+  const report = auditElements([
+    element({ kind: "text", tag: "p", name: "", text: "hello", color: parseCssColor("#000")!, background: parseCssColor("#fff")!, fontSize: 13 }),
+    element({ name: "Save" }),
+  ]);
+  assert.deepEqual(report.kinds, { control: 1, field: 0, image: 0, dialog: 0, text: 1 });
+  assert.equal(report.checked, 2);
 });
 
 test("a placeholder is not a label, and the report says so", () => {
