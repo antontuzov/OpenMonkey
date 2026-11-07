@@ -60,6 +60,25 @@ test("a density written before the themes had their own keeps the density it had
   assert.deepEqual(config.get("ui").density, { light: "compact", dark: "comfortable" });
 });
 
+test("the colours a user picked are kept, and the ones that make no sense are dropped", () => {
+  config.set("ui", { ...config.get("ui"), tokens: { light: { paper: "#101010" }, dark: {} } });
+  assert.deepEqual(config.get("ui").tokens, { light: { paper: "#101010" }, dark: {} });
+
+  config.set("ui", {
+    ...config.get("ui"),
+    tokens: { light: { paper: "not a colour" } as never, dark: { ink: "#AABBCC" } },
+  });
+  assert.deepEqual(config.get("ui").tokens, { light: {}, dark: { ink: "#aabbcc" } });
+});
+
+test("resetting the appearance page puts the built-in colours back", () => {
+  config.set("ui", { ...config.get("ui"), tokens: { light: { paper: "#101010" }, dark: { ink: "#202020" } } });
+
+  config.merge(resetPatch("appearance"));
+
+  assert.deepEqual(config.get("ui").tokens, { light: {}, dark: {} });
+});
+
 test("the model page owns only the generation settings", () => {
   config.set("ui", { ...config.get("ui"), language: "ru" });
   config.set("model", { provider: "mlx", temperature: 1.9, maxTokens: 4096 });

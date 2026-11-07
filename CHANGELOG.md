@@ -35,6 +35,16 @@ that produced the build.
   it is actually showing: pack the dark theme and the light theme does not move. A
   config written before the split keeps the density it had — in both themes — so
   nothing is quietly reset on upgrade.
+- **The colours can be your own.** Settings → Appearance now has a Colours card: paper,
+  card, second card, line, ink, muted, faint and sidebar can each be picked by hand, for
+  the light theme and the dark theme separately, and the app repaints with them
+  immediately. The colours mixed from the accent — the accent's own text, its tint, the
+  message bubble — follow the card you picked, exactly as the stylesheet would mix them.
+  The card says out loud which pairings fall below AA for the theme you are editing,
+  because a palette that cannot be read is a bug, not a preference, and one button puts
+  the built-in colours back. The tokens are stored in your own config file, not in the
+  app's data, and a value that is not a colour is dropped rather than written into a
+  stylesheet.
 - **The agent can find pictures on the internet.** `web.image_search` asks two openly
   licensed indexes — Openverse first, Wikimedia Commons behind it — and answers with the
   direct image URL, the page the picture came from, its author and its licence, so a

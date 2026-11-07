@@ -75,6 +75,14 @@ test("every indexed row is on a real page and is findable by its own title", () 
   }
 });
 
+test("the colour tokens are found by their own names", () => {
+  for (const name of ["Paper", "Card", "Card 2", "Line", "Ink", "Muted", "Faint", "Sidebar"]) {
+    const hit = searchSettings(name, 100).find((entry) => entry.label === name);
+    assert.ok(hit, `“${name}” is findable`);
+    assert.equal(hit.page, "appearance");
+  }
+});
+
 test("the index speaks Russian too", () => {
   setLanguage("ru");
   try {

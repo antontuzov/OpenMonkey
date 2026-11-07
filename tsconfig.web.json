@@ -25,6 +25,8 @@
     "src/utils/types.ts",
     "src/utils/a11y.ts",
     "src/utils/a11y-palette.ts",
+    "src/utils/colour.ts",
+    "src/utils/theme-tokens.ts",
     "src/utils/diff.ts",
     "src/utils/task-steps.ts",
     "src/utils/citations.ts",

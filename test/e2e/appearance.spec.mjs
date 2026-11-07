@@ -3,9 +3,11 @@
  *
  * The unit tests prove that a density reaches the document element as the right
  * value; only the running app can prove that the row a user clicked is the row
- * that changed it, and that the theme on screen is the one whose density applies.
+ * that changed it, and that the theme on screen is the one whose setting applies.
  * A single density used to serve both themes, so the check here is the difference:
- * pack the dark theme and the light theme must not move.
+ * pack the dark theme and the light theme must not move. The colours are the same
+ * story — what the user picks is what the app paints, and what the app cannot
+ * read it says out loud.
  */
 import { test, expect } from "@playwright/test";
 import { quitApp } from "./helpers.mjs";
@@ -48,6 +50,27 @@ async function openAppearance(page) {
 
 const themeOn = (page) => page.evaluate(() => document.documentElement.dataset.theme);
 const densityOn = (page) => page.evaluate(() => document.documentElement.dataset.density);
+/**
+ * The colour of the page as it is painted.
+ *
+ * On macOS the window is vibrant, so the body itself is transparent and the paper
+ * is painted on the surfaces inside it. Reading the body would find nothing.
+ */
+const paperOn = (page) =>
+  page.evaluate(() => {
+    const painted = document.querySelector(".bg-paper");
+    return painted ? getComputedStyle(painted).backgroundColor : "";
+  });
+
+/**
+ * The theme cards, named the way a person would name them.
+ *
+ * The colour editor has a Dark of its own, so a button called "Dark" is no longer
+ * enough to say which one is meant.
+ */
+const themeCard = (page, name) => page.locator("button.theme-option").filter({ hasText: name });
+const colourTheme = (page, name) =>
+  page.getByRole("group", { name: "Colours of the theme" }).getByRole("button", { name, exact: true });
 
 test("each theme is packed as tightly as its own setting says", async () => {
   test.setTimeout(120_000);
@@ -60,12 +83,12 @@ test("each theme is packed as tightly as its own setting says", async () => {
     expect(await densityOn(page)).toBe("comfortable");
 
     // The dark theme is the compact one, so the app tightens when it appears.
-    await page.getByRole("button", { name: "Dark", exact: true }).click();
+    await themeCard(page, "Dark").click();
     await expect.poll(() => themeOn(page)).toBe("dark");
     await expect.poll(() => densityOn(page)).toBe("compact");
 
     // And it loosens again when the light theme comes back.
-    await page.getByRole("button", { name: "Light", exact: true }).click();
+    await themeCard(page, "Light").click();
     await expect.poll(() => themeOn(page)).toBe("light");
     await expect.poll(() => densityOn(page)).toBe("comfortable");
   } finally {
@@ -84,10 +107,10 @@ test("packing one theme leaves the other one alone", async () => {
     // The app is showing the light theme, so nothing about it may change.
     await expect.poll(() => densityOn(page)).toBe("comfortable");
 
-    await page.getByRole("button", { name: "Dark", exact: true }).click();
+    await themeCard(page, "Dark").click();
     await expect.poll(() => densityOn(page)).toBe("compact");
 
-    await page.getByRole("button", { name: "Light", exact: true }).click();
+    await themeCard(page, "Light").click();
     await expect.poll(() => densityOn(page)).toBe("comfortable");
 
     // The other way round, to prove the two are not wired to the same value: the
@@ -96,7 +119,7 @@ test("packing one theme leaves the other one alone", async () => {
     await page.getByRole("group", { name: "Dark density" }).getByRole("button", { name: "Comfortable" }).click();
     await page.getByRole("group", { name: "Light density" }).getByRole("button", { name: "Compact" }).click();
     await expect.poll(() => densityOn(page)).toBe("compact");
-    await page.getByRole("button", { name: "Dark", exact: true }).click();
+    await themeCard(page, "Dark").click();
     await expect.poll(() => themeOn(page)).toBe("dark");
     await expect.poll(() => densityOn(page)).toBe("comfortable");
   } finally {
@@ -111,7 +134,7 @@ test("a packed theme is still packed after a restart", async () => {
   try {
     await openAppearance(page);
     await page.getByRole("group", { name: "Dark density" }).getByRole("button", { name: "Compact" }).click();
-    await page.getByRole("button", { name: "Dark", exact: true }).click();
+    await themeCard(page, "Dark").click();
     await expect.poll(() => densityOn(page)).toBe("compact");
 
     await page.reload();
@@ -139,6 +162,89 @@ test("the density of a theme is found by typing its own name", async () => {
     expect(
       await page.evaluate(() => document.querySelector(".row-flash .row-title")?.textContent?.trim() ?? null)
     ).toBe("Dark density");
+  } finally {
+    await quitApp(app, profile);
+    rmSync(profile, { recursive: true, force: true });
+  }
+});
+
+test("a colour the user picks is the colour the app paints", async () => {
+  test.setTimeout(120_000);
+  const { app, page, profile } = await launch();
+  try {
+    await openAppearance(page);
+    await page.getByLabel("Hex: Paper", { exact: true }).fill("#101010");
+
+    await expect.poll(() => paperOn(page)).toBe("rgb(16, 16, 16)");
+
+    // The colour is saved, so it is still there after a restart.
+    await page.reload();
+    await expect.poll(() => paperOn(page)).toBe("rgb(16, 16, 16)");
+  } finally {
+    await quitApp(app, profile);
+    rmSync(profile, { recursive: true, force: true });
+  }
+});
+
+test("each theme keeps its own colours", async () => {
+  test.setTimeout(120_000);
+  const { app, page, profile } = await launch();
+  try {
+    await openAppearance(page);
+    await page.getByLabel("Hex: Paper", { exact: true }).fill("#101010");
+
+    await colourTheme(page, "Dark").click();
+    await page.getByLabel("Hex: Paper", { exact: true }).fill("#202020");
+
+    // The app is showing the light theme, so the light colour is what is painted.
+    await expect.poll(() => paperOn(page)).toBe("rgb(16, 16, 16)");
+    await themeCard(page, "Dark").click();
+    await expect.poll(() => paperOn(page)).toBe("rgb(32, 32, 32)");
+    await themeCard(page, "Light").click();
+    await expect.poll(() => paperOn(page)).toBe("rgb(16, 16, 16)");
+  } finally {
+    await quitApp(app, profile);
+    rmSync(profile, { recursive: true, force: true });
+  }
+});
+
+test("colours that cannot be read are said out loud, and can be put back", async () => {
+  test.setTimeout(120_000);
+  const { app, page, profile } = await launch();
+  try {
+    await openAppearance(page);
+    await expect(page.getByText("Every pairing clears AA.")).toBeVisible();
+
+    // The faint text painted in the colour of the page is unreadable, and the
+    // app has to say so rather than paint it quietly.
+    await page.getByLabel("Hex: Faint", { exact: true }).fill("#f6f7f3");
+    await expect(page.getByText(/fall below AA/)).toBeVisible();
+
+    await page.getByRole("button", { name: "Reset these colours" }).click();
+    await expect(page.getByText("Every pairing clears AA.")).toBeVisible();
+    await expect.poll(() => paperOn(page)).toBe("rgb(246, 247, 243)");
+  } finally {
+    await quitApp(app, profile);
+    rmSync(profile, { recursive: true, force: true });
+  }
+});
+
+test("a colour is found by typing the name of the token", async () => {
+  test.setTimeout(120_000);
+  const { app, page, profile } = await launch();
+  try {
+    await openAppearance(page);
+    const search = page.getByLabel(/Search settings/);
+    const results = page.locator("[data-settings-results]");
+
+    await search.fill("Sidebar");
+    const hit = results.locator("button", { hasText: "Sidebar" });
+    await expect(hit).toBeVisible();
+    await hit.click();
+    await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+    expect(
+      await page.evaluate(() => document.querySelector(".row-flash .row-title")?.textContent?.trim() ?? null)
+    ).toBe("Sidebar");
   } finally {
     await quitApp(app, profile);
     rmSync(profile, { recursive: true, force: true });

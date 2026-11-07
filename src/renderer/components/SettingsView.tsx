@@ -47,11 +47,13 @@ import { MemoryBrowser } from "./MemoryBrowser";
 import { SourceManager } from "./SourceManager";
 import { SettingRow, Toggle } from "./controls";
 import { ACCENTS } from "../constants";
-import { checkAccent } from "../theme";
+import { checkAccent, parseHex } from "../../utils/colour";
+import { THEME_TOKENS, effectivePalette, type ThemeToken } from "../../utils/theme-tokens";
+import { paletteProblems } from "../../utils/a11y-palette";
 import { runAccessibilityAudit } from "../a11y";
 import type { A11yReport } from "../../utils/a11y";
 import { logoUrl } from "../assets";
-import { moodLabel, t } from "../i18n";
+import { moodLabel, t, type StringKey } from "../i18n";
 import { toast } from "./Toast";
 import { searchSettings } from "../settings-search";
 import {
@@ -154,6 +156,12 @@ const MCP_STATE: Record<McpServerStatus["state"], { label: string; tone: string 
   connecting: { label: "starting…", tone: "!text-warn" },
   ready: { label: "ready", tone: "chip-accent" },
   error: { label: "error", tone: "!text-danger" },
+};
+
+/** The palette gate's own names for the pairings that are not tokens. */
+const PAIR_LABELS: Record<string, StringKey> = {
+  "button label": "appearance.token.button",
+  "selected swatch tick": "appearance.token.swatch",
 };
 
 function splitArgs(value: string): string[] {
@@ -331,6 +339,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [redditUser, setRedditUser] = useState("");
   const [redditPassword, setRedditPassword] = useState("");
   const [online, setOnline] = useState(() => navigator.onLine);
+  /** Which theme's colours are on screen in the colour editor. */
+  const [tokenTheme, setTokenTheme] = useState<"light" | "dark">(() =>
+    config.ui.theme === "system"
+      ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"
+      : config.ui.theme
+  );
+  /** What the user is typing into a colour field, before it is a colour. */
+  const [hexDraft, setHexDraft] = useState<Record<string, string>>({});
   /** How this launch was started, and whether it came up without its extras. */
   const [safeMode, setSafeMode] = useState<SafeModeInfo | null>(null);
 
@@ -386,6 +404,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const workspace = memory?.workspace;
   const accent = config.ui.accent ?? ACCENTS[0].value;
   const accentName = ACCENTS.find((item) => item.value === accent)?.name ?? "Custom";
+  /** The colours of the theme being edited: the built-in palette under the user's own. */
+  const tokenScheme = tokenTheme === "dark" && config.ui.oled ? "oled" : tokenTheme;
+  const tokenPalette = effectivePalette(tokenScheme, accent, config.ui.tokens[tokenTheme]);
+  const tokenProblems = paletteProblems(tokenPalette);
+  const pairLabel = (name: string): string => {
+    if (name.startsWith("--color-")) return t(`appearance.token.${name.slice(8)}` as StringKey);
+    const key = PAIR_LABELS[name];
+    return key ? t(key) : name;
+  };
   const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
   const ready = status.state === "ready";
   const keySource = privacyStatus?.keySource ?? "off";
@@ -1104,6 +1131,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const patchUi = (changes: Partial<Config["ui"]>) => void onPatch({ ui: changes });
   const patchDesktop = (changes: Partial<Config["desktop"]>) => void onPatch({ desktop: changes });
 
+  /** Saves one colour of one theme, and leaves the other theme's colours alone. */
+  const setToken = (theme: "light" | "dark", token: ThemeToken, value: string) => {
+    const saved = { ...config.ui.tokens[theme], [token]: value };
+    patchUi({ tokens: { ...config.ui.tokens, [theme]: saved } });
+  };
+
+  /** Puts the theme's own colours back, so the built-in palette paints again. */
+  const resetTokens = () => patchUi({ tokens: { ...config.ui.tokens, [tokenTheme]: {} } });
+
   // Leaving the page disarms the button: a second click must never reset a page the
   // user is no longer looking at.
   useEffect(() => setResetArmed(false), [section]);
@@ -1676,6 +1712,105 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           })
                         : t("appearance.contrastLow")}
                     </p>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">{t("appearance.colours")}</p>
+                  <div className="card">
+                    <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-line">
+                      <div>
+                        <p className="row-title">{t("appearance.coloursTheme")}</p>
+                        <p className="row-copy">{t("appearance.coloursCopy")}</p>
+                      </div>
+                      <Segmented
+                        value={tokenTheme}
+                        label={t("appearance.coloursTheme")}
+                        onChange={(value) => {
+                          setTokenTheme(value as "light" | "dark");
+                          setHexDraft({});
+                        }}
+                        options={[
+                          { value: "light", label: t("appearance.light") },
+                          { value: "dark", label: t("appearance.dark") },
+                        ]}
+                      />
+                    </div>
+                    {THEME_TOKENS.map(({ token, property }) => {
+                      const current = tokenPalette.get(property) ?? "#000000";
+                      const name = t(`appearance.token.${token}` as StringKey);
+                      return (
+                        <SettingRow
+                          key={token}
+                          title={name}
+                          copy={t(`appearance.token.${token}Copy` as StringKey)}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="color"
+                              value={current}
+                              onChange={(event) => {
+                                setHexDraft((draft) => {
+                                  const next = { ...draft };
+                                  delete next[token];
+                                  return next;
+                                });
+                                setToken(tokenTheme, token, event.target.value);
+                              }}
+                              aria-label={t("appearance.tokenColour", { name })}
+                              className="w-7 h-7 rounded-lg border border-line bg-transparent cursor-pointer"
+                            />
+                            <input
+                              type="text"
+                              value={hexDraft[token] ?? current}
+                              onChange={(event) => {
+                                const next = event.target.value;
+                                setHexDraft((draft) => ({ ...draft, [token]: next }));
+                                const rgb = parseHex(next);
+                                if (!rgb) return;
+                                setToken(
+                                  tokenTheme,
+                                  token,
+                                  `#${rgb.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`
+                                );
+                              }}
+                              onBlur={() =>
+                                setHexDraft((draft) => {
+                                  const next = { ...draft };
+                                  delete next[token];
+                                  return next;
+                                })
+                              }
+                              aria-label={t("appearance.tokenHex", { name })}
+                              spellCheck={false}
+                              className="w-[92px] bg-transparent border border-line rounded-lg px-2 py-1 text-[11px] focus:outline-none focus:border-accent"
+                            />
+                          </div>
+                        </SettingRow>
+                      );
+                    })}
+                    <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-line">
+                      <p className={`text-[11px] ${tokenProblems.length ? "text-warn" : "text-muted"}`}>
+                        {tokenProblems.length
+                          ? t("appearance.coloursFailing", {
+                              count: tokenProblems.length,
+                              list: tokenProblems
+                                .map(
+                                  (problem) =>
+                                    `${pairLabel(problem.text)} on ${pairLabel(problem.surface)} (${problem.ratio.toFixed(1)}:1)`
+                                )
+                                .join(", "),
+                            })
+                          : t("appearance.coloursClear")}
+                      </p>
+                      <button
+                        onClick={resetTokens}
+                        className="flex items-center gap-1.5 text-[11px] text-muted hover:text-ink shrink-0"
+                      >
+                        <RotateCcw size={12} />
+                        {t("appearance.coloursReset")}
+                      </button>
+                    </div>
                   </div>
                 </section>
 

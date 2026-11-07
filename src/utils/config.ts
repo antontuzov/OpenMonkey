@@ -3,6 +3,7 @@ import { app } from "electron";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { Config, ConfigPatch, SettingsPage, UiDensity } from "./types";
+import { sanitiseTokens } from "./theme-tokens";
 import { BONSAI_4B } from "../models/catalog";
 
 const defaultConfig: Config = {
@@ -22,6 +23,7 @@ const defaultConfig: Config = {
     density: { light: "comfortable", dark: "comfortable" },
     reduceMotion: false,
     oled: false,
+    tokens: { light: {}, dark: {} },
     starterPromptsHidden: false,
     language: "en",
     sendKey: "enter",
@@ -109,6 +111,14 @@ function normaliseUi(stored: unknown): Config["ui"] {
       dark: (density as { dark?: UiDensity }).dark ?? base.density.dark,
     };
   }
+  const tokens = (stored as { tokens?: unknown }).tokens;
+  if (tokens && typeof tokens === "object") {
+    const saved = tokens as { light?: unknown; dark?: unknown };
+    ui.tokens = {
+      light: sanitiseTokens(saved.light),
+      dark: sanitiseTokens(saved.dark),
+    };
+  }
   return ui;
 }
 
@@ -166,6 +176,7 @@ const PAGE_DEFAULTS: Partial<Record<SettingsPage, ConfigPatch>> = {
       density: defaultConfig.ui.density,
       reduceMotion: defaultConfig.ui.reduceMotion,
       oled: defaultConfig.ui.oled,
+      tokens: { light: {}, dark: {} },
       language: defaultConfig.ui.language,
       sendKey: defaultConfig.ui.sendKey,
     },

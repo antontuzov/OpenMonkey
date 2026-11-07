@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { ACCENTS } from "../../src/renderer/constants";
-import { accentInk } from "../../src/renderer/theme";
+import { accentInk } from "../../src/utils/colour";
 import { paletteProblems, resolvePalette } from "../../src/utils/a11y-palette";
 import {
   auditElements,

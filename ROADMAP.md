@@ -261,7 +261,11 @@ default config is memory on, workspace search off.
     setting. Settings patches are partial per section, so changing one field cannot revive a
     stale sibling. A True black switch repaints the dark theme on `#000000` — paper, cards and
     sidebar — so an OLED panel keeps its pixels off, and the vibrant window stops letting the
-    desktop through when it is on. *(M)*
+    desktop through when it is on. Paper, card, second card, line, ink, muted, faint and
+    sidebar can each be picked by hand, for the light theme and the dark theme separately,
+    and the app repaints with them at once; the colours mixed from the accent follow the
+    card you picked, and the card names the pairings that fall below AA for the theme being
+    edited, with one button to put the built-in colours back. *(M)*
 25. ✅ **Accessibility & i18n**: EN/RU dictionary with `t()`/`locale()`, `documentElement.lang`,
     locale-formatted times (12-hour en-US, 24-hour ru-RU) and RU mood names shared with the
     native tray through `MOOD_LOGOS.labelRu`; the keyboard map is shown in Settings and echoed

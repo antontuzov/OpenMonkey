@@ -1,63 +1,27 @@
 import { useEffect } from "react";
 import type { Config, UiTextScale } from "../utils/types";
+import { parseHex } from "../utils/colour";
+import { THEME_TOKENS, tokenProperties, type ThemeTokenValues } from "../utils/theme-tokens";
 
 export const zoomForScale = (scale: UiTextScale): number =>
   scale === "s" ? 0.9 : scale === "l" ? 1.12 : 1;
 
-function clampChannel(value: number): number {
-  return Math.max(0, Math.min(255, Math.round(value)));
-}
-
-export function parseHex(value: string): [number, number, number] | null {
-  const match = /^#?([0-9a-f]{6})$/i.exec(value.trim());
-  if (!match) return null;
-  const number = Number.parseInt(match[1], 16);
-  return [(number >> 16) & 255, (number >> 8) & 255, number & 255];
-}
-
-export function mixHex(from: string, to: string, weight: number): string {
-  const a = parseHex(from);
-  const b = parseHex(to);
-  if (!a || !b) return from;
-  const channels = a.map((channel, index) => clampChannel(channel * weight + b[index] * (1 - weight)));
-  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
-}
-
-function luminance(hex: string): number {
-  const rgb = parseHex(hex);
-  if (!rgb) return 0;
-  const [r, g, b] = rgb.map((channel) => {
-    const value = channel / 255;
-    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-  });
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-export function contrastRatio(a: string, b: string): number {
-  const la = luminance(a);
-  const lb = luminance(b);
-  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
-}
-
-/** The accent as text on a card, mirroring the CSS color-mix tokens. */
-export function accentInk(accent: string, dark: boolean): string {
-  return mixHex(accent, dark ? "#ffffff" : "#06251a", dark ? 0.52 : 0.48);
-}
-
-export interface ContrastReport {
-  ratio: number;
-  level: "aa" | "large" | "low";
-  passes: boolean;
-}
-
-export function checkAccent(accent: string): ContrastReport {
-  const light = contrastRatio(accentInk(accent, false), "#fdfdfb");
-  const dark = contrastRatio(accentInk(accent, true), "#191d18");
-  const ratio = Math.min(light, dark);
-  const rounded = Math.round(ratio * 10) / 10;
-  if (ratio >= 4.5) return { ratio: rounded, level: "aa", passes: true };
-  if (ratio >= 3) return { ratio: rounded, level: "large", passes: true };
-  return { ratio: rounded, level: "low", passes: false };
+/**
+ * Paints the colours the user picked for the theme on screen.
+ *
+ * The custom colours are written as inline properties on the document, which beat
+ * any rule in the stylesheet — so a colour the user chose is the colour that is
+ * painted, even over true black. The properties of the theme that is no longer on
+ * screen are taken away again, or the light theme would keep the dark theme's
+ * paper.
+ */
+function paintTokens(root: HTMLElement, tokens: ThemeTokenValues): void {
+  for (const { property } of THEME_TOKENS) {
+    root.style.removeProperty(property);
+  }
+  for (const [property, value] of tokenProperties(tokens)) {
+    root.style.setProperty(property, value);
+  }
 }
 
 /** Applies the preference-driven attributes that CSS and the color tokens read. */
@@ -70,6 +34,13 @@ export function useAppearance(config: Config | null): void {
   const language = config?.ui.language ?? "en";
   const lightDensity = density.light;
   const darkDensity = density.dark;
+  const tokens = config?.ui.tokens ?? { light: {}, dark: {} };
+  const lightTokens = tokens.light;
+  const darkTokens = tokens.dark;
+  // The config is rebuilt whenever it is fetched, so the tokens are compared by
+  // what they say rather than by which object says it.
+  const lightKey = JSON.stringify(lightTokens);
+  const darkKey = JSON.stringify(darkTokens);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -87,9 +58,10 @@ export function useAppearance(config: Config | null): void {
       root.dataset.theme = resolved;
       // Each theme is packed as tightly as its own setting says.
       root.dataset.density = resolved === "dark" ? darkDensity : lightDensity;
+      paintTokens(root, resolved === "dark" ? darkTokens : lightTokens);
     };
     apply();
     media.addEventListener("change", apply);
     return () => media.removeEventListener("change", apply);
-  }, [accent, darkDensity, language, lightDensity, oled, reduceMotion, theme]);
+  }, [accent, darkDensity, darkKey, language, lightDensity, lightKey, oled, reduceMotion, theme]);
 }

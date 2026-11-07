@@ -1,3 +1,5 @@
+import type { ThemeTokenValues } from "./theme-tokens";
+
 export interface MessageMetadata {
   mood?: string;
   taskType?: string;
@@ -657,6 +659,8 @@ export interface Config {
     reduceMotion: boolean;
     /** Paints the dark theme on true black, so an OLED screen keeps its pixels off. */
     oled: boolean;
+    /** Colours the user picked for each theme, over the built-in palette. */
+    tokens: { light: ThemeTokenValues; dark: ThemeTokenValues };
     /** The empty chat keeps its starter prompts until the user hides them. */
     starterPromptsHidden: boolean;
     language: AppLanguage;

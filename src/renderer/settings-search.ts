@@ -1,6 +1,7 @@
 import { ACCENTS } from "./constants";
 import { t, type StringKey } from "./i18n";
 import { stemHit } from "./text-match";
+import { THEME_TOKENS } from "../utils/theme-tokens";
 import type { SettingsPage } from "../utils/types";
 import { BONSAI_4B } from "../models/catalog";
 
@@ -40,6 +41,15 @@ const ENTRIES: SettingEntry[] = [
   { page: "appearance", key: "appearance.textSize", keywords: ["zoom", "scale", "font", "bigger text"] },
   { page: "appearance", key: "appearance.densityLight", keywords: ["compact", "spacing", "roomy", "density"] },
   { page: "appearance", key: "appearance.densityDark", keywords: ["compact", "spacing", "roomy", "density"] },
+  { page: "appearance", key: "appearance.coloursTheme", keywords: ["custom colours", "palette", "tokens", "repaint"] },
+  ...THEME_TOKENS.map(
+    (token): SettingEntry => ({
+      page: "appearance",
+      key: `appearance.token.${token.token}` as StringKey,
+      keywords: ["colour", "color", "custom", "palette"],
+    })
+  ),
+  { page: "appearance", key: "appearance.coloursReset", keywords: ["built-in", "default colours", "undo"] },
   { page: "appearance", key: "appearance.motion", keywords: ["reduce motion", "animation", "springs"] },
   { page: "appearance", key: "appearance.language", keywords: ["russian", "english", "locale", "translate"] },
   { page: "appearance", key: "appearance.sendKey", keywords: ["enter", "return", "send", "newline", "keyboard", "cmd"] },
