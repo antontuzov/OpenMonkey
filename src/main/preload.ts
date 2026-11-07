@@ -63,6 +63,8 @@ const api: ElectronAPI = {
   deleteConversation: (id: string) => ipcRenderer.invoke("delete-conversation", id),
   searchConversations: (query: string) => ipcRenderer.invoke("search-conversations", query),
   attachFiles: () => ipcRenderer.invoke("attach-files"),
+  /** Takes the file the user opened from the Dock, once. */
+  takePendingDocument: () => ipcRenderer.invoke("take-pending-document"),
   searchFiles: (query: string) => ipcRenderer.invoke("search-files", query),
   readFile: (filePath: string) => ipcRenderer.invoke("read-file", filePath),
   clearConversation: (conversationId: string) => ipcRenderer.invoke("clear-conversation", conversationId),
@@ -155,6 +157,8 @@ const api: ElectronAPI = {
     on<MenuCommand>("menu-command", callback),
   onOpenConversation: (callback: (conversationId: string) => void) =>
     on<string>("open-conversation", callback),
+  /** A file the user opened from the Dock is waiting for the composer. */
+  onOpenDocument: (callback: () => void) => on<undefined>("open-document", () => callback()),
   onModelDownloadStatus: (callback) => on("model-download-status", callback),
   onChatEvent: (callback) => on<ChatEvent>("chat-event", callback),
   onQuickAskStarted: (callback) => on<QuickAskResult>("quick-ask-started", callback),

@@ -866,6 +866,8 @@ export interface ElectronAPI {
   searchConversations: (query: string) => Promise<ConversationSearchHit[]>;
   /** Open a file picker; several files may be chosen at once. */
   attachFiles: () => Promise<Attachment[]>;
+  /** Takes the file the user opened from the Dock, once. */
+  takePendingDocument: () => Promise<Attachment | null>;
   /** The files whose name matches an @mention, from the folders the app may read. */
   searchFiles: (query: string) => Promise<FileCandidate[]>;
   /** Read one of those files so it can ride along with a message. */
@@ -967,6 +969,8 @@ export interface ElectronAPI {
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
   /** A quick ask was opened as a chat; the window should show that conversation. */
   onOpenConversation: (callback: (conversationId: string) => void) => () => void;
+  /** A file the user opened from the Dock is waiting for the composer. */
+  onOpenDocument: (callback: () => void) => () => void;
   onModelDownloadStatus: (callback: (status: ModelDownloadStatus) => void) => () => void;
   onChatEvent: (callback: (event: ChatEvent) => void) => () => void;
   /** A quick ask started; the popover needs its conversation before the first token. */

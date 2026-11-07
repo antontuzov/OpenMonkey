@@ -7,12 +7,16 @@ import {
   type Mood,
 } from "../utils/types";
 import logger from "../utils/logger";
+import type { RecentChat } from "../utils/recent-chats";
 
 const TRAY_SIZE = process.platform === "darwin" ? 18 : 16;
 
 interface TrayCopy {
   open: string;
+  newChat: string;
   quickAsk: string;
+  recentChats: string;
+  noChats: string;
   cycleMood: string;
   moods: string;
   settings: string;
@@ -24,7 +28,10 @@ interface TrayCopy {
 const TRAY_COPY: Record<AppLanguage, TrayCopy> = {
   en: {
     open: "Open OpenMonkey",
+    newChat: "New Chat",
     quickAsk: "Quick Ask",
+    recentChats: "Recent Chats",
+    noChats: "No chats yet",
     cycleMood: "Cycle Mood",
     moods: "Moods",
     settings: "Settings",
@@ -34,7 +41,10 @@ const TRAY_COPY: Record<AppLanguage, TrayCopy> = {
   },
   ru: {
     open: "Открыть OpenMonkey",
+    newChat: "Новый чат",
     quickAsk: "Быстрый вопрос",
+    recentChats: "Недавние чаты",
+    noChats: "Чатов пока нет",
     cycleMood: "Сменить настроение",
     moods: "Настроения",
     settings: "Настройки",
@@ -49,6 +59,12 @@ export interface TrayHandlers {
   setMood: (mood: Mood) => void;
   quickAsk: () => void;
   showMain: (command?: MenuCommand) => void;
+  /** Starts a fresh chat in the window. */
+  newChat: () => void;
+  /** The chats the tray lists, newest first. */
+  recentChats: () => RecentChat[];
+  /** Brings a chat from the tray into the window. */
+  openConversation: (id: string) => void;
 }
 
 export class TrayManager {
@@ -80,7 +96,12 @@ export class TrayManager {
     this.tray.setToolTip(`OpenMonkey - ${this.copy.tagline}`);
     this.tray.setContextMenu(this.buildMenu());
     this.tray.on("click", () => this.toggleWindow());
-    this.tray.on("right-click", () => this.tray?.popUpContextMenu());
+    this.tray.on("right-click", () => {
+      // The list of chats moves while the app runs, so the menu is built again
+      // just before it opens rather than when it was first installed.
+      this.tray?.setContextMenu(this.buildMenu());
+      this.tray?.popUpContextMenu();
+    });
   }
 
   private buildMenu(): Menu {
@@ -92,9 +113,20 @@ export class TrayManager {
       click: () => this.handlers.setMood(mood),
     }));
 
+    const chats = this.handlers.recentChats();
+    const chatItems: Electron.MenuItemConstructorOptions[] = chats.length
+      ? chats.map((chat) => ({
+          label: chat.title,
+          click: () => this.handlers.openConversation(chat.id),
+        }))
+      : [{ label: copy.noChats, enabled: false }];
+
     return Menu.buildFromTemplate([
+      { label: copy.newChat, click: () => this.handlers.newChat() },
       { label: copy.open, click: () => this.handlers.showMain() },
       { label: copy.quickAsk, accelerator: "Alt+Space", registerAccelerator: false, click: () => this.handlers.quickAsk() },
+      { type: "separator" },
+      { label: copy.recentChats, submenu: chatItems },
       { type: "separator" },
       { label: copy.cycleMood, click: () => this.handlers.cycleMood() },
       { label: copy.moods, submenu: moodItems },
@@ -123,6 +155,10 @@ export class TrayManager {
     this.tray?.setImage(icon.resize({ width: TRAY_SIZE, height: TRAY_SIZE }));
     if (process.platform === "darwin") {
       app.dock?.setIcon(icon.resize({ width: 128, height: 128 }));
+      // The Dock nods once when the mood turns, but only while the app is in the
+      // background: a bounce under the user's eyes is noise, not a greeting.
+      const window = this.getWindow();
+      if (window && !window.isDestroyed() && !window.isFocused()) app.dock?.bounce("informational");
     }
   }
 

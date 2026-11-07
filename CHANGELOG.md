@@ -8,6 +8,22 @@ that produced the build.
 
 ### Added
 
+- **The menu bar and the Dock know your work.** The tray now holds the chats you were
+  in — the pinned ones first, the ones you touched last after that — and the list is
+  built again every time the menu opens, so it is never the list it was an hour ago.
+  A new chat starts from the menu bar without opening the window first, and picking a
+  chat from the list brings it into the window. The files you bring into a chat are
+  kept by the Dock, so the Dock menu and File → Open Recent can hand them back: the
+  file lands in the composer of the open chat, and the main process reads it, because
+  a file you chose in the OS is not one the renderer may read on its own. When the mood
+  turns while the app is in the background, the Dock icon nods once — a bounce under
+  your eyes would be noise. 6 unit tests (the chat list: the newest first, a pinned
+  chat before a newer one, a quick ask and an archived chat kept out, the list capped,
+  a long title cut to one line) and 10 integration tests (the tray starting a chat,
+  listing the recent ones and opening the one that is picked, an empty history saying
+  so, the list fresh at every opening, the tray in Russian; a text file carried with
+  its own text, an image named rather than read, a file too big or not text refused,
+  and an attached file kept by the Dock).
 - **Accessibility is checked, not promised.** The app now reads its own screen the way a
   reader does: the name of every control, the label of every field, the alt text of every
   image, the focus path inside a dialog, and the contrast of each run of text against what is

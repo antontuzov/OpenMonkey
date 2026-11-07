@@ -69,6 +69,8 @@ export function installAppMenu(
       submenu: [
         { label: copy.newChat, accelerator: "CmdOrCtrl+N", click: () => send("new-chat") },
         { label: copy.commandPalette, accelerator: "CmdOrCtrl+K", click: () => send("command-palette") },
+        // The files the user brought into a chat, in the order they were used.
+        ...(isMac ? ([{ role: "recentDocuments" as const }] as Electron.MenuItemConstructorOptions[]) : []),
         { type: "separator" },
         {
           label: copy.quickAsk,

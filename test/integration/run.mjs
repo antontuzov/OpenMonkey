@@ -47,6 +47,8 @@ try {
       path.join(here, "file-inspect.test.ts"),
       path.join(here, "publish.test.ts"),
       path.join(here, "notifications.test.ts"),
+      path.join(here, "tray-menu.test.ts"),
+      path.join(here, "file-attachments.test.ts"),
       path.join(here, "logger.test.ts"),
       path.join(here, "settings.test.ts"),
     ],
@@ -90,6 +92,8 @@ try {
     "file-inspect.test.cjs",
     "publish.test.cjs",
     "notifications.test.cjs",
+    "tray-menu.test.cjs",
+    "file-attachments.test.cjs",
     "logger.test.cjs",
     // Last: it writes config sections other suites read, and the runs are sequential.
     "settings.test.cjs",

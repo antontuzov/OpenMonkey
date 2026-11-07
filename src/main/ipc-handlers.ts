@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { OpenMonkey } from "../agent/OpenMonkey";
@@ -22,6 +22,7 @@ import {
 } from "../utils/types";
 import storage, { SCHEMA_VERSION } from "../utils/storage";
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TEXT, MAX_ATTACHMENTS_PER_MESSAGE } from "../utils/attachments";
+import { attachmentFromFile, IMAGE_EXTENSIONS } from "./file-attachments";
 import { readFileAsAttachment, searchFiles } from "../utils/file-search";
 import { keychainAvailable } from "../utils/secret-key";
 import { publisherSecrets } from "../utils/publisher-secrets";
@@ -54,6 +55,8 @@ export interface IpcDeps {
   restartInSafeMode: () => void;
   /** Relaunches the app the ordinary way. */
   restartNormally: () => void;
+  /** Hands over a file the user opened from the Dock, once the renderer is ready. */
+  takePendingDocument: () => Attachment | null;
 }
 
 /** The word the privacy page asks the user to type before history is destroyed. */
@@ -80,7 +83,6 @@ const TEXT_EXTENSIONS = [
   "html", "css", "js", "jsx", "ts", "tsx", "py", "rb", "go", "rs", "swift", "sh",
   "sql", "c", "h", "cpp", "java", "env", "ini", "conf",
 ];
-const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "heic"];
 
 function conversationId(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) throw new Error("A conversation id is required");
@@ -228,23 +230,14 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     if (result.canceled || !result.filePaths.length) return [];
     const files: Attachment[] = [];
     for (const filePath of result.filePaths.slice(0, MAX_ATTACHMENTS_PER_MESSAGE)) {
-      const stat = fs.statSync(filePath);
-      if (stat.size > MAX_ATTACHMENT_BYTES) {
-        throw new Error(`That file is ${Math.round(stat.size / 1024)} KB. Attachments are capped at 256 KB.`);
-      }
-      const isImage = IMAGE_EXTENSIONS.includes(path.extname(filePath).slice(1).toLowerCase());
-      if (isImage) {
-        files.push({ name: path.basename(filePath), bytes: stat.size, text: "", kind: "image" });
-        continue;
-      }
-      const buffer = fs.readFileSync(filePath);
-      if (buffer.subarray(0, 8192).includes(0)) {
-        throw new Error("Only plain text, code and image files can be attached.");
-      }
-      files.push({ name: path.basename(filePath), bytes: stat.size, text: buffer.toString("utf8"), kind: "text" });
+      files.push(attachmentFromFile(filePath));
+      // The Dock keeps what the user brought into a chat, so it can be opened again.
+      app.addRecentDocument(filePath);
     }
     return files;
   });
+
+  ipcMain.handle("take-pending-document", () => deps.takePendingDocument());
 
   ipcMain.handle("search-files", async (_event, query: unknown) => {
     if (typeof query !== "string") return [];

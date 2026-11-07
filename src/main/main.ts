@@ -4,6 +4,7 @@ import { app, BrowserWindow, nativeTheme, session } from "electron";
 import * as path from "node:path";
 import { TrayManager } from "./tray-manager";
 import { registerIpcHandlers } from "./ipc-handlers";
+import { attachmentFromFile } from "./file-attachments";
 import { DesktopManager } from "./desktop-manager";
 import { startLockWatcher } from "./lock-watcher";
 import { installAppMenu } from "./menu";
@@ -14,7 +15,8 @@ import config, { assetPath } from "../utils/config";
 import logger from "../utils/logger";
 import storage from "../utils/storage";
 import { SAFE_MODE_ENV, clearCrashes, markRunning, noteCleanExit, restartArgs } from "../utils/safe-mode";
-import type { ApprovalRequest, MenuCommand, Mood } from "../utils/types";
+import { recentChats } from "../utils/recent-chats";
+import type { ApprovalRequest, Attachment, MenuCommand, Mood } from "../utils/types";
 
 let mainWindow: BrowserWindow | null = null;
 let trayManager: TrayManager | null = null;
@@ -23,6 +25,8 @@ let openMonkey: OpenMonkey | null = null;
 let shuttingDown = false;
 let pendingCommand: MenuCommand | null = null;
 let pendingConversation: string | null = null;
+/** A file the user opened from the Dock, waiting for the renderer to take it. */
+let pendingDocument: Attachment | null = null;
 
 const PRELOAD = path.join(__dirname, "../preload/preload.js");
 
@@ -181,6 +185,8 @@ function createWindow(): void {
       pendingConversation = null;
       mainWindow.webContents.send("open-conversation", conversation);
     }
+    // A file dropped on the Dock icon waits for a window that is ready to take it.
+    if (pendingDocument) mainWindow.webContents.send("open-document");
   });
 
   mainWindow.on("close", (event) => {
@@ -225,6 +231,35 @@ function openConversation(conversationId: string): void {
   } else {
     mainWindow.webContents.send("open-conversation", conversationId);
   }
+}
+
+/**
+ * A file the user opened from the Dock lands in the composer of the open chat.
+ *
+ * The file is read here, in the main process: the renderer may only read files
+ * under the allowed roots, and a file the user picked in the OS is not one of
+ * them. The renderer takes the attachment when it is ready for it.
+ */
+function openDocument(filePath: string): void {
+  try {
+    pendingDocument = attachmentFromFile(filePath);
+  } catch (error) {
+    logger.warn("document.open.failed", { error });
+    return;
+  }
+  // Before the app is ready there is no window to show the file in yet.
+  if (!app.isReady()) return;
+  showMainWindow();
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoading()) {
+    mainWindow.webContents.send("open-document");
+  }
+}
+
+/** Hands the waiting document over, once. */
+function takePendingDocument(): Attachment | null {
+  const document = pendingDocument;
+  pendingDocument = null;
+  return document;
 }
 
 function installMenu(): void {
@@ -311,6 +346,17 @@ registerIpcHandlers({
   getSafeMode: () => safeMode,
   restartInSafeMode: () => relaunch(true),
   restartNormally: () => relaunch(false),
+  takePendingDocument,
+});
+
+/**
+ * A file the user drops on the Dock icon or opens from the Dock menu.
+ * The listener has to be in place before the app is ready: the OS asks for the
+ * file at launch, long before a window exists.
+ */
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  openDocument(filePath);
 });
 
 if (!app.requestSingleInstanceLock()) {
@@ -340,6 +386,9 @@ if (!app.requestSingleInstanceLock()) {
       setMood: (mood: Mood) => openMonkey?.setCurrentMood(mood),
       quickAsk: () => desktopManager?.showQuickAsk(),
       showMain: (command) => showMainWindow(command),
+      newChat: () => showMainWindow("new-chat"),
+      recentChats: () => recentChats(openMonkey?.getConversations() ?? []),
+      openConversation,
     },
     () => config.get("ui").language);
     trayManager.setupTray(assetPath("logos", "monkey-neutral-blue.png"));

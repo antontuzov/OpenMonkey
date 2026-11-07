@@ -19,7 +19,16 @@ export const app = {
   once: () => undefined,
   whenReady: async () => undefined,
   quit: () => undefined,
+  isReady: () => true,
+  addRecentDocument: (filePath) => {
+    recentDocuments.push(filePath);
+  },
+  getRecentDocuments: () => [...recentDocuments],
+  dock: { setIcon: () => undefined, bounce: () => 1 },
 };
+
+/** The files the Dock was told about, newest last. */
+export const recentDocuments = [];
 
 export const safeStorage = {
   isEncryptionAvailable: () => false,
@@ -31,9 +40,26 @@ export const safeStorage = {
   },
 };
 
-export const ipcMain = { handle: () => undefined, on: () => undefined, removeHandler: () => undefined };
+/** The IPC handlers the app registered, so a test can call one of them. */
+export const ipcHandlers = new Map();
+
+export const ipcMain = {
+  handle: (channel, handler) => {
+    ipcHandlers.set(channel, handler);
+  },
+  on: () => undefined,
+  removeHandler: (channel) => {
+    ipcHandlers.delete(channel);
+  },
+};
 export const BrowserWindow = class {};
-export const dialog = {};
+
+export const dialog = {
+  /** What the next file picker hands back. */
+  openDialogResult: { canceled: true, filePaths: [] },
+  showOpenDialog: async () => dialog.openDialogResult,
+};
+
 export const shell = {};
 export const globalShortcut = {
   isRegistered: () => false,
@@ -43,6 +69,72 @@ export const globalShortcut = {
 export const screen = {
   getPrimaryDisplay: () => ({ workAreaSize: { width: 1440, height: 900 } }),
 };
+
+/** Every menu the app built, newest last. */
+export const builtMenus = [];
+
+export const Menu = {
+  buildFromTemplate: (template) => {
+    const menu = { template };
+    builtMenus.push(menu);
+    return menu;
+  },
+  setApplicationMenu: () => undefined,
+};
+
+export const nativeImage = {
+  createFromPath: (filePath) => ({
+    path: filePath,
+    isEmpty: () => false,
+    resize: () => ({ path: filePath, isEmpty: () => false }),
+  }),
+};
+
+/** Every tray the app created, newest last. */
+export const trays = [];
+
+export class Tray {
+  constructor(icon) {
+    this.icon = icon;
+    this.menu = null;
+    this.tooltip = "";
+    this.popped = 0;
+    this.listeners = new Map();
+    trays.push(this);
+  }
+
+  setToolTip(text) {
+    this.tooltip = text;
+  }
+
+  setContextMenu(menu) {
+    this.menu = menu;
+  }
+
+  setImage(image) {
+    this.icon = image;
+  }
+
+  on(event, listener) {
+    const listeners = this.listeners.get(event) ?? [];
+    listeners.push(listener);
+    this.listeners.set(event, listeners);
+    return this;
+  }
+
+  /** Fire the event macOS would fire when the user right-clicks the icon. */
+  emit(event, ...args) {
+    for (const listener of this.listeners.get(event) ?? []) listener({}, ...args);
+  }
+
+  popUpContextMenu() {
+    this.popped += 1;
+  }
+
+  destroy() {
+    this.destroyed = true;
+  }
+}
 
 /** Every notification the app asked for, newest last. */
 export const notifications = [];

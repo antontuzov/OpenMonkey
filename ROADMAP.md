@@ -250,7 +250,13 @@ default config is memory on, workspace search off.
     approved action finishing, skipped while the owning surface is visible and focused; Dock
     badging from the count of awaiting approvals; close-to-tray and launch-at-login toggles
     (`login-item` only applies to packaged builds); tray menu, tooltip and mood submenu, and a
-    tray click that recreates the window if it was destroyed. *(M)*
+    tray click that recreates the window if it was destroyed. The tray menu also holds the
+    chats themselves — pinned first, then the ones touched last, rebuilt on every opening so
+    the list is never stale — and a New Chat item that starts one without opening the window
+    first; the files brought into a chat are kept by the Dock (`addRecentDocument`), so the
+    Dock menu and File → Open Recent hand them back, and the file lands in the composer of
+    the open chat, read by the main process rather than by the renderer. A mood that turns
+    while the app is in the background nods the Dock icon once. *(M)*
 24. ✅ **Appearance v2**: theme cards (Light / Dark / System, where System tracks
     `prefers-color-scheme` live), text scale S/M/L applied as `setZoomFactor` (0.9 / 1 / 1.12)
     so chat scales too, a comfortable/compact density per theme through `data-density`

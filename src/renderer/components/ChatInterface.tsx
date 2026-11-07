@@ -799,6 +799,28 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   }, []);
 
+  /**
+   * A file the user opened from the Dock waits in the composer, ready to send.
+   * The main process reads it and hands it over once, so the file the user
+   * chose in the OS is the one that lands here.
+   */
+  useEffect(() => {
+    const api = window.electron;
+    if (!api) return;
+    let cancelled = false;
+    const take = async () => {
+      const document = await api.takePendingDocument?.();
+      if (!document || cancelled) return;
+      addAttachments([document]);
+    };
+    const unsubscribe = api.onOpenDocument?.(() => void take());
+    void take();
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [addAttachments]);
+
   /** Reads the files the user dropped or pasted, the same way the picker does. */
   const readDroppedFiles = useCallback(
     async (files: File[]) => {
