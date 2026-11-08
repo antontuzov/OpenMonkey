@@ -202,6 +202,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   ipcMain.handle("hide-quick-ask", () => deps.hideQuickAsk());
 
   ipcMain.handle("get-conversations", () => agent().getConversations());
+  ipcMain.handle("get-archived-conversations", () => agent().getArchivedConversations());
   ipcMain.handle("create-conversation", () => agent().createConversation());
   ipcMain.handle("rename-conversation", (_event, id: unknown, title: unknown) => {
     if (typeof title !== "string") throw new Error("Title must be text");
@@ -210,11 +211,43 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   ipcMain.handle("pin-conversation", (_event, id: unknown, pinned: unknown) => {
     agent().setConversationPinned(conversationId(id), Boolean(pinned));
   });
+  ipcMain.handle("archive-conversation", (_event, id: unknown, archived: unknown) => {
+    agent().setConversationArchived(conversationId(id), Boolean(archived));
+  });
   ipcMain.handle("delete-conversation", (_event, id: unknown) => agent().deleteConversation(conversationId(id)));
   ipcMain.handle("search-conversations", (_event, query: unknown) => {
     if (typeof query !== "string") return [];
     return agent().searchConversations(query);
   });
+
+  ipcMain.handle("list-folders", () => agent().listFolders());
+  ipcMain.handle("create-folder", (_event, name: unknown) => {
+    if (typeof name !== "string") throw new Error("A folder needs a name");
+    return agent().createFolder(name);
+  });
+  ipcMain.handle("rename-folder", (_event, id: unknown, name: unknown) => {
+    if (typeof name !== "string") throw new Error("A folder needs a name");
+    agent().renameFolder(conversationId(id), name);
+  });
+  ipcMain.handle("delete-folder", (_event, id: unknown) => agent().deleteFolder(conversationId(id)));
+  ipcMain.handle("set-conversation-folder", (_event, id: unknown, folderId: unknown) => {
+    const folder = folderId === null || folderId === undefined ? null : conversationId(folderId);
+    agent().setConversationFolder(conversationId(id), folder);
+  });
+  ipcMain.handle("list-tags", () => agent().listTags());
+  ipcMain.handle("set-conversation-tags", (_event, id: unknown, tags: unknown) => {
+    if (!Array.isArray(tags) || tags.some((tag) => typeof tag !== "string")) {
+      throw new Error("Tags must be a list of words");
+    }
+    agent().setConversationTags(conversationId(id), tags as string[]);
+  });
+  ipcMain.handle("list-saved-searches", () => agent().listSavedSearches());
+  ipcMain.handle("create-saved-search", (_event, name: unknown, query: unknown) => {
+    if (typeof name !== "string") throw new Error("A saved search needs a name");
+    if (typeof query !== "string") throw new Error("A saved search needs something to look for");
+    return agent().createSavedSearch(name, query);
+  });
+  ipcMain.handle("delete-saved-search", (_event, id: unknown) => agent().deleteSavedSearch(conversationId(id)));
 
   ipcMain.handle("attach-files", async () => {
     const window = deps.getWindow();
@@ -640,6 +673,48 @@ export function registerIpcHandlers(deps: IpcDeps): void {
         return { ok: true, fileName: path.basename(picked.filePaths[0]), ...counts };
       } catch (error) {
         logger.error("history.import.failed");
+        return { ok: false, error: errorText(error) };
+      }
+    }
+  );
+
+  /**
+   * The chats the user picked, written to one file they choose the place of.
+   *
+   * A selection of private chats is still private, so the file is sealed with a
+   * passphrase the user types for the occasion, exactly like a full backup.
+   */
+  ipcMain.handle(
+    "export-conversations",
+    async (_event, ids: unknown, passphrase: unknown): Promise<PortabilityResult> => {
+      if (storage.locked) return { ok: false, error: "History is locked. Unlock OpenMonkey first." };
+      const chosen = Array.isArray(ids)
+        ? ids.filter((id): id is string => typeof id === "string" && id.length > 0)
+        : [];
+      if (!chosen.length) return { ok: false, error: "Choose at least one chat to export." };
+      const value = typeof passphrase === "string" ? passphrase.trim() : "";
+      if (value.length < BACKUP_PASSPHRASE_MIN) {
+        return { ok: false, error: `Use at least ${BACKUP_PASSPHRASE_MIN} characters` };
+      }
+      const window = deps.getWindow();
+      const options: Electron.SaveDialogOptions = {
+        title: "Save the selected chats",
+        defaultPath: `openmonkey-chats-${new Date().toISOString().slice(0, 10)}${EXPORT_FILE_SUFFIX}`,
+        filters: [{ name: "OpenMonkey export", extensions: ["openmonkey-export", "txt"] }],
+      };
+      const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+      if (result.canceled || !result.filePath) return { ok: false, cancelled: true };
+      try {
+        const bundle = storage.exportSelection(chosen);
+        fs.writeFileSync(result.filePath, encryptBundle(bundle, value), { mode: 0o600 });
+        logger.info("chats.exported", { chats: bundle.conversations.length });
+        return {
+          ok: true,
+          fileName: path.basename(result.filePath),
+          conversations: bundle.conversations.length,
+        };
+      } catch (error) {
+        logger.error("chats.export.failed");
         return { ok: false, error: errorText(error) };
       }
     }

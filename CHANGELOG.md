@@ -8,6 +8,24 @@ that produced the build.
 
 ### Added
 
+- **The history can be filed, labelled, put away and taken with you.** The sidebar now
+  organizes the chats instead of only listing them. **Organize** opens a panel of folders,
+  labels and saved searches: a folder holds the chats filed under it and says how many
+  they are, a label is written in lower case and kept once per chat, and a saved search
+  keeps the words you look for under a name you gave it. **Archive** takes the list over
+  to the chats filed away and brings them back. The **⋯** button on a chat opens the
+  menu that files it, labels it, renames it or deletes it. **Select** marks several chats
+  so they can be exported at once — the export is sealed with a passphrase you type for
+  the occasion, so a selection of private chats stays private, and the file is written
+  `0600`. Deleting a folder keeps the chats and only takes the filing away, and a label
+  nobody uses any more is not listed. 11 integration tests (a folder holding and counting
+  its chats, a deleted folder keeping the chats, a chat filed under a folder that does not
+  exist staying where it was, labels counted and lowercased and kept once, a label
+  leaving with the chat it was on, an archived chat leaving the list and coming back, a
+  saved search keeping its name and its query, an export carrying only the chats that
+  were chosen, an export of nothing carrying nothing, the export handler writing a
+  sealed file that holds only the chosen chats, and the handler refusing an empty
+  selection and a short passphrase).
 - **The menu bar and the Dock know your work.** The tray now holds the chats you were
   in — the pinned ones first, the ones you touched last after that — and the list is
   built again every time the menu opens, so it is never the list it was an hour ago.

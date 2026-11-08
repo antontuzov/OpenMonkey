@@ -56,12 +56,30 @@ const api: ElectronAPI = {
   getTasks: () => ipcRenderer.invoke("get-tasks"),
   getMessages: (conversationId: string) => ipcRenderer.invoke("get-messages", conversationId),
   getConversations: () => ipcRenderer.invoke("get-conversations"),
+  getArchivedConversations: () => ipcRenderer.invoke("get-archived-conversations"),
   createConversation: () => ipcRenderer.invoke("create-conversation"),
   renameConversation: (id: string, title: string) => ipcRenderer.invoke("rename-conversation", id, title),
   setConversationPinned: (id: string, pinned: boolean) =>
     ipcRenderer.invoke("pin-conversation", id, pinned),
+  setConversationArchived: (id: string, archived: boolean) =>
+    ipcRenderer.invoke("archive-conversation", id, archived),
   deleteConversation: (id: string) => ipcRenderer.invoke("delete-conversation", id),
   searchConversations: (query: string) => ipcRenderer.invoke("search-conversations", query),
+  listFolders: () => ipcRenderer.invoke("list-folders"),
+  createFolder: (name: string) => ipcRenderer.invoke("create-folder", name),
+  renameFolder: (id: string, name: string) => ipcRenderer.invoke("rename-folder", id, name),
+  deleteFolder: (id: string) => ipcRenderer.invoke("delete-folder", id),
+  setConversationFolder: (id: string, folderId: string | null) =>
+    ipcRenderer.invoke("set-conversation-folder", id, folderId),
+  listTags: () => ipcRenderer.invoke("list-tags"),
+  setConversationTags: (id: string, tags: string[]) =>
+    ipcRenderer.invoke("set-conversation-tags", id, tags),
+  listSavedSearches: () => ipcRenderer.invoke("list-saved-searches"),
+  createSavedSearch: (name: string, query: string) =>
+    ipcRenderer.invoke("create-saved-search", name, query),
+  deleteSavedSearch: (id: string) => ipcRenderer.invoke("delete-saved-search", id),
+  exportConversations: (ids: string[], passphrase: string) =>
+    ipcRenderer.invoke("export-conversations", ids, passphrase),
   attachFiles: () => ipcRenderer.invoke("attach-files"),
   /** Takes the file the user opened from the Dock, once. */
   takePendingDocument: () => ipcRenderer.invoke("take-pending-document"),

@@ -27,6 +27,10 @@ and approval-gated tools. Nothing here is a mock screen.
 - Command palette: Cmd+K opens one box that searches the chats, the settings pages and
   the commands with a single fuzzy matcher, opens the setting row it named, and is driven
   from the keyboard alone; the whole flow needs no mouse.
+- History organizer: the sidebar files the chats as well as listing them — folders that
+  count what they hold, labels kept once per chat, an archive of the chats filed away,
+  saved searches under a name, and a passphrase-sealed export of a selected group of
+  chats.
 - Agent v2: schema-validated tool registry, Ask/Allow/Block per tool, session approvals,
   diff/shell/draft previews, encrypted audit log with export, symlink-safe workspace roots,
   live shell output with kill, Trash deletes.
@@ -116,7 +120,9 @@ and approval-gated tools. Nothing here is a mock screen.
     rename inline (Enter/Escape), pin, delete with 5 s inline confirmation, Arrow Up/Down
     navigation, debounced search over titles and decrypted message bodies, legacy single-thread
     migration to `conv_legacy`. Search scans recent decrypted rows rather than FTS5 (encrypted
-    columns cannot be indexed on disk); archive is deferred. *(L)*
+    columns cannot be indexed on disk); archive and the rest of the organizer shipped later as
+    the premium row 17 — folders, labels, saved searches and a passphrase-sealed export of a
+    selection. *(L)*
 11. ✅ **Composer upgrades (core)**: per-session drafts, drag-and-drop text attachments with
     extension allowlist, NUL-byte rejection and a 256 KB cap, native file picker through IPC,
     attachment chips, Enter sends, Shift+Enter newline. Slash commands are deferred to the

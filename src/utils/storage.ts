@@ -19,6 +19,8 @@ import type {
   AuditEntry,
   BackupFile,
   BackupStatus,
+  ChatFolder,
+  ChatTag,
   Config,
   ConfigPatch,
   Conversation,
@@ -30,6 +32,7 @@ import type {
   Message,
   MessageAttachment,
   QuickAskThread,
+  SavedSearch,
   Task,
   TaskDiff,
   TaskStep,
@@ -48,7 +51,7 @@ const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** Bumped when the table layout changes; an export carries it so a newer file is refused. */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 interface MessageRow {
   id: string;
@@ -100,8 +103,24 @@ interface ConversationRow {
   archived: number;
   kind: string;
   recall: number;
+  folder_id: string | null;
   message_count: number;
   last_content: string | null;
+}
+
+interface FolderRow {
+  id: string;
+  name: string;
+  position: number;
+  created_at: number;
+  count: number;
+}
+
+interface SavedSearchRow {
+  id: string;
+  name: string;
+  query: string;
+  created_at: number;
 }
 
 interface QuickAskRow {
@@ -328,6 +347,24 @@ export class Storage {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS chat_folders (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS conversation_tags (
+        conversation_id TEXT NOT NULL,
+        tag TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (conversation_id, tag)
+      );
+      CREATE TABLE IF NOT EXISTS saved_searches (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        query TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
     `);
 
     const columns = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
@@ -365,6 +402,9 @@ export class Storage {
     if (!conversationNames.has("recall")) {
       this.db.exec("ALTER TABLE conversations ADD COLUMN recall INTEGER NOT NULL DEFAULT 1");
     }
+    if (!conversationNames.has("folder_id")) {
+      this.db.exec("ALTER TABLE conversations ADD COLUMN folder_id TEXT");
+    }
 
     const taskColumns = this.db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>;
     const taskNames = new Set(taskColumns.map((column) => column.name));
@@ -380,6 +420,7 @@ export class Storage {
       CREATE INDEX IF NOT EXISTS idx_memory_facts_created ON memory_facts (created_at);
       CREATE INDEX IF NOT EXISTS idx_memory_summaries_updated ON memory_summaries (updated_at);
       CREATE INDEX IF NOT EXISTS idx_quick_asks_updated ON quick_asks (updated_at);
+      CREATE INDEX IF NOT EXISTS idx_conversation_tags_tag ON conversation_tags (tag);
     `);
 
     this.migrateLegacyMessages();
@@ -536,18 +577,56 @@ export class Storage {
    * passphrase the user chooses, and the receiving install re-encrypts with its own.
    */
   exportBundle(): ExportBundle {
+    return this.bundleOf(null);
+  }
+
+  /**
+   * The chats the user picked, and nothing else.
+   *
+   * The memory that goes with a chat is left out on purpose: the user chose these
+   * conversations to carry away, not everything the app knows about them.
+   */
+  exportSelection(ids: string[]): ExportBundle {
+    return this.bundleOf(ids);
+  }
+
+  /**
+   * The bundle for the whole history, or for a selection of it.
+   *
+   * A selection of nothing is a selection of nothing, not the whole history, so the
+   * empty list is honoured rather than read as "no filter".
+   */
+  private bundleOf(ids: string[] | null): ExportBundle {
     if (!this.db) throw new Error("History is locked");
-    const chats = this.db
-      .prepare("SELECT id, title, created_at, updated_at, pinned, archived, kind, recall FROM conversations ORDER BY updated_at DESC")
-      .all() as Array<
+    const wanted = ids === null ? null : [...new Set(ids)];
+    const empty = wanted !== null && wanted.length === 0;
+    const placeholders = wanted?.length ? wanted.map(() => "?").join(", ") : "";
+    const chats = (wanted?.length
+      ? this.db
+          .prepare(
+            `SELECT id, title, created_at, updated_at, pinned, archived, kind, recall
+              FROM conversations WHERE id IN (${placeholders}) ORDER BY updated_at DESC`
+          )
+          .all(...wanted)
+      : empty
+        ? []
+        : this.db
+            .prepare("SELECT id, title, created_at, updated_at, pinned, archived, kind, recall FROM conversations ORDER BY updated_at DESC")
+            .all()) as Array<
       Pick<
         ConversationRow,
         "id" | "title" | "created_at" | "updated_at" | "pinned" | "archived" | "kind" | "recall"
       >
     >;
-    const messages = this.db
-      .prepare("SELECT * FROM messages ORDER BY created_at ASC, rowid ASC")
-      .all() as MessageRow[];
+    const messages = (wanted?.length
+      ? this.db
+          .prepare(
+            `SELECT * FROM messages WHERE conversation_id IN (${placeholders}) ORDER BY created_at ASC, rowid ASC`
+          )
+          .all(...wanted)
+      : empty
+        ? []
+        : this.db.prepare("SELECT * FROM messages ORDER BY created_at ASC, rowid ASC").all()) as MessageRow[];
     const byChat = new Map<string, ExportedMessage[]>();
     for (const row of messages) {
       if (!row.conversation_id) continue;
@@ -579,16 +658,20 @@ export class Storage {
         recall: row.recall !== 0,
         messages: byChat.get(row.id) ?? [],
       })),
-      facts: this.getMemoryFacts(2_000).map((fact) => ({
-        id: fact.id,
-        content: fact.content,
-        createdAt: fact.createdAt.toISOString(),
-      })),
-      summaries: this.getMemorySummaries().map((summary) => ({
-        conversationId: summary.conversationId,
-        content: summary.content,
-        updatedAt: summary.updatedAt.toISOString(),
-      })),
+      facts: wanted
+        ? []
+        : this.getMemoryFacts(2_000).map((fact) => ({
+            id: fact.id,
+            content: fact.content,
+            createdAt: fact.createdAt.toISOString(),
+          })),
+      summaries: this.getMemorySummaries()
+        .filter((summary) => !wanted || wanted.includes(summary.conversationId))
+        .map((summary) => ({
+          conversationId: summary.conversationId,
+          content: summary.content,
+          updatedAt: summary.updatedAt.toISOString(),
+        })),
     };
   }
 
@@ -1159,7 +1242,7 @@ export class Storage {
     return copy();
   }
 
-  private toConversation(row: ConversationRow): Conversation {
+  private toConversation(row: ConversationRow, tags: string[] = []): Conversation {
     return {
       id: row.id,
       title: row.title,
@@ -1171,7 +1254,34 @@ export class Storage {
       messageCount: row.message_count,
       preview: clean(this.open(row.last_content ?? ""), 90),
       recall: row.recall !== 0,
+      folderId: row.folder_id ?? null,
+      tags,
     };
+  }
+
+  /**
+   * The labels on a set of chats, read in one go.
+   *
+   * A chat list is read whole every time it changes, so the labels come back with
+   * it rather than costing a query each.
+   */
+  private tagsOf(ids: string[]): Map<string, string[]> {
+    const byChat = new Map<string, string[]>();
+    if (!this.db || !ids.length) return byChat;
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = this.db
+      .prepare(
+        `SELECT conversation_id, tag FROM conversation_tags
+          WHERE conversation_id IN (${placeholders})
+          ORDER BY created_at ASC`
+      )
+      .all(...ids) as Array<{ conversation_id: string; tag: string }>;
+    for (const row of rows) {
+      const list = byChat.get(row.conversation_id) ?? [];
+      list.push(row.tag);
+      byChat.set(row.conversation_id, list);
+    }
+    return byChat;
   }
 
   private conversationSelect(where = ""): string {
@@ -1186,7 +1296,18 @@ export class Storage {
     const rows = this.db
       .prepare(this.conversationSelect("WHERE c.archived = 0 AND c.kind = 'chat' ORDER BY c.pinned DESC, c.updated_at DESC"))
       .all() as ConversationRow[];
-    return rows.map((row) => this.toConversation(row));
+    const tags = this.tagsOf(rows.map((row) => row.id));
+    return rows.map((row) => this.toConversation(row, tags.get(row.id) ?? []));
+  }
+
+  /** The chats the user filed away; they stay out of the way until asked for. */
+  listArchivedConversations(): Conversation[] {
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare(this.conversationSelect("WHERE c.archived = 1 AND c.kind = 'chat' ORDER BY c.updated_at DESC"))
+      .all() as ConversationRow[];
+    const tags = this.tagsOf(rows.map((row) => row.id));
+    return rows.map((row) => this.toConversation(row, tags.get(row.id) ?? []));
   }
 
   getConversation(id: string): Conversation | null {
@@ -1194,7 +1315,8 @@ export class Storage {
     const row = this.db.prepare(this.conversationSelect("WHERE c.id = ?")).get(id) as
       | ConversationRow
       | undefined;
-    return row ? this.toConversation(row) : null;
+    if (!row) return null;
+    return this.toConversation(row, this.tagsOf([id]).get(id) ?? []);
   }
 
   latestConversation(): Conversation | null {
@@ -1229,10 +1351,163 @@ export class Storage {
     this.db.prepare("UPDATE conversations SET pinned = ? WHERE id = ?").run(pinned ? 1 : 0, id);
   }
 
+  /**
+   * Files a chat away, or brings it back. An archived chat keeps every turn; it is
+   * only out of the list the user reads.
+   */
+  setConversationArchived(id: string, archived: boolean): void {
+    if (!this.db) return;
+    this.db.prepare("UPDATE conversations SET archived = ? WHERE id = ?").run(archived ? 1 : 0, id);
+  }
+
   /** Turns memory recall off or on for one conversation; nothing else changes. */
   setConversationRecall(id: string, recall: boolean): void {
     if (!this.db) return;
     this.db.prepare("UPDATE conversations SET recall = ? WHERE id = ?").run(recall ? 1 : 0, id);
+  }
+
+  /**
+   * The folders the user files chats into, in the order they made them.
+   *
+   * The count is how many chats sit in each folder right now, so the list says
+   * what is in there without the user opening every folder to find out.
+   */
+  listFolders(): ChatFolder[] {
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT f.*,
+          (SELECT COUNT(*) FROM conversations c
+            WHERE c.folder_id = f.id AND c.archived = 0 AND c.kind = 'chat') AS count
+          FROM chat_folders f
+          ORDER BY f.position ASC, f.created_at ASC`
+      )
+      .all() as FolderRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      position: row.position,
+      createdAt: new Date(row.created_at),
+      count: row.count,
+    }));
+  }
+
+  createFolder(name: string): ChatFolder {
+    if (!this.db) throw new Error("Storage is not open");
+    const trimmed = clean(name, 40);
+    if (!trimmed) throw new Error("A folder needs a name");
+    const id = idFor("folder");
+    const position = this.db.prepare("SELECT COUNT(*) AS count FROM chat_folders").get() as {
+      count: number;
+    };
+    this.db
+      .prepare("INSERT INTO chat_folders (id, name, position, created_at) VALUES (?, ?, ?, ?)")
+      .run(id, trimmed, position.count, Date.now());
+    return { id, name: trimmed, position: position.count, createdAt: new Date(), count: 0 };
+  }
+
+  renameFolder(id: string, name: string): void {
+    if (!this.db) return;
+    const trimmed = clean(name, 40);
+    if (!trimmed) return;
+    this.db.prepare("UPDATE chat_folders SET name = ? WHERE id = ?").run(trimmed, id);
+  }
+
+  /**
+   * Removes a folder. The chats in it are kept — they simply stop being filed, which
+   * is the only way to delete a folder without losing work.
+   */
+  deleteFolder(id: string): void {
+    if (!this.db) return;
+    const remove = this.db.transaction(() => {
+      this.db!.prepare("UPDATE conversations SET folder_id = NULL WHERE folder_id = ?").run(id);
+      this.db!.prepare("DELETE FROM chat_folders WHERE id = ?").run(id);
+    });
+    remove();
+  }
+
+  /** Files a chat under a folder, or takes it out of the one it was in. */
+  setConversationFolder(id: string, folderId: string | null): void {
+    if (!this.db) return;
+    if (folderId && !this.db.prepare("SELECT id FROM chat_folders WHERE id = ?").get(folderId)) return;
+    this.db.prepare("UPDATE conversations SET folder_id = ? WHERE id = ?").run(folderId, id);
+  }
+
+  /**
+   * Every label in use, with how many chats carry it.
+   *
+   * A label nobody uses any more is not listed: it would only be noise in the
+   * filter list.
+   */
+  listTags(): ChatTag[] {
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT t.tag, COUNT(*) AS count FROM conversation_tags t
+          JOIN conversations c ON c.id = t.conversation_id
+          WHERE c.archived = 0 AND c.kind = 'chat'
+          GROUP BY t.tag
+          ORDER BY count DESC, t.tag ASC`
+      )
+      .all() as Array<{ tag: string; count: number }>;
+    return rows.map((row) => ({ tag: row.tag, count: row.count }));
+  }
+
+  /** The labels on one chat, whatever case they were typed in. */
+  private normalizeTag(tag: string): string {
+    return clean(tag, 24).toLowerCase();
+  }
+
+  /**
+   * Replaces the labels on a chat.
+   *
+   * A label is stored once per chat, so applying the same word twice changes
+   * nothing rather than making a second copy of it.
+   */
+  setConversationTags(id: string, tags: string[]): void {
+    if (!this.db) return;
+    const wanted = [...new Set(tags.map((tag) => this.normalizeTag(tag)).filter(Boolean))];
+    const apply = this.db.transaction(() => {
+      this.db!.prepare("DELETE FROM conversation_tags WHERE conversation_id = ?").run(id);
+      const write = this.db!.prepare(
+        "INSERT OR IGNORE INTO conversation_tags (conversation_id, tag, created_at) VALUES (?, ?, ?)"
+      );
+      const now = Date.now();
+      for (const tag of wanted) write.run(id, tag, now);
+    });
+    apply();
+  }
+
+  /** The searches the user kept, newest first. */
+  listSavedSearches(): SavedSearch[] {
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare("SELECT * FROM saved_searches ORDER BY created_at DESC")
+      .all() as SavedSearchRow[];
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      query: row.query,
+      createdAt: new Date(row.created_at),
+    }));
+  }
+
+  createSavedSearch(name: string, query: string): SavedSearch {
+    if (!this.db) throw new Error("Storage is not open");
+    const label = clean(name, 40);
+    const text = clean(query, 120);
+    if (!label || !text) throw new Error("A saved search needs a name and something to look for");
+    const id = idFor("search");
+    const now = Date.now();
+    this.db
+      .prepare("INSERT INTO saved_searches (id, name, query, created_at) VALUES (?, ?, ?, ?)")
+      .run(id, label, text, now);
+    return { id, name: label, query: text, createdAt: new Date(now) };
+  }
+
+  deleteSavedSearch(id: string): void {
+    if (!this.db) return;
+    this.db.prepare("DELETE FROM saved_searches WHERE id = ?").run(id);
   }
 
   touchConversation(id: string, at = Date.now()): void {
@@ -1247,6 +1522,7 @@ export class Storage {
       this.db!.prepare("DELETE FROM conversations WHERE id = ?").run(id);
       this.db!.prepare("DELETE FROM quick_asks WHERE conversation_id = ?").run(id);
       this.db!.prepare("DELETE FROM memory_summaries WHERE id = ?").run(id);
+      this.db!.prepare("DELETE FROM conversation_tags WHERE conversation_id = ?").run(id);
     });
     remove();
     return this.latestConversation();
@@ -1594,6 +1870,13 @@ export class Storage {
         "DELETE FROM conversations WHERE updated_at < ? AND NOT EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id)"
       )
       .run(cutoff);
+    // A label left on a chat that no longer exists would keep showing a count for
+    // something the user cannot open.
+    this.db
+      .prepare(
+        "DELETE FROM conversation_tags WHERE conversation_id NOT IN (SELECT id FROM conversations)"
+      )
+      .run();
   }
 
   /** Checkpoint and close the file without touching the retention timer. */

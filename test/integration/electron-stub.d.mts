@@ -69,4 +69,6 @@ export declare class Tray {
 export declare const dialog: {
   openDialogResult: { canceled: boolean; filePaths: string[] };
   showOpenDialog(options?: unknown): Promise<{ canceled: boolean; filePaths: string[] }>;
+  saveDialogResult: { canceled: boolean; filePath?: string };
+  showSaveDialog(options?: unknown): Promise<{ canceled: boolean; filePath?: string }>;
 };

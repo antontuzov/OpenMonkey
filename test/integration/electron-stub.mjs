@@ -58,6 +58,9 @@ export const dialog = {
   /** What the next file picker hands back. */
   openDialogResult: { canceled: true, filePaths: [] },
   showOpenDialog: async () => dialog.openDialogResult,
+  /** What the next save dialog hands back. */
+  saveDialogResult: { canceled: true, filePath: undefined },
+  showSaveDialog: async () => dialog.saveDialogResult,
 };
 
 export const shell = {};

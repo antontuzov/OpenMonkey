@@ -39,6 +39,34 @@ export interface Conversation {
   preview: string;
   /** false when the user turned memory recall off for this conversation. */
   recall: boolean;
+  /** The folder this chat is filed under, when it has one. */
+  folderId?: string | null;
+  /** The labels on this chat, in the order they were first applied. */
+  tags?: string[];
+}
+
+/** A named box the user files chats into. */
+export interface ChatFolder {
+  id: string;
+  name: string;
+  position: number;
+  createdAt: Date;
+  /** How many chats are filed under it right now. */
+  count: number;
+}
+
+/** A label on a chat, and how many chats carry it. */
+export interface ChatTag {
+  tag: string;
+  count: number;
+}
+
+/** A search the user kept, so they do not have to type it again. */
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  createdAt: Date;
 }
 
 export type ConversationKind = "chat" | "quick";
@@ -859,11 +887,30 @@ export interface ElectronAPI {
   getTasks: () => Promise<Task[]>;
   getMessages: (conversationId: string) => Promise<Message[]>;
   getConversations: () => Promise<Conversation[]>;
+  /** The chats the user filed away; they are out of the way until asked for. */
+  getArchivedConversations: () => Promise<Conversation[]>;
   createConversation: () => Promise<Conversation>;
   renameConversation: (id: string, title: string) => Promise<void>;
   setConversationPinned: (id: string, pinned: boolean) => Promise<void>;
+  setConversationArchived: (id: string, archived: boolean) => Promise<void>;
   deleteConversation: (id: string) => Promise<Conversation | null>;
   searchConversations: (query: string) => Promise<ConversationSearchHit[]>;
+  /** The folders the user files chats into, and how full they are. */
+  listFolders: () => Promise<ChatFolder[]>;
+  createFolder: (name: string) => Promise<ChatFolder>;
+  renameFolder: (id: string, name: string) => Promise<void>;
+  /** Deleting a folder leaves the chats in it; they just stop being filed. */
+  deleteFolder: (id: string) => Promise<void>;
+  setConversationFolder: (id: string, folderId: string | null) => Promise<void>;
+  /** Every label in use, and how many chats carry it. */
+  listTags: () => Promise<ChatTag[]>;
+  setConversationTags: (id: string, tags: string[]) => Promise<void>;
+  /** The searches the user kept for later. */
+  listSavedSearches: () => Promise<SavedSearch[]>;
+  createSavedSearch: (name: string, query: string) => Promise<SavedSearch>;
+  deleteSavedSearch: (id: string) => Promise<void>;
+  /** Write the chosen chats to one sealed file the user picks the place of. */
+  exportConversations: (ids: string[], passphrase: string) => Promise<PortabilityResult>;
   /** Open a file picker; several files may be chosen at once. */
   attachFiles: () => Promise<Attachment[]>;
   /** Takes the file the user opened from the Dock, once. */

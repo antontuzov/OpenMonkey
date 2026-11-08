@@ -27,13 +27,17 @@ import {
   MOOD_LOGOS,
   type AgentStatus,
   type ApprovalRequest,
+  type ChatFolder,
+  type ChatTag,
   type Config,
   type ConfigPatch,
   type Conversation,
   type ConversationSearchHit,
   type Mood,
+  type PortabilityResult,
   type PrivacyStatus,
   type SafeModeInfo,
+  type SavedSearch,
   type SettingsPage,
 } from "../utils/types";
 
@@ -68,6 +72,12 @@ export default function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  /** The chats filed away, which the sidebar shows instead of the list. */
+  const [archivedConversations, setArchivedConversations] = useState<Conversation[]>([]);
+  /** The folders the chats are filed under, with the labels in use and the kept searches. */
+  const [folders, setFolders] = useState<ChatFolder[]>([]);
+  const [tags, setTags] = useState<ChatTag[]>([]);
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   /** The chats open in this window, in the order the tabs are shown. */
   const [openTabs, setOpenTabs] = useState<string[]>([]);
@@ -178,6 +188,141 @@ export default function App() {
     void refreshConversations();
   }, [refreshConversations]);
 
+  /**
+   * The organiser's own state: what is filed away, the folders, the labels and the
+   * searches the user kept. It is read separately from the chat list because it
+   * changes for reasons the list does not know about.
+   */
+  const refreshOrganizer = useCallback(async () => {
+    const api = window.electron;
+    if (!api) return;
+    const [archived, nextFolders, nextTags, nextSearches] = await Promise.all([
+      api.getArchivedConversations().catch(() => [] as Conversation[]),
+      api.listFolders().catch(() => [] as ChatFolder[]),
+      api.listTags().catch(() => [] as ChatTag[]),
+      api.listSavedSearches().catch(() => [] as SavedSearch[]),
+    ]);
+    setArchivedConversations(archived);
+    setFolders(nextFolders);
+    setTags(nextTags);
+    setSavedSearches(nextSearches);
+  }, []);
+
+  const archiveConversation = useCallback(
+    async (id: string, archived: boolean) => {
+      const api = window.electron;
+      if (!api) return;
+      try {
+        await api.setConversationArchived(id, archived);
+        await refreshConversations();
+        await refreshOrganizer();
+      } catch {
+        /* the chat stays as it was */
+      }
+    },
+    [refreshConversations, refreshOrganizer]
+  );
+
+  const setConversationFolder = useCallback(
+    async (id: string, folderId: string | null) => {
+      const api = window.electron;
+      if (!api) return;
+      try {
+        await api.setConversationFolder(id, folderId);
+        await refreshConversations();
+        await refreshOrganizer();
+      } catch {
+        /* the chat stays in the folder it was in */
+      }
+    },
+    [refreshConversations, refreshOrganizer]
+  );
+
+  const setConversationTags = useCallback(
+    async (id: string, next: string[]) => {
+      const api = window.electron;
+      if (!api) return;
+      try {
+        await api.setConversationTags(id, next);
+        await refreshConversations();
+        await refreshOrganizer();
+      } catch {
+        /* the labels stay as they were */
+      }
+    },
+    [refreshConversations, refreshOrganizer]
+  );
+
+  const createFolder = useCallback(
+    async (name: string) => {
+      const api = window.electron;
+      if (!api) return;
+      try {
+        await api.createFolder(name);
+        await refreshOrganizer();
+      } catch {
+        /* no folder is made */
+      }
+    },
+    [refreshOrganizer]
+  );
+
+  const deleteFolder = useCallback(
+    async (id: string) => {
+      const api = window.electron;
+      if (!api) return;
+      try {
+        await api.deleteFolder(id);
+        await refreshConversations();
+        await refreshOrganizer();
+      } catch {
+        /* the folder stays */
+      }
+    },
+    [refreshConversations, refreshOrganizer]
+  );
+
+  const createSavedSearch = useCallback(
+    async (name: string, query: string) => {
+      const api = window.electron;
+      if (!api) return;
+      try {
+        await api.createSavedSearch(name, query);
+        await refreshOrganizer();
+      } catch {
+        /* the search is not kept */
+      }
+    },
+    [refreshOrganizer]
+  );
+
+  const deleteSavedSearch = useCallback(
+    async (id: string) => {
+      const api = window.electron;
+      if (!api) return;
+      try {
+        await api.deleteSavedSearch(id);
+        await refreshOrganizer();
+      } catch {
+        /* the search stays */
+      }
+    },
+    [refreshOrganizer]
+  );
+
+  const exportConversations = useCallback(
+    async (ids: string[], passphrase: string): Promise<PortabilityResult> => {
+      const api = window.electron;
+      if (!api) return { ok: false, error: "The app is not ready yet" };
+      try {
+        return await api.exportConversations(ids, passphrase);
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     // Chats live in storage, which opens before the model does. Waiting for "ready"
     // hid a user's whole history from anyone whose weights are missing or still
@@ -226,6 +371,12 @@ export default function App() {
       cancelled = true;
     };
   }, [status.state, config?.onboarding.completed, privacyStatus?.locked, historyVersion]);
+
+  // The organiser reads the same storage, so it waits for the history to be open.
+  useEffect(() => {
+    if (status.state === "starting" || !config?.onboarding.completed || privacyStatus?.locked) return;
+    void refreshOrganizer();
+  }, [status.state, config?.onboarding.completed, privacyStatus?.locked, historyVersion, refreshOrganizer]);
 
   useEffect(() => {
     const api = window.electron;
@@ -567,6 +718,10 @@ export default function App() {
         agentName={agentName}
         panelOpen={panelOpen}
         conversations={conversations}
+        archivedConversations={archivedConversations}
+        folders={folders}
+        tags={tags}
+        savedSearches={savedSearches}
         activeConversationId={activeConversationId}
         busyConversationId={busyConversationId}
         onTogglePanel={() => setPanelOpen((open) => !open)}
@@ -576,6 +731,14 @@ export default function App() {
         onRenameConversation={(id, title) => void renameConversation(id, title)}
         onPinConversation={(id, pinned) => void pinConversation(id, pinned)}
         onDeleteConversation={(id) => void deleteConversation(id)}
+        onArchiveConversation={(id, archived) => void archiveConversation(id, archived)}
+        onSetConversationFolder={(id, folderId) => void setConversationFolder(id, folderId)}
+        onSetConversationTags={(id, next) => void setConversationTags(id, next)}
+        onCreateFolder={(name) => void createFolder(name)}
+        onDeleteFolder={(id) => void deleteFolder(id)}
+        onCreateSavedSearch={(name, query) => void createSavedSearch(name, query)}
+        onDeleteSavedSearch={(id) => void deleteSavedSearch(id)}
+        onExportConversations={exportConversations}
         onSearchConversations={searchConversations}
       />
 

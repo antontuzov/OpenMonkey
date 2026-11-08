@@ -15,6 +15,8 @@ import type {
   AuditEntry,
   ChatErrorCode,
   ChatEvent,
+  ChatFolder,
+  ChatTag,
   CitationPreview,
   Conversation,
   ConversationSearchHit,
@@ -28,6 +30,7 @@ import type {
   Mood,
   QuickAskResult,
   QuickAskThread,
+  SavedSearch,
   Task,
   WorkspaceChunk,
   WorkspaceHit,
@@ -137,8 +140,68 @@ export class OpenMonkey extends EventEmitter {
     return storage.listConversations();
   }
 
+  /** The chats the user filed away; they stay out of the way until asked for. */
+  getArchivedConversations(): Conversation[] {
+    return storage.listArchivedConversations();
+  }
+
   searchConversations(query: string): ConversationSearchHit[] {
     return storage.searchConversations(query);
+  }
+
+  /**
+   * Files a chat away or brings it back.
+   *
+   * The chat the user is reading does not change underneath them: a chat is archived
+   * from the list, and the list is not the window they are typing in.
+   */
+  setConversationArchived(id: string, archived: boolean): void {
+    storage.setConversationArchived(id, archived);
+  }
+
+  /** The folders chats are filed into, and how full they are. */
+  listFolders(): ChatFolder[] {
+    return storage.listFolders();
+  }
+
+  createFolder(name: string): ChatFolder {
+    return storage.createFolder(name);
+  }
+
+  renameFolder(id: string, name: string): void {
+    storage.renameFolder(id, name);
+  }
+
+  /** Deleting a folder keeps the chats in it; they stop being filed and nothing else. */
+  deleteFolder(id: string): void {
+    storage.deleteFolder(id);
+  }
+
+  /** Files a chat under a folder, or takes it out of the one it was in. */
+  setConversationFolder(id: string, folderId: string | null): void {
+    storage.setConversationFolder(id, folderId);
+  }
+
+  /** Every label in use, with how many chats carry it. */
+  listTags(): ChatTag[] {
+    return storage.listTags();
+  }
+
+  setConversationTags(id: string, tags: string[]): void {
+    storage.setConversationTags(id, tags);
+  }
+
+  /** The searches the user kept for later. */
+  listSavedSearches(): SavedSearch[] {
+    return storage.listSavedSearches();
+  }
+
+  createSavedSearch(name: string, query: string): SavedSearch {
+    return storage.createSavedSearch(name, query);
+  }
+
+  deleteSavedSearch(id: string): void {
+    storage.deleteSavedSearch(id);
   }
 
   createConversation(): Conversation {

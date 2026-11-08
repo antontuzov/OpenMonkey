@@ -50,6 +50,7 @@ try {
       path.join(here, "tray-menu.test.ts"),
       path.join(here, "file-attachments.test.ts"),
       path.join(here, "logger.test.ts"),
+      path.join(here, "organizer.test.ts"),
       path.join(here, "settings.test.ts"),
     ],
     absWorkingDir: root,
@@ -95,6 +96,7 @@ try {
     "tray-menu.test.cjs",
     "file-attachments.test.cjs",
     "logger.test.cjs",
+    "organizer.test.cjs",
     // Last: it writes config sections other suites read, and the runs are sequential.
     "settings.test.cjs",
   ].map((name) => path.join(outdir, name));
