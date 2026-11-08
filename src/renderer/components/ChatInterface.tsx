@@ -306,7 +306,7 @@ const ChatMessage: React.FC<{
             </>
           )}
           {group && position >= 0 && (
-            <span className="inline-flex items-center gap-0.5 ml-0.5">
+            <span className="inline-flex items-center gap-0.5 ms-0.5">
               <button
                 onClick={() => step(-1)}
                 disabled={position === 0 || busy}
@@ -314,7 +314,7 @@ const ChatMessage: React.FC<{
                 title={t("chat.variantPrevious")}
                 aria-label={t("chat.variantPrevious")}
               >
-                <ChevronLeft size={11} />
+                <ChevronLeft size={11} className="rtl:rotate-180" />
               </button>
               <span className="tabular-nums" title={t("chat.variant", { index: position + 1, count: group.length })}>
                 {position + 1}/{group.length}
@@ -326,7 +326,7 @@ const ChatMessage: React.FC<{
                 title={t("chat.variantNext")}
                 aria-label={t("chat.variantNext")}
               >
-                <ChevronRight size={11} />
+                <ChevronRight size={11} className="rtl:rotate-180" />
               </button>
             </span>
           )}
@@ -395,7 +395,7 @@ const StreamingMessage: React.FC<{ content: string; logoFile: string }> = ({ con
           message={{ id: "stream", role: "assistant", content, timestamp: new Date() }}
         />
         {content.length > 0 && (
-          <span className="inline-block w-[6px] h-[13px] ml-0.5 align-[-2px] rounded-[1px] bg-accent animate-pulse" />
+          <span className="inline-block w-[6px] h-[13px] ms-0.5 align-[-2px] rounded-[1px] bg-accent animate-pulse" />
         )}
       </div>
       <p className="text-[10px] text-faint mt-1.5 px-0.5">{t("chat.writing")}</p>
@@ -1245,14 +1245,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       {t("chat.starterHide")}
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2.5 text-left">
+                  <div className="grid grid-cols-2 gap-2.5 text-start">
                     {STARTERS.map((starter) => {
                       const Icon = starter.icon;
                       return (
                         <button
                           key={starter.key}
                           onClick={() => applyStarter(starter.key)}
-                          className="card px-4 py-3 flex items-start gap-2.5 hover:border-accent-ink/40 transition-colors text-left"
+                          className="card px-4 py-3 flex items-start gap-2.5 hover:border-accent-ink/40 transition-colors text-start"
                         >
                           <Icon size={15} className="text-accent-ink mt-0.5 shrink-0" />
                           <span className="text-[12px] font-semibold leading-snug">
@@ -1374,14 +1374,14 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     key={file.path}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => void acceptMention(file)}
-                    className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11.5px] ${
+                    className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-start text-[11.5px] ${
                       index === mentionIndex ? "bg-accent-soft text-accent-ink" : "text-muted hover:bg-card"
                     }`}
                   >
                     <FileText size={12} className="shrink-0" />
                     <span className="truncate text-ink">{file.name}</span>
                     <span className="truncate text-faint">{file.dir}</span>
-                    <span className="ml-auto text-faint">{formatSize(file.bytes)}</span>
+                    <span className="ms-auto text-faint">{formatSize(file.bytes)}</span>
                   </button>
                 ))}
               </div>
@@ -1500,12 +1500,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               >
                 {attaching ? <Loader size={16} className="animate-spin" /> : <Paperclip size={16} />}
               </button>
-              <span className={`chip ml-1 ${autoExecute ? "" : "chip-accent"}`}>
+              <span className={`chip ms-1 ${autoExecute ? "" : "chip-accent"}`}>
                 <ShieldCheck size={12} />
                 {autoExecute ? t("chat.runsFreely") : t("chat.approvalsOn")}
               </span>
 
-              <div className="ml-auto flex items-center gap-2.5">
+              <div className="ms-auto flex items-center gap-2.5">
                 <span className="hidden lg:flex items-center gap-1 text-[10px] text-faint">
                   <span className="kbd">⇧</span>
                   <span className="kbd">↵</span>

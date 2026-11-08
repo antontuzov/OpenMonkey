@@ -1229,15 +1229,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   return (
     <div className="flex h-screen bg-paper view-crossfade">
-      <aside className="drag-region w-[300px] shrink-0 bg-card-2 border-r border-line flex flex-col">
+      <aside className="drag-region w-[300px] shrink-0 bg-card-2 border-e border-line flex flex-col">
         <div className="pt-9 px-3">
           <button
             onClick={onClose}
             className="no-drag flex items-center gap-1.5 w-full px-2 py-1 rounded-lg text-[11.5px] text-muted hover:text-ink hover:bg-ink/5"
           >
-            <ArrowLeft size={13} />
+            <ArrowLeft size={13} className="rtl:rotate-180" />
             {t("settings.back")}
-            <span className="kbd ml-auto">ESC</span>
+            <span className="kbd ms-auto">ESC</span>
           </button>
 
           <h1 className="text-[21px] font-semibold tracking-tight px-2 mt-4">{t("settings.title")}</h1>
@@ -1253,17 +1253,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               style={{ boxShadow: `0 0 0 1.5px var(--color-card), 0 0 0 2.5px ${logo.color}55` }}
             />
             <span className="text-[12px] truncate">{agent.name}</span>
-            <ChevronDown size={13} className="ml-auto text-faint" />
+            <ChevronDown size={13} className="ms-auto text-faint" />
           </button>
 
           <div className="relative mt-3 no-drag">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
+            <Search size={14} className="absolute start-2.5 top-1/2 -translate-y-1/2 text-faint" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t("settings.search")}
               aria-label={t("settings.search")}
-              className="field w-full !h-8 !pl-8 !text-[11.5px]"
+              className="field w-full !h-8 !ps-8 !text-[11.5px]"
             />
           </div>
         </div>
@@ -1284,9 +1284,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     onClick={() => jumpToRow(hit.page, hit.label)}
                     className="nav-item w-full"
                   >
-                    <ArrowRight size={15} className="text-faint" />
+                    <ArrowRight size={15} className="text-faint rtl:rotate-180" />
                     <span className="truncate">{hit.label}</span>
-                    <span className="ml-auto text-[9.5px] text-faint shrink-0 pl-2">
+                    <span className="ms-auto text-[9.5px] text-faint shrink-0 ps-2">
                       {t(TITLES[hit.page].titleKey)}
                     </span>
                   </button>
@@ -2061,7 +2061,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           <div key={entry.id}>
                             <button
                               onClick={() => setAuditOpen(open ? null : entry.id)}
-                              className="row w-full text-left"
+                              className="row w-full text-start"
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <span className="w-7 h-7 rounded-lg bg-card-2 flex items-center justify-center shrink-0">
@@ -3350,7 +3350,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </p>
                       <p className="row-copy">{statusCopy}</p>
                     </div>
-                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    <div className="ms-auto flex items-center gap-1.5 shrink-0">
                       {models?.warmedUp === true && ready && (
                         <span
                           className="chip chip-accent"
@@ -3444,7 +3444,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <button
                         onClick={() => void runBenchmark()}
                         disabled={!ready || benchmarking}
-                        className="btn btn-primary ml-auto shrink-0"
+                        className="btn btn-primary ms-auto shrink-0"
                       >
                         {benchmarking ? (
                           <Loader size={12} className="animate-spin" />

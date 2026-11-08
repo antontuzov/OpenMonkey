@@ -309,7 +309,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     aria-selected={index === selected}
                     onMouseEnter={() => setSelected(index)}
                     onClick={() => run(candidate)}
-                    className={`w-full flex items-center gap-2.5 px-4 py-1.5 text-left ${
+                    className={`w-full flex items-center gap-2.5 px-4 py-1.5 text-start ${
                       index === selected ? "bg-accent-soft" : ""
                     }`}
                   >

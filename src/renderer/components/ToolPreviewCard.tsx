@@ -23,7 +23,7 @@ export const ToolPreviewCard: React.FC<ToolPreviewCardProps> = ({ preview, compa
       <div className="rounded-xl border border-line bg-card-2 overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-line">
           <span className="text-[11px] font-semibold text-ink truncate">{preview.title}</span>
-          <span className="chip !h-5 ml-auto shrink-0 !text-[10px]">
+          <span className="chip !h-5 ms-auto shrink-0 !text-[10px]">
             +{preview.added} / −{preview.removed}
           </span>
         </div>

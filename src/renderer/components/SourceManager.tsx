@@ -159,19 +159,19 @@ export const SourceManager: React.FC<SourceManagerProps> = ({
         </div>
 
         <div className="p-3 border-b border-line relative">
-          <Search size={11} className="absolute left-[22px] top-1/2 -translate-y-1/2 text-faint" />
+          <Search size={11} className="absolute start-[22px] top-1/2 -translate-y-1/2 text-faint" />
           <input
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             placeholder="Filter sources"
             aria-label="Filter sources"
-            className="field w-full !pl-7"
+            className="field w-full !ps-7"
             disabled={!enabled}
           />
         </div>
 
         <div className="grid grid-cols-[minmax(230px,290px)_1fr]">
-          <div className="border-r border-line flex flex-col min-w-0 max-h-[320px] overflow-y-auto">
+          <div className="border-e border-line flex flex-col min-w-0 max-h-[320px] overflow-y-auto">
             {visible.length === 0 ? (
               <p className="p-3 text-[11px] text-muted">
                 {enabled
@@ -189,7 +189,7 @@ export const SourceManager: React.FC<SourceManagerProps> = ({
                       active ? "bg-accent-soft" : ""
                     }`}
                   >
-                    <button onClick={() => void choose(source.path)} className="flex-1 min-w-0 text-left">
+                    <button onClick={() => void choose(source.path)} className="flex-1 min-w-0 text-start">
                       <p className="text-[12px] font-semibold text-ink truncate">{name}</p>
                       <p className="text-[10.5px] text-muted truncate">{folder || "—"}</p>
                     </button>
@@ -233,7 +233,7 @@ export const SourceManager: React.FC<SourceManagerProps> = ({
       {notice && <p className="text-[11px] text-danger mt-2 px-1">{notice}</p>}
 
       <p className="text-[10.5px] text-muted mt-2 px-1 leading-relaxed">
-        <FileText size={10} className="inline mr-1 -mt-0.5" />
+        <FileText size={10} className="inline me-1 -mt-0.5" />
         The index lives in RAM only, so the list is empty again after a restart until the next build. Files the rules
         keep out are counted, not listed, and nothing outside the folders you allowed is ever read.
       </p>

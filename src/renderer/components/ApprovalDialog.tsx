@@ -77,7 +77,7 @@ export const ApprovalDialog: React.FC<ApprovalDialogProps> = ({ approval, agentN
               {approval.request.summary}
             </h2>
           </div>
-          <span className="chip !h-5 ml-auto shrink-0 !text-[10px]">
+          <span className="chip !h-5 ms-auto shrink-0 !text-[10px]">
             {approval.policy === "ask" ? t("approval.policyAsk") : t("approval.policyCheck")}
           </span>
         </div>

@@ -1025,6 +1025,11 @@ const RU: Record<StringKey, string> = {
 
 const STRINGS: Record<AppLanguage, Record<StringKey, string>> = { en: EN, ru: RU };
 
+/** The way a language is written: from the left, or from the right. */
+export type TextDirection = "ltr" | "rtl";
+
+const DIRECTIONS: Record<AppLanguage, TextDirection> = { en: "ltr", ru: "ltr" };
+
 let language: AppLanguage = "en";
 let cached: Record<StringKey, string> = EN;
 
@@ -1037,15 +1042,28 @@ export function onLanguageChange(listener: () => void): () => void {
 }
 
 export function setLanguage(next: AppLanguage): void {
-  if (next === language) return;
+  const changed = next !== language;
   language = next;
   cached = STRINGS[next] ?? EN;
   document.documentElement.lang = next;
+  document.documentElement.dir = direction();
+  if (!changed) return;
   for (const listener of languageListeners) listener();
 }
 
 export function getLanguage(): AppLanguage {
   return language;
+}
+
+/**
+ * The direction the app is written in.
+ *
+ * It follows the language, not the Mac: a reader who picked a language written
+ * from the right gets the whole interface the other way round, and the document
+ * is told so the layout can mirror itself.
+ */
+export function direction(): TextDirection {
+  return DIRECTIONS[language] ?? "ltr";
 }
 
 export function locale(): string {

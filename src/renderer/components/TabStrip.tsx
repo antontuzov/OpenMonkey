@@ -34,7 +34,7 @@ export const TabStrip: React.FC<TabStripProps> = ({ tabs, activeId, busyId, onSe
         return (
           <div
             key={conversation.id}
-            className={`group flex items-center gap-1 pl-2.5 pr-1 h-7 rounded-[8px] shrink-0 transition-colors ${
+            className={`group flex items-center gap-1 ps-2.5 pe-1 h-7 rounded-[8px] shrink-0 transition-colors ${
               active ? "bg-card border border-line" : "border border-transparent hover:bg-ink/5"
             }`}
           >

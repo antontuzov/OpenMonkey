@@ -209,7 +209,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
             role={selecting ? "checkbox" : undefined}
             aria-checked={selecting ? selected : undefined}
             aria-current={active ? "true" : undefined}
-            className="flex-1 min-w-0 text-left px-2 py-1.5 rounded-[9px]"
+            className="flex-1 min-w-0 text-start px-2 py-1.5 rounded-[9px]"
           >
             <span className="flex items-center gap-2 min-w-0">
               {selecting ? (
@@ -229,7 +229,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
               {conversation.pinned && <Pin size={10} className="text-faint shrink-0" />}
             </span>
             <span
-              className={`block pl-[21px] text-[10px] truncate ${busy ? "text-accent-ink" : "text-faint"}`}
+              className={`block ps-[21px] text-[10px] truncate ${busy ? "text-accent-ink" : "text-faint"}`}
             >
               {busy
                 ? t("chat.placeholderBusy")
@@ -240,11 +240,11 @@ const SessionRow: React.FC<SessionRowProps> = ({
             </span>
           </button>
 
-          <div className="relative shrink-0 w-[62px] self-stretch flex items-center justify-end pr-2">
+          <div className="relative shrink-0 w-[62px] self-stretch flex items-center justify-end pe-2">
             <span className="text-[9.5px] text-faint tabular-nums group-hover:opacity-0 transition-opacity">
               {relativeTime(conversation.updatedAt)}
             </span>
-            <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto">
+            <div className="absolute end-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto">
               <button
                 onClick={onTogglePin}
                 className={`icon-btn !w-[18px] !h-[18px] ${conversation.pinned ? "text-accent-ink" : ""}`}
@@ -490,7 +490,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
   const folderName = folderFilter ? folders.find((folder) => folder.id === folderFilter)?.name : null;
 
   return (
-    <aside className="drag-region w-[264px] shrink-0 bg-sidebar border-r border-line flex flex-col">
+    <aside className="drag-region w-[264px] shrink-0 bg-sidebar border-e border-line flex flex-col">
       <div className="pt-9 px-3">
         <button
           onClick={onSettings}
@@ -505,7 +505,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             style={{ boxShadow: `0 0 0 2px var(--color-card), 0 0 0 3px ${logo.color}66` }}
           />
           <span className="text-[13px] font-semibold tracking-tight truncate">{agentName}</span>
-          <ChevronDown size={14} className="ml-auto text-faint" />
+          <ChevronDown size={14} className="ms-auto text-faint" />
         </button>
       </div>
 
@@ -517,7 +517,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
         <button onClick={onTogglePanel} className="nav-item">
           <Activity size={15} />
           {t("nav.activity")}
-          <span className="ml-auto text-[10px] text-faint">
+          <span className="ms-auto text-[10px] text-faint">
             {panelOpen ? t("nav.panelOn") : t("nav.panelOff")}
           </span>
         </button>
@@ -530,7 +530,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       <div className="flex items-center justify-between px-4 mt-5 mb-2">
         <p className="section-label !mb-0">
           {showArchive ? t("org.archive") : t("nav.sessions")}
-          {listed.length > 0 && <span className="ml-1.5 text-faint/80">{listed.length}</span>}
+          {listed.length > 0 && <span className="ms-1.5 text-faint/80">{listed.length}</span>}
         </p>
         <button onClick={onNewChat} className="icon-btn !w-6 !h-6" title={t("nav.newChat")}>
           <Plus size={14} />
@@ -539,7 +539,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
 
       <div className="px-3 mb-2 no-drag">
         <div className="relative">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
+          <Search size={13} className="absolute start-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
           <input
             ref={searchRef}
             value={query}
@@ -552,18 +552,18 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             }}
             placeholder={t("nav.searchChats")}
             aria-label={t("nav.searchChats")}
-            className="field w-full !h-8 !pl-8 !pr-8 !text-[11.5px]"
+            className="field w-full !h-8 !ps-8 !pe-8 !text-[11.5px]"
           />
           {searching ? (
             <Loader
               size={12}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-faint animate-spin"
+              className="absolute end-2.5 top-1/2 -translate-y-1/2 text-faint animate-spin"
             />
           ) : (
             query && (
               <button
                 onClick={clearSearch}
-                className="icon-btn !w-5 !h-5 absolute right-1.5 top-1/2 -translate-y-1/2"
+                className="icon-btn !w-5 !h-5 absolute end-1.5 top-1/2 -translate-y-1/2"
                 title="Clear search"
               >
                 <X size={11} />

@@ -225,6 +225,23 @@ that produced the build.
 
 ### Fixed
 
+- **The interface can turn the other way round.** Every margin, padding and rule that was
+  pinned to the left or the right of the window was rewritten to follow the direction the
+  text runs in, so a language written from the right gets its side panel on the other side
+  of the window, its spacing the other way round and its arrows pointing back. The arrows
+  that mean "back" and "forward" turn with the text; the ones that mean "send" or the
+  Return key stay as they are, because a key does not point anywhere. The switches slide
+  towards the end of the line instead of the same end every time, and the theme previews
+  are mirrored rather than pointing at a panel that has moved. The document now says which
+  way it runs, and the direction follows the language the reader picked. No language is
+  written from the right yet, so nothing asks for the mirror on purpose — the layout is
+  ready for one, and the guard test makes sure a half-finished mirror cannot slip in
+  later. 6 unit tests (no class pinned to one side, no property in the stylesheet either,
+  the arrows carrying the turn, the hand-drawn parts having a mirrored version, the
+  document saying which way it runs and the language deciding) and 2 end-to-end tests
+  (the panel standing at the other side of the window with the rule following it and the
+  arrow pointing back, and the switch sliding the other way).
+
 - **The dates and figures read in the language the app is in.** Dates were formatted with
   the Mac's own locale and numbers with a hard-coded `en-US`, so a reader who picked
   Russian on an English Mac was shown English months and English digits: the day under a

@@ -22,7 +22,7 @@ const HEADING: Record<number, { tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6"; cl
 const linkButton = (href: string, children: ReactNode): ReactNode => (
   <button
     onClick={() => void window.electron?.openExternal(href)}
-    className="text-accent-ink underline underline-offset-2 hover:opacity-80 break-all text-left"
+    className="text-accent-ink underline underline-offset-2 hover:opacity-80 break-all text-start"
     title={href}
   >
     {children}
@@ -245,7 +245,7 @@ const Item: React.FC<{ item: ListItem; number: number; depth: number }> = ({ ite
       <span className="min-w-0 flex-1 break-words">{renderSpans(item.spans, `i${depth}${number}`)}</span>
     </div>
     {item.children.length > 0 && (
-      <ul role="list" className="pl-4 m-0 list-none flex flex-col gap-1">
+      <ul role="list" className="ps-4 m-0 list-none flex flex-col gap-1">
         {item.children.map((child, index) => (
           <Item key={index} item={child} number={index + 1} depth={depth + 1} />
         ))}
@@ -281,7 +281,7 @@ const BlockView: React.FC<{ block: Block }> = ({ block }) => {
       );
     case "quote":
       return (
-        <blockquote className="my-2 pl-2.5 border-l-2 border-accent/40 text-muted italic">
+        <blockquote className="my-2 ps-2.5 border-s-2 border-accent/40 text-muted italic">
           {block.blocks.map((inner, index) => (
             <BlockView key={index} block={inner} />
           ))}
@@ -296,7 +296,7 @@ const BlockView: React.FC<{ block: Block }> = ({ block }) => {
                 {block.header.map((cell, index) => (
                   <th
                     key={index}
-                    className="px-2.5 py-1.5 text-left font-semibold border-b border-line"
+                    className="px-2.5 py-1.5 text-start font-semibold border-b border-line"
                     style={{ textAlign: block.aligns[index] ?? "left" }}
                   >
                     {renderSpans(cell, `th${index}`)}

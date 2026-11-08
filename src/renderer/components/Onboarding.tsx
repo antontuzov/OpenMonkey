@@ -161,7 +161,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
 
   return (
     <div className="flex h-screen bg-paper">
-      <aside className="drag-region hidden md:flex w-[360px] shrink-0 bg-card-2 border-r border-line relative overflow-hidden">
+      <aside className="drag-region hidden md:flex w-[360px] shrink-0 bg-card-2 border-e border-line relative overflow-hidden">
         <div className="deco-lines" />
         <div className="relative flex flex-col w-full px-8 pt-16 pb-8">
           <div className="flex items-center gap-2.5">
@@ -359,7 +359,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
                 <div className="space-y-2.5 mt-8">
                   <button
                     onClick={() => setAutoExecute(false)}
-                    className={`w-full text-left card p-4 flex items-start gap-3.5 transition-colors ${
+                    className={`w-full text-start card p-4 flex items-start gap-3.5 transition-colors ${
                       !autoExecute ? "border-accent bg-accent-soft" : "hover:border-ink/20"
                     }`}
                   >
@@ -384,7 +384,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
 
                   <button
                     onClick={() => setAutoExecute(true)}
-                    className={`w-full text-left card p-4 flex items-start gap-3.5 transition-colors ${
+                    className={`w-full text-start card p-4 flex items-start gap-3.5 transition-colors ${
                       autoExecute ? "border-accent bg-accent-soft" : "hover:border-ink/20"
                     }`}
                   >
@@ -452,7 +452,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
                         {firstAnswer && (
                           <p
                             data-onboarding-answer
-                            className="mt-2.5 text-[12px] leading-relaxed border-l-2 border-accent pl-3"
+                            className="mt-2.5 text-[12px] leading-relaxed border-s-2 border-accent ps-3"
                           >
                             {firstAnswer}
                           </p>
@@ -501,7 +501,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
           <div>
             {step > 0 ? (
               <button onClick={() => setStep((current) => current - 1)} className="btn">
-                <ArrowLeft size={13} />
+                <ArrowLeft size={13} className="rtl:rotate-180" />
                 Back
               </button>
             ) : (
@@ -539,7 +539,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
                       ? "Open your first chat"
                       : "Finish setup"
                     : "Continue"}
-              <ArrowRight size={14} />
+              <ArrowRight size={14} className="rtl:rotate-180" />
             </button>
           </div>
         </footer>

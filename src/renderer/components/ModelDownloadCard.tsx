@@ -174,7 +174,7 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
           <p className="row-title">{BONSAI_4B.name} GGUF</p>
           <p className="row-copy">{statusCopy}</p>
         </div>
-        <span className={`chip ml-auto shrink-0 ${installed && download?.verified === true ? "chip-accent" : ""}`}>
+        <span className={`chip ms-auto shrink-0 ${installed && download?.verified === true ? "chip-accent" : ""}`}>
           {statusChip}
         </span>
       </div>
@@ -232,7 +232,7 @@ export const ModelDownloadCard: React.FC<ModelDownloadCardProps> = ({
                 onClick={() => void removeModel()}
                 disabled={busy}
                 aria-label="Delete model from this Mac"
-                className={`btn !ml-auto shrink-0 ${confirmDelete ? "!text-danger" : ""}`}
+                className={`btn !ms-auto shrink-0 ${confirmDelete ? "!text-danger" : ""}`}
               >
                 <Trash2 size={12} />
                 {confirmDelete ? "Confirm delete" : "Delete"}

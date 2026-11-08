@@ -333,7 +333,7 @@ export const QuickAsk: React.FC = () => {
   return (
     <div className="h-screen w-screen p-2.5">
       <div className="quick-shell h-full flex overflow-hidden">
-        <aside className="w-[228px] shrink-0 border-r border-line flex flex-col min-h-0">
+        <aside className="w-[228px] shrink-0 border-e border-line flex flex-col min-h-0">
           <div className="px-4 pt-4 pb-2 flex items-center justify-between gap-2">
             <span className="section-label !mb-0 flex items-center gap-1.5">
               <History size={12} />
@@ -356,7 +356,7 @@ export const QuickAsk: React.FC = () => {
               {threads.map((thread, index) => (
                 <li key={thread.id}>
                   <div
-                    className={`group/row flex items-center gap-1 rounded-lg pr-1 transition-colors ${
+                    className={`group/row flex items-center gap-1 rounded-lg pe-1 transition-colors ${
                       index === selected ? "bg-card-2" : "hover:bg-card-2"
                     }`}
                   >
@@ -369,7 +369,7 @@ export const QuickAsk: React.FC = () => {
                       onClick={() => void openThread(thread)}
                       onKeyDown={(event) => onRowKeyDown(event, thread, index)}
                       aria-current={threadId === thread.id ? "true" : undefined}
-                      className="flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg"
+                      className="flex-1 min-w-0 text-start px-2 py-1.5 rounded-lg"
                     >
                       <span className="block truncate text-[11.5px] leading-snug">
                         {thread.question || t("quick.newThread")}
@@ -418,7 +418,7 @@ export const QuickAsk: React.FC = () => {
               }`}
             />
             <span className="text-[10px] text-faint">{statusLabel}</span>
-            <div className="ml-auto flex items-center gap-0.5 no-drag">
+            <div className="ms-auto flex items-center gap-0.5 no-drag">
               <button
                 onClick={() => void openInChat()}
                 disabled={Boolean(approval)}
@@ -469,7 +469,7 @@ export const QuickAsk: React.FC = () => {
             {streaming && (
               <div className="mt-3 text-[12px] leading-relaxed whitespace-pre-wrap break-words">
                 {answer}
-                <span className="inline-block w-[7px] h-[13px] bg-accent-ink align-[-2px] ml-0.5 animate-pulse" />
+                <span className="inline-block w-[7px] h-[13px] bg-accent-ink align-[-2px] ms-0.5 animate-pulse" />
                 {streaming && !answer && <span className="text-faint text-[11px]">{t("quick.thinking")}</span>}
               </div>
             )}

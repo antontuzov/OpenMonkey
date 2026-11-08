@@ -68,13 +68,13 @@ export const OrganizerPanel: React.FC<OrganizerPanelProps> = ({
           <div key={folder.id} className="flex items-center gap-1">
             <button
               onClick={() => onToggleFolder(folder.id)}
-              className={`flex items-center gap-1.5 flex-1 min-w-0 px-1.5 py-1 rounded-lg text-left text-[11.5px] ${
+              className={`flex items-center gap-1.5 flex-1 min-w-0 px-1.5 py-1 rounded-lg text-start text-[11.5px] ${
                 folderFilter === folder.id ? "bg-accent-soft text-accent-ink" : "text-ink hover:bg-ink/5"
               }`}
             >
               <Folder size={12} className="shrink-0 text-faint" />
               <span className="truncate">{folder.name}</span>
-              <span className="ml-auto text-[10px] text-faint tabular-nums">{folder.count}</span>
+              <span className="ms-auto text-[10px] text-faint tabular-nums">{folder.count}</span>
             </button>
             <button
               onClick={() => onDeleteFolder(folder.id)}
@@ -138,7 +138,7 @@ export const OrganizerPanel: React.FC<OrganizerPanelProps> = ({
           <div key={search.id} className="flex items-center gap-1">
             <button
               onClick={() => onRunSavedSearch(search)}
-              className="flex items-center gap-1.5 flex-1 min-w-0 px-1.5 py-1 rounded-lg text-left text-[11.5px] text-ink hover:bg-ink/5"
+              className="flex items-center gap-1.5 flex-1 min-w-0 px-1.5 py-1 rounded-lg text-start text-[11.5px] text-ink hover:bg-ink/5"
               title={t("org.runSearch")}
             >
               <Search size={12} className="shrink-0 text-faint" />

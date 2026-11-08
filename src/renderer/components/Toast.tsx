@@ -48,13 +48,13 @@ export const ToastHost: React.FC = () => {
     <div
       aria-live="polite"
       aria-atomic="false"
-      className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 pointer-events-none"
+      className="fixed bottom-5 end-5 z-[60] flex flex-col gap-2 pointer-events-none"
     >
       {entries.map((entry) => (
         <div
           key={entry.id}
           role="status"
-          className="pointer-events-auto card flex items-center gap-2.5 pl-3 pr-2 py-2.5 max-w-[340px]"
+          className="pointer-events-auto card flex items-center gap-2.5 ps-3 pe-2 py-2.5 max-w-[340px]"
           style={{ boxShadow: "var(--shadow-pop)" }}
         >
           {entry.tone === "ok" ? (

@@ -68,7 +68,7 @@ const TOOLS = [
 
 /** The stages a task walked through, each with the time it took. */
 const Timeline: React.FC<{ steps: NonNullable<Task["steps"]> }> = ({ steps }) => (
-  <div data-task-steps className="flex items-center gap-1 flex-wrap mt-1.5 ml-9">
+  <div data-task-steps className="flex items-center gap-1 flex-wrap mt-1.5 ms-9">
     {steps.map((step, index) => (
       <span key={index} className="flex items-center gap-1">
         {index > 0 && <span className="text-faint/60 text-[10px]">→</span>}
@@ -85,10 +85,10 @@ const Timeline: React.FC<{ steps: NonNullable<Task["steps"]> }> = ({ steps }) =>
 const DiffView: React.FC<{ diff: TaskDiff }> = ({ diff }) => {
   const lines = useMemo(() => diffWindow(diff.lines), [diff.lines]);
   return (
-    <div data-task-diff className="mt-1.5 ml-9 rounded-lg border border-line bg-card-2 overflow-hidden">
+    <div data-task-diff className="mt-1.5 ms-9 rounded-lg border border-line bg-card-2 overflow-hidden">
       <div className="px-2 py-1.5 border-b border-line flex items-center gap-2 min-w-0">
         <span className="text-[10px] text-muted truncate font-mono">{diff.path}</span>
-        <span className="chip !h-4 !text-[9.5px] ml-auto shrink-0">
+        <span className="chip !h-4 !text-[9.5px] ms-auto shrink-0">
           <span className="text-accent-ink">+{diff.added}</span>
           <span className="text-danger">−{diff.removed}</span>
         </span>
@@ -243,9 +243,9 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
                   <>
                     <button
                       onClick={() => setShowDiff(diffOpen ? null : task.id)}
-                      className="flex items-center gap-1 text-[10.5px] text-faint hover:text-muted mt-1.5 ml-9"
+                      className="flex items-center gap-1 text-[10.5px] text-faint hover:text-muted mt-1.5 ms-9"
                     >
-                      {diffOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      {diffOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} className="rtl:rotate-180" />}
                       {t("tasks.change", { added: task.diff.added, removed: task.diff.removed })}
                     </button>
                     {diffOpen && <DiffView diff={task.diff} />}
@@ -255,13 +255,13 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
                   <>
                     <button
                       onClick={() => setExpanded(isOpen ? null : task.id)}
-                      className="flex items-center gap-1 text-[10.5px] text-faint hover:text-muted mt-1.5 ml-9"
+                      className="flex items-center gap-1 text-[10.5px] text-faint hover:text-muted mt-1.5 ms-9"
                     >
-                      {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} className="rtl:rotate-180" />}
                       {t("tasks.output")}
                     </button>
                     {(isOpen || task.status === "running") && (
-                      <pre className="mt-1.5 ml-9 bg-card-2 border border-line rounded-lg p-2 text-[10.5px] text-muted max-h-40 overflow-auto whitespace-pre-wrap">
+                      <pre className="mt-1.5 ms-9 bg-card-2 border border-line rounded-lg p-2 text-[10.5px] text-muted max-h-40 overflow-auto whitespace-pre-wrap">
                         {detail}
                       </pre>
                     )}

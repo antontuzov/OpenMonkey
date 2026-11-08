@@ -388,12 +388,12 @@ html[data-vibrant="true"][data-oled="true"] body {
 
   .select-wrap select {
     appearance: none;
-    padding-right: 28px;
+    padding-inline-end: 28px;
   }
 
   .select-wrap > svg {
     position: absolute;
-    right: 9px;
+    inset-inline-end: 9px;
     top: 50%;
     transform: translateY(-50%);
     pointer-events: none;
@@ -409,7 +409,7 @@ html[data-vibrant="true"][data-oled="true"] body {
     border-radius: 9px;
     color: var(--color-muted);
     font-size: 12.5px;
-    text-align: left;
+    text-align: start;
     transition: background 0.12s ease, color 0.12s ease;
   }
 
@@ -455,7 +455,7 @@ html[data-vibrant="true"][data-oled="true"] body {
     content: "";
     position: absolute;
     top: 2px;
-    left: 2px;
+    inset-inline-start: 2px;
     width: 16px;
     height: 16px;
     border-radius: 50%;
@@ -471,6 +471,12 @@ html[data-vibrant="true"][data-oled="true"] body {
 
   .toggle-on::after {
     transform: translateX(16px);
+  }
+
+  /* The knob slides towards the end of the line, which is the other way round
+     in a right-to-left language. */
+  [dir="rtl"] .toggle-on::after {
+    transform: translateX(-16px);
   }
 
   .segmented {
@@ -544,8 +550,8 @@ html[data-vibrant="true"][data-oled="true"] body {
     display: block;
     background: var(--color-accent-soft);
     color: var(--color-accent-ink);
-    border-left: 2px solid var(--color-accent);
-    padding-left: 6px;
+    border-inline-start: 2px solid var(--color-accent);
+    padding-inline-start: 6px;
   }
 
   .swatch {
@@ -623,7 +629,7 @@ html[data-vibrant="true"][data-oled="true"] body {
   .theme-preview-side {
     width: 28%;
     background: #f0f2ec;
-    border-right: 1px solid #e3e6de;
+    border-inline-end: 1px solid #e3e6de;
   }
 
   .theme-preview-main {
@@ -649,7 +655,7 @@ html[data-vibrant="true"][data-oled="true"] body {
 
   .theme-preview-dark .theme-preview-side {
     background: #191d18;
-    border-right-color: #2b322b;
+    border-inline-end-color: #2b322b;
   }
 
   .theme-preview-dark .theme-preview-line {
@@ -658,6 +664,12 @@ html[data-vibrant="true"][data-oled="true"] body {
 
   .theme-preview-system {
     background: linear-gradient(90deg, #f0f2ec 0 28%, #f6f7f3 28% 50%, #121512 50% 100%);
+  }
+
+  /* The strip stands for the side panel, which sits on the other side of the
+     window in a right-to-left language. */
+  [dir="rtl"] .theme-preview-system {
+    background: linear-gradient(270deg, #f0f2ec 0 28%, #f6f7f3 28% 50%, #121512 50% 100%);
   }
 
   .theme-preview-system .theme-preview-side,

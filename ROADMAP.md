@@ -296,7 +296,11 @@ default config is memory on, workspace search off.
     native tray through `MOOD_LOGOS.labelRu`; every date, time, figure and size now comes
     from one formatter module built on the language the app is in rather than on the Mac's
     (`src/renderer/format.ts`), with the locale data read once at start-up instead of inside
-    the first render of an arriving message; the keyboard map is shown in Settings and echoed
+    the first render of an arriving message; the layout follows the direction the text runs
+    in, so a language written from the right can be mirrored — every physical `ml`/`pl`/
+    `left`/`right` was rewritten as a logical `ms`/`ps`/`start`/`end`, the arrows that point
+    somewhere turn with the text, the switches and theme previews are mirrored, and the
+    document says which way it runs (`documentElement.dir`); the keyboard map is shown in Settings and echoed
     by the native menu accelerators; the approval dialog is a real `role="dialog"` with
     `aria-modal`, labelled and described headings, autofocus, Tab/Shift+Tab wrap, Escape to
     deny and focus restore; icon-only controls carry `aria-label`s and toasts/streaming text

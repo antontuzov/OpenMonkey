@@ -156,7 +156,7 @@ export const MemoryBrowser: React.FC<MemoryBrowserProps> = ({
 
       <div className="card overflow-hidden">
         <div className="grid grid-cols-[minmax(230px,290px)_1fr]">
-          <div className="border-r border-line flex flex-col min-w-0">
+          <div className="border-e border-line flex flex-col min-w-0">
             <div className="p-3 border-b border-line flex items-center gap-2">
               <div className="segmented flex-1">
                 {FILTERS.map((option) => (
@@ -172,13 +172,13 @@ export const MemoryBrowser: React.FC<MemoryBrowserProps> = ({
             </div>
 
             <div className="p-3 border-b border-line relative">
-              <Search size={11} className="absolute left-[22px] top-1/2 -translate-y-1/2 text-faint" />
+              <Search size={11} className="absolute start-[22px] top-1/2 -translate-y-1/2 text-faint" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search memory"
                 aria-label="Search memory"
-                className="field w-full !pl-7"
+                className="field w-full !ps-7"
               />
             </div>
 
@@ -194,7 +194,7 @@ export const MemoryBrowser: React.FC<MemoryBrowserProps> = ({
                   <button
                     key={row.id}
                     onClick={() => setSelected(row.id)}
-                    className={`w-full text-left px-3 py-2.5 flex items-start gap-2.5 border-b border-line last:border-b-0 transition-colors ${
+                    className={`w-full text-start px-3 py-2.5 flex items-start gap-2.5 border-b border-line last:border-b-0 transition-colors ${
                       row.id === selected ? "bg-accent-soft" : "hover:bg-card-2"
                     }`}
                   >

@@ -47,7 +47,7 @@ type View = "chat" | "settings";
 function SettingsFallback() {
   return (
     <div className="h-screen bg-paper flex" aria-busy="true">
-      <div className="w-[275px] shrink-0 border-r border-line px-4 pt-6 space-y-3">
+      <div className="w-[275px] shrink-0 border-e border-line px-4 pt-6 space-y-3">
         <div className="h-7 w-32 rounded bg-card-2 animate-pulse" />
         <div className="h-8 w-full rounded-lg bg-card-2 animate-pulse" />
         {Array.from({ length: 9 }, (_, index) => (
@@ -768,7 +768,7 @@ export default function App() {
               className={`icon-btn ${panelOpen ? "bg-card-2 text-ink" : ""}`}
               title={panelOpen ? t("nav.hideActivity") : t("nav.showActivity")}
             >
-              <PanelRight size={16} />
+              <PanelRight size={16} className="rtl:rotate-180" />
             </button>
             <button onClick={() => setView("settings")} className="icon-btn" title={t("nav.settings")}>
               <Settings2 size={16} />
@@ -806,7 +806,7 @@ export default function App() {
 
       {/* The panel keeps its place in the tree so it can slide on the spring. */}
       <div className={`motion-panel shrink-0 overflow-hidden ${panelOpen ? "w-[300px]" : "w-0"}`}>
-        <aside className="w-[300px] h-full border-l border-line bg-card-2 overflow-y-auto">
+        <aside className="w-[300px] h-full border-s border-line bg-card-2 overflow-y-auto">
           <TaskMonitor autoExecute={config.agent.autoExecuteTasks} />
         </aside>
       </div>
