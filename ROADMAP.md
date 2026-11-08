@@ -291,16 +291,19 @@ default config is memory on, workspace search off.
     and the app repaints with them at once; the colours mixed from the accent follow the
     card you picked, and the card names the pairings that fall below AA for the theme being
     edited, with one button to put the built-in colours back. *(M)*
-25. ✅ **Accessibility & i18n**: EN/RU dictionary with `t()`/`locale()`, `documentElement.lang`,
-    locale-formatted times (12-hour en-US, 24-hour ru-RU) and RU mood names shared with the
-    native tray through `MOOD_LOGOS.labelRu`; every date, time, figure and size now comes
-    from one formatter module built on the language the app is in rather than on the Mac's
-    (`src/renderer/format.ts`), with the locale data read once at start-up instead of inside
+25. ✅ **Accessibility & i18n**: EN/RU/AR dictionary with `t()`/`locale()`, `documentElement.lang`,
+    locale-formatted times (12-hour en-US, 24-hour ru-RU, 24-hour ar-EG) and mood names shared
+    with the native tray through `MOOD_LOGOS.labelRu`/`labelAr` and one `moodName(mood, language)`
+    helper, so the window and the tray cannot drift apart on a name; every date, time, figure and
+    size now comes from one formatter module built on the language the app is in rather than on the
+    Mac's (`src/renderer/format.ts`), with the locale data read once at start-up instead of inside
     the first render of an arriving message; the layout follows the direction the text runs
     in, so a language written from the right can be mirrored — every physical `ml`/`pl`/
     `left`/`right` was rewritten as a logical `ms`/`ps`/`start`/`end`, the arrows that point
     somewhere turn with the text, the switches and theme previews are mirrored, and the
-    document says which way it runs (`documentElement.dir`); the keyboard map is shown in Settings and echoed
+    document says which way it runs (`documentElement.dir`); Arabic is the language that asks
+    for the mirror, so it ships with all 487 strings and turns the interface the other way round
+    when it is picked; the keyboard map is shown in Settings and echoed
     by the native menu accelerators; the approval dialog is a real `role="dialog"` with
     `aria-modal`, labelled and described headings, autofocus, Tab/Shift+Tab wrap, Escape to
     deny and focus restore; icon-only controls carry `aria-label`s and toasts/streaming text

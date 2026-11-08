@@ -496,24 +496,37 @@ export const MOODS: Mood[] = [
 /**
  * Shared by the main process (tray + dock icon files) and the renderer (avatar +
  * accent colour). Lives here because neither side may import the other's runtime.
- * `labelRu` lets both native menus and the UI translate the same mood name.
+ * `labelRu` and `labelAr` let both native menus and the UI translate the same mood name.
  */
 export const MOOD_LOGOS: Record<
   Mood,
-  { file: string; color: string; label: string; labelRu: string }
+  { file: string; color: string; label: string; labelRu: string; labelAr: string }
 > = {
-  happy: { file: "monkey-happy-yellow.png", color: "#facc15", label: "Happy", labelRu: "Радость" },
-  neutral: { file: "monkey-neutral-blue.png", color: "#3b82f6", label: "Neutral", labelRu: "Спокойный" },
-  angry: { file: "monkey-angry-red.png", color: "#dc2626", label: "Angry", labelRu: "Злой" },
-  shocked: { file: "monkey-shocked-orange.png", color: "#f97316", label: "Shocked", labelRu: "Шок" },
-  silly: { file: "monkey-silly-green.png", color: "#22c55e", label: "Silly", labelRu: "Шутник" },
-  cool: { file: "monkey-cool-purple.png", color: "#9333ea", label: "Cool", labelRu: "Крутой" },
-  love: { file: "monkey-love-pink.png", color: "#ec4899", label: "Loving", labelRu: "Любовь" },
-  tired: { file: "monkey-tired-lavender.png", color: "#a5b4fc", label: "Tired", labelRu: "Усталый" },
-  thinking: { file: "monkey-thinking-cyan.png", color: "#06b6d4", label: "Thinking", labelRu: "Думает" },
-  excited: { file: "monkey-excited-gold.png", color: "#eab308", label: "Excited", labelRu: "Восторг" },
-  calm: { file: "monkey-calm-mint.png", color: "#34d399", label: "Calm", labelRu: "Спокойствие" },
-  smile: { file: "monkey-smile-coral.png", color: "#fb7185", label: "Smiling", labelRu: "Улыбается" },
+  happy: { file: "monkey-happy-yellow.png", color: "#facc15", label: "Happy", labelRu: "Радость", labelAr: "سعيد" },
+  neutral: { file: "monkey-neutral-blue.png", color: "#3b82f6", label: "Neutral", labelRu: "Спокойный", labelAr: "محايد" },
+  angry: { file: "monkey-angry-red.png", color: "#dc2626", label: "Angry", labelRu: "Злой", labelAr: "غاضب" },
+  shocked: { file: "monkey-shocked-orange.png", color: "#f97316", label: "Shocked", labelRu: "Шок", labelAr: "مصدوم" },
+  silly: { file: "monkey-silly-green.png", color: "#22c55e", label: "Silly", labelRu: "Шутник", labelAr: "مرِح" },
+  cool: { file: "monkey-cool-purple.png", color: "#9333ea", label: "Cool", labelRu: "Крутой", labelAr: "بارد" },
+  love: { file: "monkey-love-pink.png", color: "#ec4899", label: "Loving", labelRu: "Любовь", labelAr: "مُحِبّ" },
+  tired: { file: "monkey-tired-lavender.png", color: "#a5b4fc", label: "Tired", labelRu: "Усталый", labelAr: "متعب" },
+  thinking: { file: "monkey-thinking-cyan.png", color: "#06b6d4", label: "Thinking", labelRu: "Думает", labelAr: "يفكّر" },
+  excited: { file: "monkey-excited-gold.png", color: "#eab308", label: "Excited", labelRu: "Восторг", labelAr: "متحمّس" },
+  calm: { file: "monkey-calm-mint.png", color: "#34d399", label: "Calm", labelRu: "Спокойствие", labelAr: "هادئ" },
+  smile: { file: "monkey-smile-coral.png", color: "#fb7185", label: "Smiling", labelRu: "Улыбается", labelAr: "مبتسم" },
+};
+
+/**
+ * The name of a mood in the language the app is in.
+ *
+ * The tray and the window must say the same thing, so the choice of language is
+ * made here rather than twice in two places.
+ */
+export const moodName = (mood: Mood, language: AppLanguage): string => {
+  const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
+  if (language === "ru") return logo.labelRu;
+  if (language === "ar") return logo.labelAr;
+  return logo.label;
 };
 
 export interface ModelConfig {
@@ -834,7 +847,7 @@ export interface Config {
 
 export type UiTextScale = "s" | "m" | "l";
 export type UiDensity = "comfortable" | "compact";
-export type AppLanguage = "en" | "ru";
+export type AppLanguage = "en" | "ru" | "ar";
 
 export interface ModelStatus {
   provider: ModelProvider | null;

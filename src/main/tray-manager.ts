@@ -1,7 +1,7 @@
 import { Tray, Menu, nativeImage, app, BrowserWindow } from "electron";
 import {
   MOODS,
-  MOOD_LOGOS,
+  moodName,
   type AppLanguage,
   type MenuCommand,
   type Mood,
@@ -52,6 +52,19 @@ const TRAY_COPY: Record<AppLanguage, TrayCopy> = {
     tagline: "Ваш локальный ИИ-агент",
     moodMode: "Режим «{mood}»",
   },
+  ar: {
+    open: "افتح OpenMonkey",
+    newChat: "محادثة جديدة",
+    quickAsk: "سؤال سريع",
+    recentChats: "المحادثات الأخيرة",
+    noChats: "لا توجد محادثات بعد",
+    cycleMood: "غيّر المزاج",
+    moods: "المزاجات",
+    settings: "الإعدادات",
+    quit: "اخرج من OpenMonkey",
+    tagline: "مساعدك المحلي بالذكاء الاصطناعي",
+    moodMode: "وضع «{mood}»",
+  },
 };
 
 export interface TrayHandlers {
@@ -83,8 +96,7 @@ export class TrayManager {
 
   /** Mood names come from the shared table so the tray and the UI never drift. */
   private moodName(mood: Mood): string {
-    const logo = MOOD_LOGOS[mood] ?? MOOD_LOGOS.neutral;
-    return this.getLanguage() === "ru" ? logo.labelRu : logo.label;
+    return moodName(mood, this.getLanguage());
   }
 
   setupTray(initialLogoPath: string): void {

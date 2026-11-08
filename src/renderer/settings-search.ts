@@ -51,7 +51,7 @@ const ENTRIES: SettingEntry[] = [
   ),
   { page: "appearance", key: "appearance.coloursReset", keywords: ["built-in", "default colours", "undo"] },
   { page: "appearance", key: "appearance.motion", keywords: ["reduce motion", "animation", "springs"] },
-  { page: "appearance", key: "appearance.language", keywords: ["russian", "english", "locale", "translate"] },
+  { page: "appearance", key: "appearance.language", keywords: ["russian", "english", "arabic", "locale", "translate"] },
   { page: "appearance", key: "appearance.sendKey", keywords: ["enter", "return", "send", "newline", "keyboard", "cmd"] },
   ...ACCENTS.map((accent): SettingEntry => ({
     page: "appearance",

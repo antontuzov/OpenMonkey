@@ -8,6 +8,22 @@ that produced the build.
 
 ### Added
 
+- **The app speaks Arabic.** Settings → Appearance → Language now offers العربية next to
+  English and Русский, and picking it turns the whole interface the other way round: the
+  side panel stands on the other side of the window, the rule that separates it follows,
+  the arrows that mean "back" and "forward" point back, the switches slide towards the
+  end of the line and the theme previews are mirrored. Every one of the 487 strings is
+  written in Arabic — the window, the tray, the menu bar and the native menus all read
+  in it, and the twelve moods are named from the one table the window and the tray share,
+  so the two cannot call the same mood by different names. The dates and figures are
+  written the way Arabic writes them: ١٬٢٣٤٫٥ for a number, ٥ نوفمبر for a day,
+  ٠٣:٠٠ م for an hour. The strings are written, not reviewed — nobody whose first language
+  it is has read them yet, and the app does not claim otherwise. 6 unit tests
+  (every language carrying every string and none of them empty, the Arabic being Arabic
+  and not the English left behind, the language change turning the document and the
+  direction together, a figure and a day written the way Arabic writes them, and the mood
+  named in the language that was picked).
+
 - **The app tells you what it knows about updates, and can walk you back.** Settings →
   Desktop now carries an **Updates** card with three parts. **Update status** says
   plainly where you stand — the build you are running is the newest, a newer one is
@@ -233,10 +249,8 @@ that produced the build.
   Return key stay as they are, because a key does not point anywhere. The switches slide
   towards the end of the line instead of the same end every time, and the theme previews
   are mirrored rather than pointing at a panel that has moved. The document now says which
-  way it runs, and the direction follows the language the reader picked. No language is
-  written from the right yet, so nothing asks for the mirror on purpose — the layout is
-  ready for one, and the guard test makes sure a half-finished mirror cannot slip in
-  later. 6 unit tests (no class pinned to one side, no property in the stylesheet either,
+  way it runs, and the direction follows the language the reader picked. Arabic is the
+  language that asks for the mirror, and it ships with the app. 6 unit tests (no class pinned to one side, no property in the stylesheet either,
   the arrows carrying the turn, the hand-drawn parts having a mirrored version, the
   document saying which way it runs and the language deciding) and 2 end-to-end tests
   (the panel standing at the other side of the window with the rule following it and the

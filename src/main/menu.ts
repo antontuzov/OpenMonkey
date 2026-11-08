@@ -51,6 +51,22 @@ const COPY: Record<AppLanguage, MenuCopy> = {
     dataFolder: "Показать папку данных",
     checkUpdates: "Проверить обновления…",
   },
+  ar: {
+    file: "ملف",
+    newChat: "محادثة جديدة",
+    commandPalette: "لوحة الأوامر",
+    quickAsk: "سؤال سريع",
+    settings: "الإعدادات…",
+    view: "عرض",
+    toggleActivity: "بدّل لوحة النشاط",
+    focusComposer: "انتقل إلى مربع الكتابة",
+    stop: "أوقف التوليد",
+    cycleMood: "غيّر المزاج",
+    help: "مساعدة",
+    repo: "OpenMonkey على GitHub",
+    dataFolder: "اعرض مجلد البيانات",
+    checkUpdates: "تحقّق من التحديثات…",
+  },
 };
 
 export function installAppMenu(

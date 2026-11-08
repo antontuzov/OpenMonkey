@@ -1873,6 +1873,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         options={[
                           { value: "en", label: "English" },
                           { value: "ru", label: "Русский" },
+                          { value: "ar", label: "العربية" },
                         ]}
                       />
                     </SettingRow>

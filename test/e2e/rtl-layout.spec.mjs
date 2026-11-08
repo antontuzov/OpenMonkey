@@ -6,9 +6,9 @@
  * really moves to the other side of the window, that the rule that separates it
  * follows, that the arrows point back and that the switch slides the other way.
  *
- * The direction is set on the document here rather than through the language
- * picker, because the app speaks English and Russian today — both written from
- * the left. The layout has to be able to turn the other way round even so.
+ * The first two specs turn the document by hand, because the mirror is a property
+ * of the layout and not of any one language. The last one is the real thing: an
+ * app that starts in Arabic and comes up the other way round on its own.
  */
 import { test, expect } from "@playwright/test";
 import { quitApp } from "./helpers.mjs";
@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-async function launch() {
+async function launch(language = "en") {
   const profile = mkdtempSync(path.join(os.tmpdir(), "openmonkey-rtl-"));
   writeFileSync(
     path.join(profile, "openmonkey-config.json"),
@@ -29,7 +29,7 @@ async function launch() {
       model: { provider: "bonsai" },
       memory: { enabled: false, workspaceSearch: false },
       desktop: { closeToTray: true },
-      ui: { theme: "light", language: "en" },
+      ui: { theme: "light", language },
     })
   );
   const app = await electron.launch({
@@ -66,8 +66,15 @@ const panel = (page) =>
 const arrow = (page) =>
   page.evaluate(() => {
     const icon = document.querySelector('svg[class*="rtl:rotate-180"]');
-    return icon ? getComputedStyle(icon).transform : null;
+    if (!icon) return null;
+    const style = getComputedStyle(icon);
+    // The turn is the `rotate` property, not a transform.
+    return { transform: style.transform, rotate: style.rotate };
   });
+
+/** The way the document says it runs. */
+const docDir = (page) =>
+  page.evaluate(() => document.documentElement.dir);
 
 /** The knob of the first switch that is on. */
 const knob = (page) =>
@@ -91,6 +98,8 @@ test("the interface turns the other way round", async () => {
     expect(leftToRight.borderLeft).toBe("0px");
     const arrowLeftToRight = await arrow(page);
     expect(arrowLeftToRight).not.toBeNull();
+    // Written from the left, the arrow keeps the way it was drawn.
+    expect(arrowLeftToRight.rotate).toBe("none");
 
     await flip(page);
 
@@ -103,7 +112,8 @@ test("the interface turns the other way round", async () => {
     expect(rightToLeft.borderRight).toBe("0px");
 
     // The arrow points back.
-    expect(await arrow(page)).not.toBe(arrowLeftToRight);
+    const arrowRightToLeft = await arrow(page);
+    expect(arrowRightToLeft.rotate).toBe("180deg");
   } finally {
     await quitApp(app, profile);
     rmSync(profile, { recursive: true, force: true });
@@ -128,6 +138,32 @@ test("the switch slides the other way round too", async () => {
 
     // The knob travels the other way, so the number it is moved by turns negative.
     await expect.poll(() => knob(page)).toContain("-16");
+  } finally {
+    await quitApp(app, profile);
+    rmSync(profile, { recursive: true, force: true });
+  }
+});
+
+test("an app that starts in Arabic comes up the other way round", async () => {
+  test.setTimeout(120_000);
+  const { app, page, profile } = await launch("ar");
+  try {
+    await expect(page.locator("aside.bg-sidebar")).toBeVisible();
+
+    // The document says which way it runs, without anyone turning it by hand.
+    await expect.poll(() => docDir(page)).toBe("rtl");
+
+    const rightToLeft = await panel(page);
+    expect(rightToLeft).not.toBeNull();
+    // The panel stands at the right of the window and the rule is on its left edge.
+    expect(rightToLeft.left).toBeGreaterThan(rightToLeft.windowWidth / 2);
+    expect(rightToLeft.borderLeft).toBe("1px");
+    expect(rightToLeft.borderRight).toBe("0px");
+
+    // The arrow points back.
+    const arrowRightToLeft = await arrow(page);
+    expect(arrowRightToLeft).not.toBeNull();
+    expect(arrowRightToLeft.rotate).toBe("180deg");
   } finally {
     await quitApp(app, profile);
     rmSync(profile, { recursive: true, force: true });
