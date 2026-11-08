@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { MessageSquare, Pin, Plus, Save, Search, Trash2 } from "lucide-react";
 import type { MemoryFact, MemorySnapshot, MemorySummary } from "../../utils/types";
+import { formatDate } from "../format";
 import { Toggle } from "./controls";
 
 type Filter = "all" | "fact" | "chat";
@@ -25,8 +26,7 @@ export interface MemoryBrowserProps {
   onSetRecall: (conversationId: string, recall: boolean) => Promise<void>;
 }
 
-const dateOf = (value: Date | string): string =>
-  new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
+const dateOf = (value: Date | string): string => formatDate(value);
 
 const FILTERS: Array<{ value: Filter; label: string }> = [
   { value: "all", label: "All" },

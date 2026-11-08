@@ -30,7 +30,8 @@ import {
   type PortabilityResult,
   type SavedSearch,
 } from "../../utils/types";
-import { locale, moodLabel, t } from "../i18n";
+import { moodLabel, t } from "../i18n";
+import { formatDate, formatNumber } from "../format";
 import { logoUrl } from "../assets";
 import { ChatMenu } from "./ChatMenu";
 import { OrganizerPanel } from "./OrganizerPanel";
@@ -73,7 +74,7 @@ const relativeTime = (value: Date) => {
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
   if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d`;
-  return date.toLocaleDateString(locale(), { month: "short", day: "numeric" });
+  return formatDate(date);
 };
 
 /** The export file is sealed with a passphrase, and the shortest one allowed is this long. */
@@ -234,7 +235,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
                 ? t("chat.placeholderBusy")
                 : snippet ||
                   (conversation.messageCount
-                    ? t("nav.messages", { count: conversation.messageCount })
+                    ? t("nav.messages", { count: formatNumber(conversation.messageCount) })
                     : t("nav.emptyChat"))}
             </span>
           </button>
@@ -455,7 +456,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       if (result.ok) {
         toast(
           t("org.exported", {
-            count: result.conversations ?? chosen.length,
+            count: formatNumber(result.conversations ?? chosen.length),
             file: result.fileName ?? "",
           }),
           "ok"
@@ -697,7 +698,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
           ) : (
             <div className="card px-2.5 py-2 flex items-center gap-1.5">
               <span className="text-[10.5px] text-muted flex-1">
-                {t("org.selected", { count: selected.length })}
+                {t("org.selected", { count: formatNumber(selected.length) })}
               </span>
               <button
                 onClick={() => setExportOpen(true)}

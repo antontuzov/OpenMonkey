@@ -293,7 +293,10 @@ default config is memory on, workspace search off.
     edited, with one button to put the built-in colours back. *(M)*
 25. ✅ **Accessibility & i18n**: EN/RU dictionary with `t()`/`locale()`, `documentElement.lang`,
     locale-formatted times (12-hour en-US, 24-hour ru-RU) and RU mood names shared with the
-    native tray through `MOOD_LOGOS.labelRu`; the keyboard map is shown in Settings and echoed
+    native tray through `MOOD_LOGOS.labelRu`; every date, time, figure and size now comes
+    from one formatter module built on the language the app is in rather than on the Mac's
+    (`src/renderer/format.ts`), with the locale data read once at start-up instead of inside
+    the first render of an arriving message; the keyboard map is shown in Settings and echoed
     by the native menu accelerators; the approval dialog is a real `role="dialog"` with
     `aria-modal`, labelled and described headings, autofocus, Tab/Shift+Tab wrap, Escape to
     deny and focus restore; icon-only controls carry `aria-label`s and toasts/streaming text

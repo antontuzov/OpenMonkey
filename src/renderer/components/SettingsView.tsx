@@ -55,6 +55,7 @@ import { runAccessibilityAudit } from "../a11y";
 import type { A11yReport } from "../../utils/a11y";
 import { logoUrl } from "../assets";
 import { moodLabel, t, type StringKey } from "../i18n";
+import { formatDate, formatDateTime, formatNumber, formatTime } from "../format";
 import { toast } from "./Toast";
 import { searchSettings } from "../settings-search";
 import {
@@ -465,9 +466,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     stat(t("privacy.sizeStat"), formatBytes(databaseBytes)),
     stat(
       t("privacy.lastPruneStat"),
-      pruneAt
-        ? new Date(pruneAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-        : t("privacy.neverPruned")
+      pruneAt ? formatDateTime(pruneAt) : t("privacy.neverPruned")
     ),
     stat(t("privacy.requestsStat"), String(privacyStatus?.requestsAllowed ?? 0)),
     stat(t("privacy.refusedStat"), String(privacyStatus?.requestsBlocked ?? 0)),
@@ -639,14 +638,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         direction === "export"
           ? t("privacy.exported", {
               file: result.fileName ?? "",
-              chats: result.conversations ?? 0,
-              facts: result.facts ?? 0,
+              chats: formatNumber(result.conversations ?? 0),
+              facts: formatNumber(result.facts ?? 0),
             })
           : t("privacy.imported", {
               file: result.fileName ?? "",
-              chats: result.conversations ?? 0,
-              messages: result.messages ?? 0,
-              facts: result.facts ?? 0,
+              chats: formatNumber(result.conversations ?? 0),
+              messages: formatNumber(result.messages ?? 0),
+              facts: formatNumber(result.facts ?? 0),
             })
       );
       toast(direction === "export" ? t("toast.backupExported") : t("toast.backupImported"));
@@ -1795,7 +1794,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <p className={`text-[11px] ${tokenProblems.length ? "text-warn" : "text-muted"}`}>
                         {tokenProblems.length
                           ? t("appearance.coloursFailing", {
-                              count: tokenProblems.length,
+                              count: formatNumber(tokenProblems.length),
                               list: tokenProblems
                                 .map(
                                   (problem) =>
@@ -2057,7 +2056,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         const status = AUDIT_STATUS[entry.status];
                         const open = auditOpen === entry.id;
                         const created = new Date(entry.createdAt);
-                        const stamp = `${created.toLocaleDateString([], { month: "short", day: "numeric" })} · ${created.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+                        const stamp = `${formatDate(created)} · ${formatTime(created)}`;
                         return (
                           <div key={entry.id}>
                             <button
@@ -2187,7 +2186,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         workspace?.error
                           ? workspace.error
                           : workspace?.builtAt
-                            ? `Built ${new Date(workspace.builtAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} from ${workspace.files} files (${(workspace.bytes / 1024 / 1024).toFixed(1)} MB).`
+                            ? `Built ${formatTime(workspace.builtAt)} from ${workspace.files} files (${formatNumber(workspace.bytes / 1024 / 1024, { maximumFractionDigits: 1 })} MB).`
                             : "The index is built on demand and lives in RAM only."
                       }
                     >
@@ -3214,12 +3213,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <SettingRow
                         key={file.name}
                         dynamic
-                        title={new Date(file.createdAt).toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        title={formatDateTime(file.createdAt)}
                         copy={formatBytes(file.bytes)}
                       >
                         <button
@@ -3283,10 +3277,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <p role="status" className="text-[10.5px] text-muted leading-relaxed">
                           {a11y.findings.length
                             ? t("diagnostics.a11yResult", {
-                                checked: a11y.checked,
-                                problems: a11y.findings.length,
+                                checked: formatNumber(a11y.checked),
+                                problems: formatNumber(a11y.findings.length),
                               })
-                            : t("diagnostics.a11yClean", { checked: a11y.checked })}
+                            : t("diagnostics.a11yClean", { checked: formatNumber(a11y.checked) })}
                         </p>
                         <ul className="mt-1.5 space-y-1">
                           {a11y.findings.slice(0, 12).map((finding, index) => (
@@ -3441,9 +3435,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         <p className="row-title">Generation speed</p>
                         <p className="row-copy">
                           {lastBenchmark
-                            ? `${lastBenchmark.provider === "mlx" ? "MLX" : "Bonsai 4B"} · ${new Date(
+                            ? `${lastBenchmark.provider === "mlx" ? "MLX" : "Bonsai 4B"} · ${formatTime(
                                 lastBenchmark.ranAt
-                              ).toLocaleTimeString()}`
+                              )}`
                             : "Runs one fixed prompt on the loaded model and times the tokens it writes."}
                         </p>
                       </div>

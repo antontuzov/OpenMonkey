@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Check, Copy, FileText, Image as ImageIcon, Quote } from "lucide-react";
 import type { CitationPreview, Message } from "../../utils/types";
 import { t } from "../i18n";
+import { formatSize } from "../format";
 import { isDiff, parseInline, createIncrementalParser, type IncrementalParser } from "../markdown";
 import { parseMarkdownCached } from "../markdown-cache";
 import type { Block, InlineSpan, ListItem } from "../markdown";
@@ -353,7 +354,7 @@ export const MessageContent: React.FC<{ message: Message; incremental?: boolean 
                 <FileText size={11} className="shrink-0" />
               )}
               <span className="truncate max-w-[220px]">{attachment.name}</span>
-              <span className="text-faint">{Math.max(1, Math.round(attachment.bytes / 1024))} KB</span>
+              <span className="text-faint">{formatSize(attachment.bytes)}</span>
             </span>
           ))}
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Download, FolderOpen, Loader, Pause, Play, RefreshCw, Trash2, TriangleAlert } from "lucide-react";
 import { BONSAI_4B } from "../../models/catalog";
+import { formatNumber } from "../format";
 import type { ModelDownloadStatus } from "../../utils/types";
 
 interface ModelDownloadCardProps {
@@ -10,8 +11,9 @@ interface ModelDownloadCardProps {
   compact?: boolean;
 }
 
-const mb = (bytes: number) => `${Math.round(bytes / 1_000_000)} MB`;
-const rate = (bytesPerSecond: number) => `${(bytesPerSecond / 1_000_000).toFixed(1)} MB/s`;
+const mb = (bytes: number) => `${formatNumber(bytes / 1_000_000, { maximumFractionDigits: 0 })} MB`;
+const rate = (bytesPerSecond: number) =>
+  `${formatNumber(bytesPerSecond / 1_000_000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB/s`;
 
 /** Human ETA from the measured download speed; "—" until the speed is known. */
 const eta = (bytesRemaining: number, bytesPerSecond: number) => {

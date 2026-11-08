@@ -36,6 +36,7 @@ import {
 } from "../../utils/types";
 import { MessageContent } from "./MessageContent";
 import { moodLabel, t } from "../i18n";
+import { formatNumber, formatSize, formatTime } from "../format";
 import { logoUrl } from "../assets";
 import { toast } from "./Toast";
 import { useVirtualMessages } from "../use-virtual-messages";
@@ -103,10 +104,7 @@ interface ChatFailure {
   origin: FailureOrigin;
 }
 
-const timeOf = (date: Date) =>
-  new Date(date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-const sizeOf = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024))} KB`;
+const timeOf = (date: Date) => formatTime(date);
 
 const draftKey = (conversationId: string) => `openmonkey.draft.${conversationId}`;
 
@@ -275,13 +273,13 @@ const ChatMessage: React.FC<{
           {!isUser && duration != null && (
             <>
               <span>·</span>
-              <span>{Math.max(0.1, duration / 1000).toFixed(1)}s</span>
+              <span>{formatNumber(Math.max(0.1, duration / 1000), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}s</span>
             </>
           )}
           {!isUser && tokens != null && (
             <>
               <span>·</span>
-              <span>{t("chat.tokens", { count: tokens })}</span>
+              <span>{t("chat.tokens", { count: formatNumber(tokens) })}</span>
             </>
           )}
           {message.metadata?.stopped && (
@@ -854,7 +852,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       if (refused) {
         setNotice(
           t("chat.filesRefused", {
-            count: refused,
+            count: formatNumber(refused),
             size: MAX_ATTACHMENT_LABEL,
           })
         );
@@ -1383,7 +1381,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     <FileText size={12} className="shrink-0" />
                     <span className="truncate text-ink">{file.name}</span>
                     <span className="truncate text-faint">{file.dir}</span>
-                    <span className="ml-auto text-faint">{sizeOf(file.bytes)}</span>
+                    <span className="ml-auto text-faint">{formatSize(file.bytes)}</span>
                   </button>
                 ))}
               </div>
@@ -1398,7 +1396,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   >
                     {file.kind === "image" ? <ImageIcon size={12} className="shrink-0" /> : <FileText size={12} className="shrink-0" />}
                     <span className="truncate max-w-[180px] text-ink">{file.name}</span>
-                    <span className="text-faint">{sizeOf(file.bytes)}</span>
+                    <span className="text-faint">{formatSize(file.bytes)}</span>
                     <button
                       onClick={() => setAttachments((current) => current.filter((item) => item.name !== file.name))}
                       className="icon-btn !w-4 !h-4"

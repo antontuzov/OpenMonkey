@@ -1,5 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import { t } from "../i18n";
+import { formatNumber } from "../format";
 import type { SafeModeInfo } from "../../utils/types";
 
 /**
@@ -16,7 +17,7 @@ export const SafeModeBanner: React.FC<{ safeMode: SafeModeInfo }> = ({ safeMode 
       <p className="text-[10.5px] text-muted leading-relaxed mt-0.5">{t("safeMode.off")}</p>
       <p className="text-[10.5px] text-muted leading-relaxed">
         {safeMode.reason === "crashes"
-          ? t("safeMode.crashes", { count: safeMode.crashes })
+          ? t("safeMode.crashes", { count: formatNumber(safeMode.crashes) })
           : t("safeMode.asked")}
       </p>
     </div>

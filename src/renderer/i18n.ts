@@ -1028,11 +1028,20 @@ const STRINGS: Record<AppLanguage, Record<StringKey, string>> = { en: EN, ru: RU
 let language: AppLanguage = "en";
 let cached: Record<StringKey, string> = EN;
 
+/** Told when the language changes, so anything built for one language can follow. */
+const languageListeners = new Set<() => void>();
+
+export function onLanguageChange(listener: () => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
+}
+
 export function setLanguage(next: AppLanguage): void {
   if (next === language) return;
   language = next;
   cached = STRINGS[next] ?? EN;
   document.documentElement.lang = next;
+  for (const listener of languageListeners) listener();
 }
 
 export function getLanguage(): AppLanguage {

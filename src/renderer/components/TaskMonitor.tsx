@@ -17,6 +17,7 @@ import type { McpServerStatus, Task, TaskDiff, TaskStepLabel } from "../../utils
 import { diffWindow } from "../../utils/diff";
 import { formatDuration, stepDuration, taskDuration } from "../../utils/task-steps";
 import { t } from "../i18n";
+import { formatNumber } from "../format";
 
 const STATUS_STYLE: Record<Task["status"], { dot: string }> = {
   pending: { dot: "bg-faint" },
@@ -307,7 +308,7 @@ export const TaskMonitor: React.FC<{ autoExecute: boolean }> = ({ autoExecute })
               <div className="min-w-0">
                 <p className="text-[11.5px] font-semibold leading-tight truncate">{server.name}</p>
                 <p className="text-[10px] text-faint leading-tight mt-0.5">
-                  MCP · {t("tasks.mcpToolCount", { count: server.toolCount })}
+                  MCP · {t("tasks.mcpToolCount", { count: formatNumber(server.toolCount) })}
                 </p>
               </div>
             </div>

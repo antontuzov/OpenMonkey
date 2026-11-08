@@ -225,6 +225,20 @@ that produced the build.
 
 ### Fixed
 
+- **The dates and figures read in the language the app is in.** Dates were formatted with
+  the Mac's own locale and numbers with a hard-coded `en-US`, so a reader who picked
+  Russian on an English Mac was shown English months and English digits: the day under a
+  chat message, the size of a model download, the seconds a reply took, the tokens it
+  used, the date a memory was written, the date of the last prune. One formatter module
+  now builds every date, time, figure and size from the language the app is in, and the
+  locale data behind it is read once at start-up rather than inside the first render of
+  a message that is arriving — the first formatter of a language costs about 23 ms, and
+  paying that while an answer streams shows up as a stalled frame. A value that is not a
+  date reads as a dash rather than as "Invalid Date". Quick Ask's relative times were
+  worse: the formatter was built when the module was loaded, so they stayed English for
+  the whole run no matter which language was chosen. The counts inside a sentence follow
+  the same rule — the tokens a reply used, the messages in a chat, the tools an MCP
+  server offers, the elements the accessibility check read. 12 unit tests.
 - **Your chats are yours to read even before the model loads.** The sidebar's session
   list and the open tabs were restored only after the agent reported `ready`, so a Mac
   with no weights on disk — every first run from the DMG, and every machine still

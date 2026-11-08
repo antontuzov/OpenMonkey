@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { useAppearance } from "./theme";
 import { logoUrl } from "./assets";
-import { locale, setLanguage, t } from "./i18n";
+import { setLanguage, t } from "./i18n";
+import { formatRelative } from "./format";
 import { ToolPreviewCard } from "./components/ToolPreviewCard";
 import {
   MOOD_LOGOS,
@@ -25,16 +26,7 @@ import {
   type QuickAskThread,
 } from "../utils/types";
 
-const relative = new Intl.RelativeTimeFormat(locale(), { numeric: "auto" });
-
-const ago = (date: Date): string => {
-  const seconds = Math.round((Date.now() - date.getTime()) / 1000);
-  if (seconds < 60) return relative.format(-seconds, "second");
-  if (seconds < 3600) return relative.format(-Math.round(seconds / 60), "minute");
-  if (seconds < 86_400) return relative.format(-Math.round(seconds / 3600), "hour");
-  if (seconds < 604_800) return relative.format(-Math.round(seconds / 86_400), "day");
-  return relative.format(-Math.round(seconds / 604_800), "week");
-};
+const ago = (date: Date): string => formatRelative(date);
 
 export const QuickAsk: React.FC = () => {
   const [config, setConfig] = useState<Config | null>(null);
