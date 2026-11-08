@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { app, dialog, shell } from "electron";
 import { autoUpdater, resetAutoUpdater } from "./electron-updater-stub";
-import { startUpdates } from "../../src/main/updater";
+import { currentUpdateState, startUpdates } from "../../src/main/updater";
 
 // Electron's own types mark `isPackaged` and `getAppPath` read-only. The stub object
 // behind this import is writable, so the casts below only restate what the harness does.
@@ -70,6 +70,11 @@ test("an unsigned build names the release instead of downloading one", async () 
 
   assert.equal(autoUpdater.autoDownload, false, "nothing is fetched that cannot install");
   assert.equal(autoUpdater.autoInstallOnAppQuit, false);
+  assert.equal(
+    autoUpdater.disableDifferentialDownload,
+    true,
+    "a patch of one archive name would not be the release"
+  );
 
   autoUpdater.emit("update-available", { version: "0.9.2" });
   await settled();
@@ -78,6 +83,7 @@ test("an unsigned build names the release instead of downloading one", async () 
   assert.match(String(dialogs[0].detail), /sign/i);
   assert.match(String(dialogs[0].buttons?.[0]), /release page/i);
   assert.equal(opened.length, 0, "the browser only moves when the user agrees");
+  assert.equal(autoUpdater.downloadCalls, 0, "a build that cannot install fetches nothing");
 
   // A later six-hourly check must not ask twice about one release, and an event this
   // build cannot honestly produce must not be wired at all.
@@ -92,28 +98,29 @@ test("choosing the release page opens the latest release", async () => {
   asPackaged(false);
   startUpdates();
 
-  autoUpdater.emit("update-available", { version: "0.9.2" });
+  autoUpdater.emit("update-available", { version: "0.9.3" });
   await settled();
 
   assert.equal(opened.length, 1);
   assert.match(opened[0], /OpenMonkey\/releases\/latest$/);
 });
 
-test("a signed build keeps downloading and asking before it restarts", async () => {
+test("a signed build fetches the release itself and asks before it restarts", async () => {
   asPackaged(true);
   startUpdates();
 
-  assert.equal(autoUpdater.autoDownload, true);
+  assert.equal(autoUpdater.autoDownload, false, "the fetch is started by hand, so a release can be held back");
   assert.equal(autoUpdater.autoInstallOnAppQuit, true);
 
-  autoUpdater.emit("update-available", { version: "0.9.2" });
+  autoUpdater.emit("update-available", { version: "0.9.4" });
   await settled();
   assert.equal(dialogs.length, 0, "a build that can install does not interrupt");
+  assert.equal(autoUpdater.downloadCalls, 1, "the release is fetched without being asked for");
 
-  autoUpdater.emit("update-downloaded", { version: "0.9.2" });
+  autoUpdater.emit("update-downloaded", { version: "0.9.4" });
   await settled();
   assert.equal(dialogs.length, 1);
-  assert.match(String(dialogs[0].message), /0\.9\.2/);
+  assert.match(String(dialogs[0].message), /0\.9\.4/);
   assert.match(String(dialogs[0].detail), /restart/i);
   assert.equal(autoUpdater.quitCalls, 1);
 });
@@ -123,11 +130,37 @@ test("a declining answer leaves the running app alone", async () => {
   nextResponse = 1;
   startUpdates();
 
-  autoUpdater.emit("update-downloaded", { version: "0.9.2" });
+  autoUpdater.emit("update-downloaded", { version: "0.9.5" });
   await settled();
 
   assert.equal(autoUpdater.quitCalls, 0);
   assert.equal(opened.length, 0);
+});
+
+test("a release let out to nobody is held back without a word", async () => {
+  asPackaged(true);
+  startUpdates();
+
+  autoUpdater.emit("update-available", { version: "0.9.6", rollout: 0 });
+  await settled();
+
+  assert.equal(autoUpdater.downloadCalls, 0, "a held release is not fetched");
+  assert.equal(dialogs.length, 0, "a held release does not interrupt");
+  assert.equal(currentUpdateState().status, "held");
+  assert.equal(currentUpdateState().version, "0.9.6");
+  assert.equal(currentUpdateState().rollout, 0);
+});
+
+test("a release offered to everybody is fetched", async () => {
+  asPackaged(true);
+  startUpdates();
+
+  autoUpdater.emit("update-available", { version: "0.9.7", rollout: 100 });
+  await settled();
+
+  assert.equal(autoUpdater.downloadCalls, 1);
+  assert.equal(currentUpdateState().status, "available");
+  assert.equal(currentUpdateState().rollout, 100);
 });
 
 test("an unpackaged app starts no updater at all", () => {
@@ -136,4 +169,11 @@ test("an unpackaged app starts no updater at all", () => {
 
   assert.equal(autoUpdater.listenerCount("update-available"), 0);
   assert.equal(autoUpdater.listenerCount("update-downloaded"), 0);
+});
+
+test("a build that was never installed says so rather than pretending", () => {
+  asUnpackaged();
+  startUpdates();
+
+  assert.equal(currentUpdateState().status, "local");
 });

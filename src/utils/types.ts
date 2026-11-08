@@ -629,6 +629,81 @@ export interface PortabilityResult {
   facts?: number;
 }
 
+/** One note from the changelog, with the heading it sits under. */
+export interface ReleaseNoteGroup {
+  name: string;
+  items: string[];
+}
+
+/** The notes for one version, as the changelog wrote them. */
+export interface ReleaseNotes {
+  version: string;
+  releasedAt: string | null;
+  groups: ReleaseNoteGroup[];
+}
+
+/** The notes the app can show: the running version's, and the ones not out yet. */
+export interface ReleaseNotesPayload {
+  /** The version the app is running. */
+  version: string;
+  /** The notes for the running version, when the build carries them. */
+  current: ReleaseNotes | null;
+  /** The notes for the work that has not been published yet. */
+  upcoming: ReleaseNotes | null;
+}
+
+/**
+ * Where the app stands with the version that is out.
+ *
+ * `local` is a build that was never installed: it cannot update itself, and it
+ * says so rather than pretending to be on the same footing.
+ */
+export type UpdateStatus =
+  | "local"
+  | "off"
+  | "idle"
+  | "checking"
+  | "up-to-date"
+  | "available"
+  | "ready"
+  | "blocked"
+  | "held"
+  | "failed";
+
+export interface UpdateState {
+  status: UpdateStatus;
+  /** The version the app is running. */
+  currentVersion: string;
+  /** The version on offer, when there is one. */
+  version: string | null;
+  /** What is known, in a sentence the reader can act on. */
+  detail: string | null;
+  /** The share of installs this release is offered to, as a percentage. */
+  rollout: number | null;
+  /** The notes for the version on offer. */
+  notes: ReleaseNotes | null;
+  /** The build to go back to, when the app can find one. */
+  rollback: RollbackTarget | null;
+}
+
+/** An older release the user can go back to. */
+export interface RollbackTarget {
+  version: string;
+  /** Where the disk image for that release is. */
+  url: string;
+  /** How big it is, when the release says. */
+  size: number | null;
+}
+
+/** Outcome of a rollback: the file was fetched, or it was not. */
+export interface RollbackResult {
+  ok: boolean;
+  error?: string;
+  /** Where the disk image landed. */
+  path?: string;
+}
+
+
 /**
  * One of the app's own copies of the history database. These are plain SQLite
  * files: the rows inside are sealed exactly as they are in the live database.
@@ -992,6 +1067,20 @@ export interface ElectronAPI {
   probeAutomation: (area: "calendar" | "mail") => Promise<AutomationProbe>;
   openPermissionSettings: (area: "automation" | "notifications") => Promise<void>;
   openExternal: (url: string) => Promise<void>;
+  /** Where the app stands with the version that is out. */
+  getUpdateState: () => Promise<UpdateState>;
+  /** Look for a new version now, rather than at the next six-hourly check. */
+  checkForUpdates: () => Promise<UpdateState>;
+  /** Restart into the version that was already downloaded. */
+  installUpdate: () => Promise<void>;
+  /** Open the release page, where the disk image can be fetched by hand. */
+  openReleasePage: () => Promise<void>;
+  /** The notes for the running version, and for the work not out yet. */
+  getReleaseNotes: () => Promise<ReleaseNotesPayload>;
+  /** The release before this one, when there is one to go back to. */
+  findRollback: () => Promise<RollbackTarget | null>;
+  /** Fetch the older build and hand it to the user. */
+  startRollback: () => Promise<RollbackResult>;
   /** What each social channel needs before it can post. */
   getPublisherChannels: () => Promise<PublisherChannelStatus[]>;
   /** Store a channel secret in the system keychain; it never enters the config file. */
@@ -1024,6 +1113,8 @@ export interface ElectronAPI {
   onQuickAskStarted: (callback: (payload: QuickAskResult) => void) => () => void;
   /** A backup import merged chats or settings underneath the open windows. */
   onLocalDataChanged: (callback: () => void) => () => void;
+  /** The version on offer changed, or the check finished. */
+  onUpdateState: (callback: (state: UpdateState) => void) => () => void;
 }
 
 declare global {

@@ -137,7 +137,15 @@ jobs:
       # The manifest is rebuilt from the bytes that are about to be uploaded rather
       # than carried from a build job, so it is correct whichever arches made it
       # this far.
-      - run: node scripts/make-update-manifest.mjs --dir dist --version "${GITHUB_REF_NAME#v}"
+      #
+      # The rollout share is the percentage of installs the release is offered to.
+      # The publisher sets the repository variable `UPDATE_ROLLOUT` before tagging
+      # — 10 to let a release out to a tenth of the installs first, 100 to offer it
+      # to everybody. An unset or unusable variable means everybody, so a release is
+      # never withheld by accident.
+      - run: node scripts/make-update-manifest.mjs --dir dist --version "${GITHUB_REF_NAME#v}" --rollout "${UPDATE_ROLLOUT:-100}"
+        env:
+          UPDATE_ROLLOUT: ${{ vars.UPDATE_ROLLOUT }}
       # The body lives in the repository so its wording is reviewed like anything else.
       # Appending the digests of the bytes actually built keeps the checksums honest.
       - run: |

@@ -22,10 +22,10 @@ const fail = (message) => {
 };
 
 const parseArgs = (argv) => {
-  const options = { dir: "release", out: null, version: null };
+  const options = { dir: "release", out: null, version: null, rollout: "100" };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
-    if (flag === "--dir" || flag === "--out" || flag === "--version") {
+    if (flag === "--dir" || flag === "--out" || flag === "--version" || flag === "--rollout") {
       const value = argv[++i];
       if (!value) fail(`${flag} needs a value`);
       options[flag.slice(2)] = value;
@@ -36,6 +36,11 @@ const parseArgs = (argv) => {
   options.out ??= path.join(options.dir, "latest-mac.yml");
   if (!options.version) fail("--version is required (the release tag without refs/tags/)");
   if (!/^\d+\.\d+\.\d+/.test(options.version)) fail(`--version wants a numeric version, got "${options.version}"`);
+  const rollout = Number(options.rollout);
+  if (!Number.isFinite(rollout) || rollout < 0 || rollout > 100) {
+    fail(`--rollout wants a share between 0 and 100, got "${options.rollout}"`);
+  }
+  options.rollout = String(Math.round(rollout));
   return options;
 };
 
@@ -75,7 +80,7 @@ const collect = async (dir) => {
 // The shape electron-builder itself emits when it builds both arches at once:
 // every archive in `files`, and the first one repeated at the top level for
 // clients too old to read the list.
-const manifest = (version, files) => {
+const manifest = (version, files, rollout) => {
   const lines = [`version: ${version}`, "files:"];
   for (const file of files) {
     lines.push(`  - url: ${file.url}`, `    sha512: ${file.sha512}`, `    size: ${file.size}`);
@@ -84,16 +89,21 @@ const manifest = (version, files) => {
     `path: ${files[0].url}`,
     `sha512: ${files[0].sha512}`,
     `releaseDate: '${new Date().toISOString()}'`,
+    // The share of installs the release is offered to; the app compares its own
+    // number against it, so a build can be let out slowly.
+    `rollout: ${rollout}`,
     "",
   );
   return lines.join("\n");
 };
 
 const main = async () => {
-  const { dir, out, version } = parseArgs(process.argv.slice(2));
+  const { dir, out, version, rollout } = parseArgs(process.argv.slice(2));
   const files = await collect(dir);
-  await writeFile(out, manifest(version, files));
-  console.log(`latest-mac.yml for ${version}: ${files.map((f) => `${f.url} (${f.size} bytes)`).join(", ")}`);
+  await writeFile(out, manifest(version, files, rollout));
+  console.log(
+    `latest-mac.yml for ${version}: ${files.map((f) => `${f.url} (${f.size} bytes)`).join(", ")} — rollout ${rollout}%`
+  );
 };
 
 main().catch((error) => {

@@ -15,8 +15,8 @@ const staging = (contents: Record<string, string>) => {
   return dir;
 };
 
-const build = (dir: string, version = "1.2.3") =>
-  execFileSync(process.execPath, [SCRIPT, "--dir", dir, "--version", version], { encoding: "utf8" });
+const build = (dir: string, version = "1.2.3", extra: string[] = []) =>
+  execFileSync(process.execPath, [SCRIPT, "--dir", dir, "--version", version, ...extra], { encoding: "utf8" });
 
 // js-yaml only arrives here as somebody else's dependency, so the manifest is read
 // as the small, fixed set of lines it is meant to be.
@@ -71,11 +71,11 @@ test("a single-arch release still produces a usable manifest", () => {
   }
 });
 
-const refuses = (contents: Record<string, string>, expect: RegExp, version?: string) => {
+const refuses = (contents: Record<string, string>, expect: RegExp, version?: string, extra: string[] = []) => {
   const dir = staging(contents);
   try {
     assert.throws(
-      () => build(dir, version),
+      () => build(dir, version, extra),
       (error: Error) => expect.test((error as unknown as { stdout?: string; stderr?: string }).stderr ?? ""),
     );
   } finally {
@@ -90,4 +90,31 @@ test("it refuses a filename the updater could not choose an arch from", () => {
 test("it refuses a directory with no archives, and a tag that is not a version", () => {
   refuses({ "OpenMonkey-arm64.dmg": "x" }, /no OpenMonkey-<arch>\.zip/);
   refuses({ "OpenMonkey-arm64.zip": "x" }, /numeric version/, "not-a-version");
+});
+
+test("a release nobody has thought about is offered to everybody", () => {
+  const dir = staging({ "OpenMonkey-arm64.zip": "bytes" });
+  try {
+    build(dir);
+    const yml = readFileSync(path.join(dir, "latest-mac.yml"), "utf8");
+    assert.equal(field(yml, "rollout"), "100");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a release can be held back for a share of the installs", () => {
+  const dir = staging({ "OpenMonkey-arm64.zip": "bytes" });
+  try {
+    build(dir, "1.2.3", ["--rollout", "25"]);
+    const yml = readFileSync(path.join(dir, "latest-mac.yml"), "utf8");
+    assert.equal(field(yml, "rollout"), "25");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a share that is not a percentage is refused", () => {
+  refuses({ "OpenMonkey-arm64.zip": "x" }, /share between 0 and 100/, undefined, ["--rollout", "120"]);
+  refuses({ "OpenMonkey-arm64.zip": "x" }, /share between 0 and 100/, undefined, ["--rollout", "many"]);
 });

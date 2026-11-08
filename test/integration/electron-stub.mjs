@@ -52,7 +52,15 @@ export const ipcMain = {
     ipcHandlers.delete(channel);
   },
 };
-export const BrowserWindow = class {};
+export const BrowserWindow = class {
+  /** The windows the app opened, newest last. */
+  static getAllWindows() {
+    return windows;
+  }
+};
+
+/** Every window the app opened, newest last. */
+export const windows = [];
 
 export const dialog = {
   /** What the next file picker hands back. */
@@ -61,9 +69,65 @@ export const dialog = {
   /** What the next save dialog hands back. */
   saveDialogResult: { canceled: true, filePath: undefined },
   showSaveDialog: async () => dialog.saveDialogResult,
+  /** What the next message box answers. */
+  messageBoxResult: { response: 1 },
+  showMessageBox: async () => dialog.messageBoxResult,
 };
 
-export const shell = {};
+export const shell = {
+  /** The links the app asked the browser to open. */
+  opened: [],
+  /** The files the app asked the system to open. */
+  openedPaths: [],
+  openExternal: async (url) => {
+    shell.opened.push(url);
+    return true;
+  },
+  openPath: async (filePath) => {
+    shell.openedPaths.push(filePath);
+    return "";
+  },
+};
+
+/**
+ * The download plumbing the rollback uses. The harness records what was fetched and
+ * where it was told to save, so a test can read both without touching the network.
+ */
+export const downloads = [];
+
+export const session = {
+  defaultSession: {
+    listeners: new Map(),
+    on(event, listener) {
+      const listeners = this.listeners.get(event) ?? [];
+      listeners.push(listener);
+      this.listeners.set(event, listeners);
+      return this;
+    },
+    removeListener(event, listener) {
+      const listeners = this.listeners.get(event) ?? [];
+      this.listeners.set(
+        event,
+        listeners.filter((entry) => entry !== listener),
+      );
+    },
+    emit(event, ...args) {
+      for (const listener of this.listeners.get(event) ?? []) listener({}, ...args);
+    },
+    async downloadURL(url) {
+      downloads.push({ url });
+      const item = {
+        setSavePath: (savePath) => {
+          downloads[downloads.length - 1].savePath = savePath;
+        },
+        once: (event, listener) => {
+          if (event === "done") listener({}, "completed");
+        },
+      };
+      this.emit("will-download", item);
+    },
+  },
+};
 export const globalShortcut = {
   isRegistered: () => false,
   register: () => false,

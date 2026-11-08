@@ -71,4 +71,40 @@ export declare const dialog: {
   showOpenDialog(options?: unknown): Promise<{ canceled: boolean; filePaths: string[] }>;
   saveDialogResult: { canceled: boolean; filePath?: string };
   showSaveDialog(options?: unknown): Promise<{ canceled: boolean; filePath?: string }>;
+  messageBoxResult: { response: number };
+  showMessageBox(options?: unknown): Promise<{ response: number }>;
+};
+
+export declare const shell: {
+  opened: string[];
+  openedPaths: string[];
+  openExternal(url: string): Promise<boolean>;
+  openPath(filePath: string): Promise<string>;
+};
+
+export declare const app: {
+  getPath(name: string): string;
+  getAppPath(): string;
+  getVersion(): string;
+  getName(): string;
+  isPackaged: boolean;
+};
+
+/** Every window the app opened, newest last. */
+export declare const windows: unknown[];
+
+export declare const BrowserWindow: {
+  getAllWindows(): unknown[];
+};
+
+/** Every fetch the rollback asked for, newest last. */
+export declare const downloads: Array<{ url: string; savePath?: string }>;
+
+export declare const session: {
+  defaultSession: {
+    on(event: string, listener: (...args: unknown[]) => void): unknown;
+    removeListener(event: string, listener: (...args: unknown[]) => void): void;
+    emit(event: string, ...args: unknown[]): void;
+    downloadURL(url: string): Promise<void>;
+  };
 };

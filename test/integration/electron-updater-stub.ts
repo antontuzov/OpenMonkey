@@ -9,13 +9,22 @@ export class FakeAutoUpdater extends EventEmitter {
   autoDownload = true;
   autoInstallOnAppQuit = true;
   allowDowngrade = true;
+  disableDifferentialDownload = false;
   channel = "latest";
   checkCalls = 0;
   quitCalls = 0;
+  downloadCalls = 0;
+  updateInfoAndProvider: unknown = null;
 
   checkForUpdates() {
     this.checkCalls += 1;
     return Promise.resolve({ version: "9.9.9" });
+  }
+
+  /** The real updater refuses to download before a check has found something. */
+  downloadUpdate() {
+    this.downloadCalls += 1;
+    return Promise.resolve(["/tmp/OpenMonkey-arm64.zip"]);
   }
 
   quitAndInstall() {
@@ -31,6 +40,9 @@ export function resetAutoUpdater(): void {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowDowngrade = true;
+  autoUpdater.disableDifferentialDownload = false;
+  autoUpdater.updateInfoAndProvider = null;
   autoUpdater.checkCalls = 0;
   autoUpdater.quitCalls = 0;
+  autoUpdater.downloadCalls = 0;
 }

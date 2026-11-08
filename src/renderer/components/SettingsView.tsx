@@ -45,6 +45,7 @@ import {
 import { ModelDownloadCard } from "./ModelDownloadCard";
 import { MemoryBrowser } from "./MemoryBrowser";
 import { SourceManager } from "./SourceManager";
+import { UpdatePanel } from "./UpdatePanel";
 import { SettingRow, Toggle } from "./controls";
 import { ACCENTS } from "../constants";
 import { checkAccent, parseHex } from "../../utils/colour";
@@ -1564,6 +1565,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="row">
                       <p className="row-copy !mt-0 max-w-[52ch]">{t("desktop.updateHint")}</p>
                     </div>
+                    <UpdatePanel />
                   </div>
                 </section>
 

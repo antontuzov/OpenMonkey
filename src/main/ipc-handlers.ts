@@ -32,6 +32,9 @@ import { EXPORT_FILE_SUFFIX, encryptBundle, readBundleFile } from "../utils/port
 import type { PortabilityResult } from "../utils/types";
 import { ModelDownloader } from "../models/model-downloader";
 import { openPermissionSettings, probeAutomation } from "./permissions";
+import { checkForUpdates, currentUpdateState, installUpdate, openReleasePage } from "./updater";
+import { releaseNotesPayload } from "./release-notes";
+import { findRollbackTarget, startRollback } from "./rollback";
 import logger from "../utils/logger";
 import type { TrayManager } from "./tray-manager";
 
@@ -812,6 +815,22 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     if (!/^https?:\/\//i.test(url)) throw new Error("Only http(s) links can be opened");
     return shell.openExternal(url);
   });
+
+  // Updates: where the app stands with the version that is out, and what it can do
+  // about it. Every answer here is the state the updater already holds.
+  ipcMain.handle("get-update-state", () => currentUpdateState());
+
+  ipcMain.handle("check-for-updates", () => checkForUpdates());
+
+  ipcMain.handle("install-update", () => installUpdate());
+
+  ipcMain.handle("open-release-page", () => openReleasePage());
+
+  ipcMain.handle("get-release-notes", () => releaseNotesPayload(app.getVersion()));
+
+  ipcMain.handle("find-rollback", () => findRollbackTarget());
+
+  ipcMain.handle("start-rollback", () => startRollback());
 
   // Publishing: the target lives in the settings file, the secret in the keychain.
   const publisher = new PublishTools();

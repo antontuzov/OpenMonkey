@@ -8,6 +8,37 @@ that produced the build.
 
 ### Added
 
+- **The app tells you what it knows about updates, and can walk you back.** Settings →
+  Desktop now carries an **Updates** card with three parts. **Update status** says
+  plainly where you stand — the build you are running is the newest, a newer one is
+  waiting, one is on its way, the check is running, the network switch in Privacy keeps
+  the app from looking, or the check failed and says why. A release can be offered to
+  only part of the installs, and when it is, the card says how much of it has been let
+  out; a build that was not picked says so and waits for the next check rather than
+  pretending the release does not exist. **Release notes** reads the changelog the
+  release was built from, the same file the build carries, so what you read in the app
+  is what the release was made from. The notes for the work still in progress are shown
+  as *Not out yet*. **Go back to the previous version** finds the release before the one
+  you are running, fetches its disk image into your Downloads folder and opens it, so
+  you can put the older build back yourself; a release that ships no disk image is
+  passed over and the next older one is used, and with the network switch off nothing
+  is fetched at all. 21 unit tests (a release sharing its number with the installs
+  that are let into it, a new group of installs for every release, a share of 100
+  reaching everybody and a share of 0 reaching nobody, a share of 25 reaching about a
+  quarter, a share outside the scale being clamped; the changelog read into its
+  version and its day, the notes sitting under their heading, an unknown version
+  having none, a note wrapped over two lines joining the note above it, a note with no
+  heading landing under *Changes*; the rollback picking the newest release older than
+  the running one, skipping drafts and pre-releases, passing over a release with no
+  disk image, having nothing to go back to when the running build is the oldest, and
+  finding nothing when the version cannot be read) and 11 integration tests (an
+  unsigned build naming the release instead of downloading one, the release page
+  opening, a signed build fetching the release and asking before it restarts, a
+  declined answer changing nothing, a release offered to nobody sitting held, a full
+  release being fetched, an unpackaged app starting no updater, a build that was never
+  installed reporting itself as local, the older build fetched into Downloads under
+  its own name and opened, and the network switch off fetching nothing).
+
 - **The history can be filed, labelled, put away and taken with you.** The sidebar now
   organizes the chats instead of only listing them. **Organize** opens a panel of folders,
   labels and saved searches: a folder holds the chats filed under it and says how many
@@ -160,6 +191,20 @@ that produced the build.
 
 ### Changed
 
+- **A release is no longer fetched unless it is wanted.** The updater stopped
+  downloading a release on its own the moment it saw one. It now asks first, says what
+  it found, and only fetches when the release can actually be installed. An unsigned
+  build cannot replace itself, so it names the release and opens the release page
+  instead of offering a restart into something macOS will refuse to install.
+- **The update archive is fetched whole.** The archive keeps one name for every
+  version, so the blockmap of the build that is running and the blockmap of the
+  release on offer are the same file. A patch built from them would not be the
+  release, so the whole archive is fetched and the differential download is turned off
+  rather than left to fail.
+- **A release can be let out slowly.** The publisher sets the share of installs a
+  release is offered to in the update manifest, and each install decides on its own
+  whether it is in that share, with no account and no telemetry: the number comes
+  from a random file in the app's own folder, which never leaves the Mac.
 - **A long chat no longer builds every message.** The chat panel mounts only the messages
   near the reader — a screenful of them — and the ones above and below stand in as the
   space they would take, so the scrollbar still tells the truth about how long the chat

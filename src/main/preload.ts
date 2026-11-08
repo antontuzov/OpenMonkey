@@ -12,6 +12,7 @@ import type {
   QuickAskResult,
   SettingsPage,
   Task,
+  UpdateState,
 } from "../utils/types";
 
 /**
@@ -154,6 +155,13 @@ const api: ElectronAPI = {
   openPermissionSettings: (area: "automation" | "notifications") =>
     ipcRenderer.invoke("open-permission-settings", area),
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url),
+  getUpdateState: () => ipcRenderer.invoke("get-update-state"),
+  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  installUpdate: () => ipcRenderer.invoke("install-update"),
+  openReleasePage: () => ipcRenderer.invoke("open-release-page"),
+  getReleaseNotes: () => ipcRenderer.invoke("get-release-notes"),
+  findRollback: () => ipcRenderer.invoke("find-rollback"),
+  startRollback: () => ipcRenderer.invoke("start-rollback"),
   getPublisherChannels: () => ipcRenderer.invoke("get-publisher-channels"),
   savePublisherSecret: (channel: PublisherChannel, secret: PublisherSecret) =>
     ipcRenderer.invoke("save-publisher-secret", channel, secret),
@@ -181,6 +189,7 @@ const api: ElectronAPI = {
   onChatEvent: (callback) => on<ChatEvent>("chat-event", callback),
   onQuickAskStarted: (callback) => on<QuickAskResult>("quick-ask-started", callback),
   onLocalDataChanged: (callback: () => void) => on<undefined>("local-data-changed", () => callback()),
+  onUpdateState: (callback: (state: UpdateState) => void) => on<UpdateState>("update-state", callback),
 };
 
 contextBridge.exposeInMainWorld("electron", api);

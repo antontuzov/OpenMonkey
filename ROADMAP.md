@@ -51,6 +51,11 @@ and approval-gated tools. Nothing here is a mock screen.
 - Privacy: AES-256-GCM rows, key file mode 0600, path confinement, local-only by default;
   the app's data folder is not a tool workspace root.
 - Build: typecheck + production build pass; macOS/Windows packaging configured.
+- Updates: the app checks for a release, says plainly what it found, and fetches only what
+  it can install. Settings → Desktop carries the status, the release notes read from the
+  changelog the release was built from, and a way back to the previous build. A release
+  can be let out to part of the installs, decided on the Mac with no account and no
+  telemetry.
 
 **Known gaps**
 
@@ -68,7 +73,15 @@ and approval-gated tools. Nothing here is a mock screen.
 - Calendar/mail live paths are untested here to avoid new macOS Automation prompts.
 - The 4B model frequently emits malformed task JSON; validation rejects it and shows a failed
   task instead of guessing at the intended call.
-- No signed builds or auto-update.
+- Auto-update is in the app; whether the published 0.9.2 build is signed has not been
+  verified here — the release job signs and notarizes only when the Apple credentials sit
+  in the repository secrets. An unsigned build cannot replace itself, so the updater
+  names the release and opens the release page instead of promising an install, and the
+  app works out which case it is at runtime.
+- Delta downloads are off on purpose. The artifact name carries no version, so the
+  blockmap of the running build and the blockmap of the release on offer are the same
+  file, and a patch built from them would not be the release. The whole archive is
+  fetched instead.
 
 **Effort legend:** S = 0.5–2 days, M = 3–5 days, L = 1–3 weeks (one engineer).
 
