@@ -8,6 +8,39 @@ that produced the build.
 
 ### Added
 
+- **The app posts for you later, on its own.** A post can now be queued instead of
+  sent, and the app sends it when the time comes. Ask for it in the ordinary way — "post
+  this to my Telegram in two hours" — and the app shows the exact text, the channel and
+  the hour, and waits for you to approve it exactly as it does for a post that goes out
+  straight away. After that it waits in the app: a small ticker in the main process
+  looks every 30 seconds for a post whose time has come, and sends it under your own
+  account without asking a second time, because you already read the text and said yes.
+  The post still runs as a task, so it shows up in the activity rail and in the audit log
+  like any other thing the app did. The time is read the way a person says it — "in 45
+  minutes", "in 2 hours", "in 1 day" — or as a date and an hour; a time the app cannot
+  read is refused, a time in the past is refused, and a post cannot be queued more than
+  30 days ahead. The queue waits rather than pushes: during your quiet hours nothing
+  goes out, and it goes out when the day starts again; while the network switch in
+  Settings → Privacy is off it waits; and the same hourly cap and the same minimum gap
+  between two posts that hold an immediate post hold a queued one, so a queue cannot
+  turn into a burst. A post that fails is tried three times and then given up on, with
+  the reason kept and shown. If the publishing policy in Settings → Approvals is set to
+  Block, a queued post is refused too, and says so rather than going out quietly.
+  Settings → Publishing grows a **Scheduled posts** section listing every post waiting
+  and every post that already went, with the time it went and the reason it did not,
+  and a **Cancel** button on the ones that have not gone out yet. The text of a queued
+  post is sealed in the encrypted database like everything else the app stores, so it
+  disappears with "Erase everything" and is pruned with the rest of the history.
+  13 integration tests (a scheduled post waiting for its time instead of going out, a
+  time the app cannot read refused, a time in the past refused, a post without a saved
+  token refused, a Reddit post without a title refused, the time read the way a person
+  says it, the ticker sending a post whose time has come, a post that is not due left
+  alone, the ticker waiting through the quiet hours, waiting while the network is off,
+  waiting when the channel has no room left, giving up when the policy blocks it, a
+  failing post being tried again and then given up on, and the text of a queued post
+  sealed in the database) and a unit test that the two new actions are declared the way
+  the queue and the model read them.
+
 - **The app posts to Bluesky and Mastodon as well.** The publisher now carries four
   channels: the Telegram channel and the Reddit account it already had, plus a
   **Bluesky** account and a **Mastodon** account. Settings → Publishing grows two

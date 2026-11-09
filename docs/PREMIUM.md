@@ -159,6 +159,12 @@ instance that is not https refused, the 500 characters, a picture from the local
 never fetched, the check naming the Bluesky and the Mastodon account, and the cap file
 recording the posts that were made) and 1 unit test on the tool declaration.
 
+A post can also be queued for later, and the app sends it when its time comes: the same
+exact text is shown and approved first, the app waits rather than pushes through the
+quiet hours, the network switch and the per-channel caps, and Settings → Publishing
+lists what is waiting with a Cancel on each one. Nothing is sent that the user did not
+read first, and a post whose approval policy is Block is refused.
+
 Row 25 also asks for trimmed idle memory and a cold start under 400 ms. The idle memory
 is measured on every end-to-end run against a ceiling of 900 MB. The 400 ms is not
 claimed: the same suite holds the app to reaching its first surface inside 2,500 ms on a

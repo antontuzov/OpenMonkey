@@ -7,6 +7,7 @@ import { registerIpcHandlers } from "./ipc-handlers";
 import { attachmentFromFile } from "./file-attachments";
 import { DesktopManager } from "./desktop-manager";
 import { startLockWatcher } from "./lock-watcher";
+import { PublishScheduler } from "./publish-scheduler";
 import { installAppMenu } from "./menu";
 import { checkForUpdates, startUpdates } from "./updater";
 import { applyWindowState } from "./window-state";
@@ -126,6 +127,19 @@ function lockHistory(): void {
   if (!storage.lockable) return;
   storage.lock();
   refreshHistoryViews();
+}
+
+/**
+ * The queue of posts waiting to go out. It runs in the main process, so a post
+ * goes out at its time whether or not a window is open, and it runs the post as a
+ * task so the rail and the audit log show what the app did on its own.
+ */
+function startPublishScheduler(): void {
+  if (!openMonkey) return;
+  const scheduler = new PublishScheduler({
+    runPost: async (post) => await openMonkey!.getTaskManager().executeScheduledPost(post),
+  });
+  scheduler.start();
 }
 
 function createWindow(): void {
@@ -409,6 +423,10 @@ if (!app.requestSingleInstanceLock()) {
     // crash, and a crash before this line is the one safe mode is there for.
     markRunning(crashRecordFile);
     startLockWatcher(lockHistory);
+    // A post the user scheduled goes out when its time comes, so the app has to
+    // keep an eye on the queue even when no window is open. Safe mode is for
+    // recovering from a crash, and posting is not part of that.
+    if (!safeMode.active) startPublishScheduler();
 
     app.on("activate", () => {
       showMainWindow();

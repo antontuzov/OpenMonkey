@@ -33,6 +33,8 @@ import type {
   MessageAttachment,
   QuickAskThread,
   SavedSearch,
+  ScheduledPost,
+  ScheduledPostStatus,
   Task,
   TaskDiff,
   TaskStep,
@@ -51,7 +53,7 @@ const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** Bumped when the table layout changes; an export carries it so a newer file is refused. */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 interface MessageRow {
   id: string;
@@ -365,6 +367,19 @@ export class Storage {
         query TEXT NOT NULL,
         created_at INTEGER NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS scheduled_posts (
+        id TEXT PRIMARY KEY,
+        channel TEXT NOT NULL,
+        text TEXT NOT NULL,
+        title TEXT,
+        image_url TEXT,
+        due_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        error TEXT,
+        posted_at INTEGER
+      );
     `);
 
     const columns = this.db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
@@ -569,6 +584,11 @@ export class Storage {
   schemaVersion(): number {
     if (!this.db) return 0;
     return Number(this.db.pragma("user_version", { simple: true }) ?? 0);
+  }
+
+  /** True when rows can be written right now. False while the history is locked. */
+  isReady(): boolean {
+    return this.db !== null;
   }
 
   /**
@@ -927,6 +947,7 @@ export class Storage {
       ["memory_facts", ["content"]],
       ["memory_summaries", ["content"]],
       ["quick_asks", ["question", "answer"]],
+      ["scheduled_posts", ["text", "title", "error"]],
     ];
     const recode = this.db.transaction(() => {
       for (const [table, names] of columns) {
@@ -1858,6 +1879,79 @@ export class Storage {
     this.db?.prepare("DELETE FROM audit").run();
   }
 
+  /** A post waiting to go out. The text is sealed like any other conversation text. */
+  saveScheduledPost(post: ScheduledPost): void {
+    if (!this.db) return;
+    this.db
+      .prepare(
+        `INSERT INTO scheduled_posts (id, channel, text, title, image_url, due_at, created_at, status, attempts, error, posted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           status = excluded.status,
+           attempts = excluded.attempts,
+           error = excluded.error,
+           posted_at = excluded.posted_at`
+      )
+      .run(
+        post.id,
+        post.channel,
+        this.seal(post.text),
+        post.title ? this.seal(post.title) : null,
+        post.imageUrl ?? null,
+        post.dueAt,
+        post.createdAt,
+        post.status,
+        post.attempts,
+        post.error ? this.seal(post.error) : null,
+        post.postedAt ?? null
+      );
+  }
+
+  /** The queued posts, the soonest first. */
+  getScheduledPosts(statuses?: ScheduledPostStatus[]): ScheduledPost[] {
+    if (!this.db) return [];
+    const rows = (
+      statuses?.length
+        ? this.db
+            .prepare(
+              `SELECT * FROM scheduled_posts WHERE status IN (${statuses.map(() => "?").join(", ")}) ORDER BY due_at ASC`
+            )
+            .all(...statuses)
+        : this.db.prepare("SELECT * FROM scheduled_posts ORDER BY due_at ASC").all()
+    ) as Array<{
+      id: string;
+      channel: ScheduledPost["channel"];
+      text: string;
+      title: string | null;
+      image_url: string | null;
+      due_at: number;
+      created_at: number;
+      status: ScheduledPostStatus;
+      attempts: number;
+      error: string | null;
+      posted_at: number | null;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      channel: row.channel,
+      text: this.open(row.text),
+      title: row.title ? this.open(row.title) : undefined,
+      imageUrl: row.image_url ?? undefined,
+      dueAt: row.due_at,
+      createdAt: row.created_at,
+      status: row.status,
+      attempts: row.attempts,
+      error: row.error ? this.open(row.error) : undefined,
+      postedAt: row.posted_at ?? undefined,
+    }));
+  }
+
+  /** Take a queued post out of the queue without sending it. */
+  deleteScheduledPost(id: string): void {
+    this.db?.prepare("DELETE FROM scheduled_posts WHERE id = ?").run(id);
+  }
+
   private pruneOlderThan(days: number): void {
     if (!this.db || days <= 0) return;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
@@ -1865,6 +1959,9 @@ export class Storage {
     this.db.prepare("DELETE FROM tasks WHERE created_at < ?").run(cutoff);
     this.db.prepare("DELETE FROM audit WHERE created_at < ?").run(cutoff);
     this.db.prepare("DELETE FROM quick_asks WHERE updated_at < ?").run(cutoff);
+    // A post that already went out, or that the user gave up on, is history like
+    // any other: it leaves when the rest of the history leaves.
+    this.db.prepare("DELETE FROM scheduled_posts WHERE created_at < ? AND status != 'pending'").run(cutoff);
     this.db
       .prepare(
         "DELETE FROM conversations WHERE updated_at < ? AND NOT EXISTS (SELECT 1 FROM messages WHERE conversation_id = conversations.id)"

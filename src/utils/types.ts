@@ -370,6 +370,28 @@ export interface PublisherActionResult {
   detail?: string;
 }
 
+/** Where a queued post stands. A cancelled post leaves the queue entirely. */
+export type ScheduledPostStatus = "pending" | "posted" | "failed";
+
+/** A post the app will send later, under the user's own account. */
+export interface ScheduledPost {
+  id: string;
+  channel: PublisherChannel;
+  text: string;
+  title?: string;
+  imageUrl?: string;
+  /** When the post should go out. */
+  dueAt: number;
+  createdAt: number;
+  status: ScheduledPostStatus;
+  /** How many times the app has tried to send it. */
+  attempts: number;
+  /** The last thing that went wrong. */
+  error?: string;
+  /** When it actually went out. */
+  postedAt?: number;
+}
+
 export type ApprovalPolicy = "ask" | "allow" | "block";
 
 export type AuditDecision =
@@ -1110,6 +1132,10 @@ export interface ElectronAPI {
   clearPublisherSecret: (channel: PublisherChannel) => Promise<PublisherActionResult>;
   /** Ask the channel who this account is, so the user can see the secret works. */
   checkPublisherChannel: (channel: PublisherChannel) => Promise<PublisherActionResult>;
+  /** The posts waiting for their time, and the ones that already went out. */
+  getScheduledPosts: () => Promise<ScheduledPost[]>;
+  /** Take a queued post out of the queue without sending it. */
+  cancelScheduledPost: (id: string) => Promise<PublisherActionResult>;
 
   /** Each subscription returns an unsubscribe function for the effect cleanup. */
   onAgentReady: (callback: () => void) => () => void;

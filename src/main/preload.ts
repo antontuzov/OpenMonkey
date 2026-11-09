@@ -167,6 +167,8 @@ const api: ElectronAPI = {
     ipcRenderer.invoke("save-publisher-secret", channel, secret),
   clearPublisherSecret: (channel: PublisherChannel) => ipcRenderer.invoke("clear-publisher-secret", channel),
   checkPublisherChannel: (channel: PublisherChannel) => ipcRenderer.invoke("check-publisher-channel", channel),
+  getScheduledPosts: () => ipcRenderer.invoke("get-scheduled-posts"),
+  cancelScheduledPost: (id: string) => ipcRenderer.invoke("cancel-scheduled-post", id),
 
   onAgentReady: (callback: () => void) => on<undefined>("agent-ready", () => callback()),
   onAgentStatus: (callback: (status: AgentStatus) => void) => on<AgentStatus>("agent-status", callback),

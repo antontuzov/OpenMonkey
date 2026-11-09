@@ -145,6 +145,7 @@ const ENTRIES: SettingEntry[] = [
   { page: "publishing", label: "Bluesky app password", keywords: ["bluesky", "app password", "secret", "keychain", "atproto"] },
   { page: "publishing", label: "Mastodon instance", keywords: ["mastodon", "instance", "server", "fediverse", "https"] },
   { page: "publishing", label: "Mastodon access token", keywords: ["mastodon", "token", "secret", "keychain", "fediverse"] },
+  { page: "publishing", label: "Scheduled posts", keywords: ["schedule", "later", "queue", "post", "cancel"] },
   { page: "publishing", label: "Posting policy", keywords: ["approval", "audit", "upvote", "spam", "policy"] },
   { page: "publishing", label: "Room left this hour", keywords: ["rate limit", "cap", "quota", "posts"] },
 

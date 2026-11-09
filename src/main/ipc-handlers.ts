@@ -26,6 +26,7 @@ import { attachmentFromFile, IMAGE_EXTENSIONS } from "./file-attachments";
 import { readFileAsAttachment, searchFiles } from "../utils/file-search";
 import { keychainAvailable } from "../utils/secret-key";
 import { publisherSecrets } from "../utils/publisher-secrets";
+import { publishQueue } from "../utils/publish-queue";
 import { PublishTools, buildSecret } from "../agent/tools/publish";
 import { networkActivity } from "../utils/network";
 import { EXPORT_FILE_SUFFIX, encryptBundle, readBundleFile } from "../utils/portability";
@@ -871,6 +872,19 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     } catch (error) {
       return { ok: false, error: errorText(error) };
     }
+  });
+
+  // The posts waiting for their time, and the ones that already went out.
+  ipcMain.handle("get-scheduled-posts", () => publishQueue.list());
+
+  ipcMain.handle("cancel-scheduled-post", (_event, id: unknown) => {
+    const postId = String(id ?? "");
+    const post = publishQueue.get(postId);
+    if (!post) return { ok: false, error: "That scheduled post is not on the list any more." };
+    if (post.status !== "pending") return { ok: false, error: "That post has already gone out." };
+    publishQueue.remove(postId);
+    logger.info("publisher.scheduled.cancelled", { id: postId });
+    return { ok: true };
   });
 }
 

@@ -53,6 +53,13 @@ and approval-gated tools. Nothing here is a mock screen.
   kept on disk so a restart does not forget them. A Bluesky sign-in that belongs to another
   handle is refused, a Mastodon instance has to be https because the token rides with every
   post, and a picture address on the local network is never fetched.
+- Scheduled posts: a post can be queued for later and the app sends it when its time
+  comes, under the user's own account, without asking a second time — the text was read
+  and approved when it was queued, and it still lands in the task rail and the audit log.
+  The time is read the way a person says it ("in 45 minutes"), the queue waits rather
+  than pushes through the quiet hours, the network switch and the per-channel caps, and
+  Settings → Publishing lists what is waiting with a Cancel on each one. The queued text
+  is sealed in the encrypted database like the rest of the history.
 - Settings: Profile, Appearance, Approvals, Workspace, Privacy, Model and MCP servers pages
   with search and real controls.
 - Privacy: AES-256-GCM rows, key file mode 0600, path confinement, local-only by default;

@@ -28,6 +28,7 @@ import type {
   AuditEntry,
   FileWrite,
   McpServerStatus,
+  ScheduledPost,
   Task,
   TaskRequest,
   TaskStepLabel,
@@ -109,6 +110,30 @@ export class TaskManager {
     return await this.mcp.restart(id);
   }
 
+  /**
+   * Sends a post the user scheduled earlier. The approval happened when it was
+   * scheduled — the exact text was on the screen then — so the app does not ask
+   * again at the moment it goes out. The post still lands in the rail and in the
+   * audit log like any other.
+   */
+  async executeScheduledPost(post: ScheduledPost): Promise<{ ok: boolean; error?: string }> {
+    const request: TaskRequest = {
+      type: "publish",
+      action: "post",
+      arguments: {
+        channel: post.channel,
+        text: post.text,
+        title: post.title,
+        imageUrl: post.imageUrl,
+      },
+      summary: `Scheduled post to ${post.channel}`,
+      mutating: true,
+    };
+    const task = await this.executeTask(request, null, undefined, "main", { preApproved: true });
+    if (task.status === "completed") return { ok: true };
+    return { ok: false, error: task.error ?? "The post did not go out." };
+  }
+
   /** Pull the ```task blocks out of a model reply; the rest is what the user sees. */
   parseTaskBlocks(response: string): { visibleText: string; requests: TaskRequest[]; errors: string[] } {
     const parsed = parseFences(response);
@@ -145,7 +170,8 @@ export class TaskManager {
     request: TaskRequest,
     conversationId: string | null = null,
     externalSignal?: AbortSignal,
-    origin: "main" | "quick" = "main"
+    origin: "main" | "quick" = "main",
+    options: { preApproved?: boolean } = {}
   ): Promise<Task> {
     const task: Task = {
       id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
@@ -194,7 +220,7 @@ export class TaskManager {
 
     let decision: AuditDecision = request.mutating ? "approved" : "read-only";
     if (request.mutating) {
-      const authorization = await this.authorize(task, request, args, origin);
+      const authorization = await this.authorize(task, request, args, origin, options.preApproved === true);
       if (!authorization.approved) {
         const cancelled = Boolean(authorization.cancelled);
         const message = cancelled
@@ -337,7 +363,8 @@ export class TaskManager {
     task: Task,
     request: TaskRequest,
     args: Record<string, unknown>,
-    origin: "main" | "quick"
+    origin: "main" | "quick",
+    preApproved = false
   ): Promise<{ approved: boolean; decision: AuditDecision; cancelled?: boolean }> {
     // A rule set for one server or one tool is a choice about that item, so it
     // holds even when the master switch would wave everything through.
@@ -348,6 +375,10 @@ export class TaskManager {
 
     const policy = this.approvalPolicy(request.type);
     if (policy === "block") return { approved: false, decision: "blocked" };
+
+    // A post the user scheduled was shown and approved when it was scheduled, so
+    // the app does not ask a second time when the time comes. Block still wins.
+    if (preApproved) return { approved: true, decision: "approved" };
 
     if (request.type === "mcp" && this.mcp.policyFor(request.action) === "allow") {
       return { approved: true, decision: "policy" };

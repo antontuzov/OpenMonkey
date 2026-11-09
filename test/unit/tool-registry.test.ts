@@ -146,6 +146,28 @@ test("the publish action is declared the way the publisher reads it", () => {
   assert.ok(describeBuiltInTools().includes("publish.post"), "the prompt lists it, or the model cannot use it");
 });
 
+test("the scheduling action is declared the way the queue reads it", () => {
+  const schedule = getToolDefinition("publish", "schedule");
+  assert.ok(schedule);
+  // A queued post goes out later under the user's own account, so it asks for approval.
+  assert.equal(schedule.mutating, true);
+  assert.equal(schedule.args.channel?.required, true);
+  assert.deepEqual(schedule.args.channel?.enum, ["telegram", "reddit", "bluesky", "mastodon"]);
+  // Without a time there is nothing to queue.
+  assert.equal(schedule.args.when?.required, true);
+  assert.equal(schedule.args.text?.required, true);
+  assert.ok(describeBuiltInTools().includes("publish.schedule"), "the prompt lists it, or the model cannot use it");
+
+  const list = getToolDefinition("publish", "list_scheduled");
+  assert.ok(list);
+  // Listing the queue only reads it, so it must not stop for approval.
+  assert.equal(list.mutating, false);
+  assert.ok(
+    describeBuiltInTools().includes("publish.list_scheduled"),
+    "the prompt lists it, or the model cannot use it"
+  );
+});
+
 test("JSON Schema validation covers the MCP subset", () => {
   const schema = {
     type: "object",

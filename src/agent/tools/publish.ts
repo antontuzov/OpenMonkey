@@ -4,11 +4,13 @@ import type {
   PublisherChannel,
   PublisherChannelStatus,
   PublisherSecret,
+  ScheduledPost,
   TaskType,
 } from "../../utils/types";
 import { assertNetworkAllowed } from "../../utils/network";
 import { config, dataRoot } from "../../utils/config";
 import { publisherSecrets, type PublisherSecrets } from "../../utils/publisher-secrets";
+import { publishQueue, type PublishQueue } from "../../utils/publish-queue";
 
 /** Telegram's plain message limit, and the much shorter one a photo caption allows. */
 const TELEGRAM_TEXT_LIMIT = 4_096;
@@ -73,6 +75,8 @@ export interface PublishDeps {
   now?: () => number;
   /** Where the hourly cap remembers its posts. */
   historyFile?: string;
+  /** Where a post waits until its time comes. */
+  queue?: PublishQueue;
 }
 
 export interface PostRequest {
@@ -93,6 +97,7 @@ export class PublishTools {
   private readonly fetchImpl: typeof fetch;
   private readonly now: () => number;
   private readonly history: PublishHistory;
+  private readonly queue: PublishQueue;
 
   constructor(deps: PublishDeps = {}) {
     this.secrets = deps.secrets ?? publisherSecrets;
@@ -110,14 +115,19 @@ export class PublishTools {
     this.fetchImpl = deps.fetchImpl ?? fetch;
     this.now = deps.now ?? (() => Date.now());
     this.history = new PublishHistory(deps.historyFile ?? publishHistoryFile(), this.now);
+    this.queue = deps.queue ?? publishQueue;
   }
 
   async execute(action: string, args: Record<string, unknown>): Promise<string> {
     switch (action) {
       case "list_channels":
         return this.listChannels();
+      case "list_scheduled":
+        return this.listScheduled();
       case "post":
         return await this.post(args);
+      case "schedule":
+        return await this.schedule(args);
       default:
         throw new Error(`Unknown publish action: ${action}`);
     }
@@ -185,21 +195,8 @@ export class PublishTools {
     };
     this.checkContent(channel, request);
 
-    const limit = LIMITS[channel];
-    const recent = this.history.recent(channel);
-    if (recent.length >= limit.perHour) {
-      const waitMinutes = Math.ceil((recent[0] + 60 * 60_000 - this.now()) / 60_000);
-      throw new Error(
-        `${channel} allows ${limit.perHour} posts an hour through this app, and all ${limit.perHour} are used. Try again in ${waitMinutes} minute${waitMinutes === 1 ? "" : "s"}.`
-      );
-    }
-    const last = recent[recent.length - 1];
-    if (last !== undefined && this.now() - last < limit.minGapMs) {
-      const waitSeconds = Math.ceil((limit.minGapMs - (this.now() - last)) / 1000);
-      throw new Error(
-        `The last ${channel} post was too recent. Wait ${waitSeconds} more second${waitSeconds === 1 ? "" : "s"} before posting again.`
-      );
-    }
+    const room = this.room(channel);
+    if (!room.ok) throw new Error(room.message);
 
     assertNetworkAllowed("publish.post");
 
@@ -207,6 +204,112 @@ export class PublishTools {
 
     this.history.record(channel, this.now());
     return result;
+  }
+
+  /**
+   * How much room a channel has right now. The scheduler asks the same question as
+   * an immediate post, so a queued post waits for the same reason an immediate one
+   * is refused.
+   */
+  room(channel: PublisherChannel): { ok: boolean; waitMs: number; message?: string } {
+    const limit = LIMITS[channel];
+    const recent = this.history.recent(channel);
+    if (recent.length >= limit.perHour) {
+      const waitMs = Math.max(0, recent[0] + 60 * 60_000 - this.now());
+      const waitMinutes = Math.ceil(waitMs / 60_000);
+      return {
+        ok: false,
+        waitMs,
+        message: `${channel} allows ${limit.perHour} posts an hour through this app, and all ${limit.perHour} are used. Try again in ${waitMinutes} minute${waitMinutes === 1 ? "" : "s"}.`,
+      };
+    }
+    const last = recent[recent.length - 1];
+    if (last !== undefined && this.now() - last < limit.minGapMs) {
+      const waitMs = limit.minGapMs - (this.now() - last);
+      const waitSeconds = Math.ceil(waitMs / 1000);
+      return {
+        ok: false,
+        waitMs,
+        message: `The last ${channel} post was too recent. Wait ${waitSeconds} more second${waitSeconds === 1 ? "" : "s"} before posting again.`,
+      };
+    }
+    return { ok: true, waitMs: 0 };
+  }
+
+  /**
+   * Puts a post in the queue instead of sending it now. The same rules apply as
+   * for an immediate post, so a post that could never go out is refused here
+   * rather than failing silently later.
+   */
+  async schedule(args: Record<string, unknown>): Promise<string> {
+    const channel = String(args.channel ?? "") as PublisherChannel;
+    if (!LIMITS[channel]) throw new Error(`Unknown publishing channel: ${channel}`);
+
+    const text = String(args.text ?? "").trim();
+    if (!text) throw new Error("The post has no text");
+
+    const secret = this.secrets.read(channel);
+    if (!secret) {
+      throw new Error(`No ${channel} ${this.secretNoun(channel)} is saved. Add it in Settings → Publishing first.`);
+    }
+    const target = this.target(channel);
+    if (!target) {
+      throw new Error(`No ${channel} target is set. Add it in Settings → Publishing first.`);
+    }
+    if (!this.queue.available()) {
+      throw new Error(
+        "The app cannot hold a scheduled post right now: the history is locked, so the post would have nowhere to wait."
+      );
+    }
+
+    const request: PostRequest = {
+      text,
+      title: args.title ? String(args.title) : undefined,
+      imageUrl: args.imageUrl ? String(args.imageUrl) : undefined,
+    };
+    this.checkContent(channel, request);
+
+    const dueAt = parseWhen(String(args.when ?? ""), this.now());
+    if (dueAt <= this.now()) {
+      throw new Error("That time is not in the future. Say when the post should go out.");
+    }
+    if (dueAt - this.now() > MAX_SCHEDULE_MS) {
+      throw new Error("A post can be scheduled up to 30 days ahead.");
+    }
+    this.queue.add({
+      channel,
+      text,
+      title: request.title,
+      imageUrl: request.imageUrl,
+      dueAt,
+    });
+
+    return [
+      `Scheduled: the post goes to ${channel === "reddit" ? `r/${target}` : target} on ${formatWhen(dueAt)}.`,
+      "The user approves the post now, and the app sends exactly that text when the time comes.",
+      "It can be cancelled in Settings → Publishing.",
+    ].join(" ");
+  }
+
+  /** The posts that are waiting, and the ones that went out. */
+  listScheduled(): string {
+    const posts = this.queue.list();
+    if (!posts.length) return "No posts are scheduled.";
+    const lines = posts.map((post) => {
+      const state =
+        post.status === "pending"
+          ? `scheduled for ${formatWhen(post.dueAt)}`
+          : post.status === "posted"
+            ? `posted ${post.postedAt ? formatWhen(post.postedAt) : ""}`.trim()
+            : `failed: ${post.error ?? "unknown reason"}`;
+      return `- ${post.id}: ${post.channel} — ${state} — ${post.text.slice(0, 80)}`;
+    });
+    return ["Scheduled posts:", ...lines].join("\n");
+  }
+
+  /** The posts the scheduler still has to send. */
+  pendingPosts(): ScheduledPost[] {
+    return this.queue.list(["pending"]);
   }
 
   /** Asks the channel who this account is, so the user can see the token works. */
@@ -768,6 +871,43 @@ const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 function graphemeLength(text: string): number {
   return [...segmenter.segment(text)].length;
+}
+
+/** How far ahead a post may be scheduled. */
+const MAX_SCHEDULE_MS = 30 * 24 * 60 * 60_000;
+
+/**
+ * Reads the time a post should go out: "in 45 minutes", "in 2 hours", or a date
+ * like 2026-11-10T09:00. The relative form is the one the tool asks for, because
+ * a small model writes it far more reliably than a timestamp.
+ */
+export function parseWhen(value: string, now: number): number {
+  const text = value.trim();
+  if (!text) throw new Error("The scheduled post has no time. Say when it should go out.");
+
+  const relative = /^in\s+(\d+(?:\.\d+)?)\s*(minute|minutes|hour|hours|day|days)\b/i.exec(text);
+  if (relative) {
+    const amount = Number(relative[1]);
+    const unit = relative[2].toLowerCase();
+    const step = unit.startsWith("day")
+      ? 24 * 60 * 60_000
+      : unit.startsWith("hour")
+        ? 60 * 60_000
+        : 60_000;
+    return now + Math.round(amount * step);
+  }
+
+  const parsed = Date.parse(text);
+  if (!Number.isNaN(parsed)) return parsed;
+
+  throw new Error(
+    'That time could not be read. Say "in 45 minutes", "in 2 hours", or give a date like 2026-11-10T09:00.'
+  );
+}
+
+/** A time a person can read: the day and the clock, in the local zone. */
+export function formatWhen(at: number): string {
+  return new Date(at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 /**

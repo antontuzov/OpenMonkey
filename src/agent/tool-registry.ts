@@ -292,6 +292,47 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     mutating: true,
     timeoutMs: 60_000,
   },
+  {
+    type: "publish",
+    action: "schedule",
+    description: "Queue a post to go out later, at a time the user picks",
+    args: {
+      channel: {
+        type: "string",
+        required: true,
+        description: "Which channel to post to",
+        enum: ["telegram", "reddit", "bluesky", "mastodon"],
+        maxLength: 20,
+      },
+      text: { type: "string", required: true, description: "The text of the post", maxLength: 40_000 },
+      title: {
+        type: "string",
+        description: "Reddit post title; the other channels have no title",
+        maxLength: 300,
+      },
+      imageUrl: {
+        type: "string",
+        description: "Image URL for a Telegram, Bluesky or Mastodon post; Reddit posts cannot carry an image",
+        maxLength: 2_048,
+      },
+      when: {
+        type: "string",
+        required: true,
+        description: 'When it should go out: "in 45 minutes", "in 2 hours", or a date like 2026-11-10T09:00',
+        maxLength: 100,
+      },
+    },
+    mutating: true,
+    timeoutMs: 30_000,
+  },
+  {
+    type: "publish",
+    action: "list_scheduled",
+    description: "List the posts waiting to go out, and the ones that already went out",
+    args: {},
+    mutating: false,
+    timeoutMs: 15_000,
+  },
 ];
 
 export const getToolDefinition = (type: TaskType, action: string): ToolDefinition | undefined =>

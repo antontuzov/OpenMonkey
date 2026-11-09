@@ -13,13 +13,18 @@ remote API. Everything below describes what version 0.9 stores and what it sends
   `~/Library/Application Support/openmonkey` in development,
   `~/Library/Application Support/OpenMonkey` in packaged builds.
 - **Memory facts and summaries.** Same database, same encryption and retention rules.
+- **Queued posts.** A post waiting to go out later is stored in the same database, with
+  its text sealed like a message body. It does not travel in an exported backup: the
+  post was approved on this Mac, and the credential it would need lives in this Mac's
+  keychain.
 - **Logs.** `logs/openmonkey.log` in the same directory.
 - **Attachments.** A file you attach is read locally and its text is sent to the local
   model; there is no upload.
 
 ## Encryption at rest
 
-Message bodies, task records, audit rows and memory facts are sealed with AES-256-GCM
+Message bodies, task records, audit rows, memory facts and the text of a queued post are
+sealed with AES-256-GCM
 (`enc:v1:` envelope) when **Encrypt stored data** is on — the default.
 
 - The 32-byte key is kept in the macOS Keychain through Electron `safeStorage`. On a
@@ -38,7 +43,9 @@ Message bodies, task records, audit rows and memory facts are sealed with AES-25
 ## Retention
 
 **Auto-delete after** (7/30/90/365 days, default 30) prunes older messages, tasks and
-audit rows at launch and every six hours while the app runs. With **Save conversation
+audit rows at launch and every six hours while the app runs. A queued post that has not
+gone out yet is never pruned — it is waiting for its time — and one that has gone out is
+pruned with the rest. With **Save conversation
 history** off, a conversation lives only in memory for the current run and nothing is
 written to disk. The Privacy page reports the actual state rather than a promise.
 
@@ -65,6 +72,13 @@ password and the Mastodon access token. Each of them lives in the macOS keychain
 never in the settings file, and the page shows only the last four characters of the
 identifying field. A post goes to the target you set in Settings, never to a target
 the model names.
+
+A post the app sends on its own is a post you read and approved first. When a post is
+queued for later, the app shows you the exact text, the channel and the time and waits
+for your approval; when the time comes it sends exactly that text to that channel
+without asking again. Nothing is sent that you did not see first, and a post whose
+approval policy is Block is refused. The network switch below holds a queued post too:
+with it off, the app waits and sends nothing until you turn it back on.
 
 **Network access** in Settings → Privacy → Diagnostics is a hard switch for
 app-initiated requests: model downloads, page fetches, update checks and MCP traffic
@@ -98,4 +112,5 @@ cannot be undone; export a backup first if the history matters.
 
 The privacy behaviour is covered by tests: encryption on/off cycles and the `VACUUM`,
 retention pruning, save-history off, export contents, path confinement including a
-symlink escape, and log redaction/rotation. See `ROADMAP.md` → Phase 7.
+symlink escape, log redaction/rotation, and the text of a queued post staying sealed in
+the database. See `ROADMAP.md` → Phase 7.

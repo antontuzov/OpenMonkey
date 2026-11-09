@@ -324,6 +324,50 @@ test("every row a settings page renders can be found by typing its own name", as
   expect(missing).toEqual([]);
 });
 
+test("Settings → Publishing lists the queued posts and can cancel one", async () => {
+  const dbFile = path.join(profile, "data", "openmonkey.db");
+  await expect.poll(() => existsSync(dbFile)).toBe(true);
+
+  // The queue is seeded straight into the database so the list can be checked without
+  // a model behind it. The time is far enough ahead that the ticker leaves it alone.
+  const db = new Database(dbFile);
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO scheduled_posts (id, channel, text, title, image_url, due_at, created_at, status, attempts, error, posted_at)
+     VALUES (?, ?, ?, NULL, NULL, ?, ?, 'pending', 0, NULL, NULL)`
+  ).run("post_e2e_pending", "telegram", "Build notes go out at nine", now + 30 * 24 * 3_600_000, now);
+  db.prepare(
+    `INSERT INTO scheduled_posts (id, channel, text, title, image_url, due_at, created_at, status, attempts, error, posted_at)
+     VALUES (?, ?, ?, NULL, NULL, ?, ?, 'posted', 1, NULL, ?)`
+  ).run("post_e2e_done", "telegram", "Yesterday's notes", now - 3_600_000, now - 3_600_000, now - 3_600_000);
+  db.close();
+
+  await openSettingsPage("Publishing");
+  await expect(page.getByRole("heading", { name: "Publishing" })).toBeVisible();
+
+  // The row the search jumps to exists, and the queued post is on screen with a Cancel.
+  await expect(page.locator("main").getByText("Scheduled posts", { exact: true })).toBeVisible();
+  await expect(page.getByText("Build notes go out at nine")).toBeVisible();
+  await expect(page.getByText("goes out", { exact: false }).first()).toBeVisible();
+  // A post that already went out says so and offers no Cancel.
+  await expect(page.getByText("Yesterday's notes")).toBeVisible();
+  await expect(page.getByText("went out", { exact: false }).first()).toBeVisible();
+
+  const pendingRow = page.locator(".row", { hasText: "Build notes go out at nine" });
+  await pendingRow.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText("The scheduled post was cancelled.")).toBeVisible();
+  await expect(page.getByText("Build notes go out at nine")).toHaveCount(0);
+
+  await expect
+    .poll(() => {
+      const reader = new Database(dbFile, { readonly: true });
+      const row = reader.prepare("SELECT id FROM scheduled_posts WHERE id = ?").get("post_e2e_pending");
+      reader.close();
+      return row;
+    })
+    .toBeUndefined();
+});
+
 test("the empty chat offers starter prompts that fill the composer", async () => {
   // Until the agent is ready, the empty chat shows the card that says where the
   // weights come from instead of the welcome panel; that card is the honest answer

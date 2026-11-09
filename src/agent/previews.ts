@@ -245,16 +245,20 @@ export async function buildPreview(
               : channel === "mastodon"
                 ? publishing?.mastodonInstance
                 : "";
+      const scheduling = action === "schedule";
       return {
         kind: "fields",
-        title: "Post to your own channel",
+        title: scheduling ? "Schedule a post" : "Post to your own channel",
         fields: present([
           field("Channel", channel),
+          scheduling ? field("When", args.when) : null,
           field("Title", args.title),
           field("To", target ? (channel === "reddit" ? `r/${target.replace(/^\/?r\//i, "")}` : target) : "no target set"),
         ]),
         body: clip(String(args.text ?? "")),
-        note: "This goes out under your own account and the app cannot take it back. The token stays in the system keychain.",
+        note: scheduling
+          ? "The post waits in the app and goes out at that time under your own account. The app cannot take it back."
+          : "This goes out under your own account and the app cannot take it back. The token stays in the system keychain.",
       };
     }
 

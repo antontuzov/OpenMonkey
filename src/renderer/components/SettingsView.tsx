@@ -79,6 +79,7 @@ import {
   type PrivacyStatus,
   type PublisherChannel,
   type PublisherChannelStatus,
+  type ScheduledPost,
   type SafeModeInfo,
   type SettingsPage,
   type WorkspaceHit,
@@ -183,6 +184,15 @@ const PUBLISH_CHANNEL_LABEL: Record<PublisherChannel, string> = {
 };
 
 const publishChannelLabel = (channel: PublisherChannel): string => PUBLISH_CHANNEL_LABEL[channel];
+
+/** Where a queued post stands, in words a reader can read. */
+const scheduledPostState = (post: ScheduledPost): string => {
+  if (post.status === "pending") return `goes out ${formatDateTime(post.dueAt)}`;
+  if (post.status === "posted") {
+    return post.postedAt ? `went out ${formatDateTime(post.postedAt)}` : "went out";
+  }
+  return `did not go out — ${post.error ?? "the app could not send it"}`;
+};
 
 const NAV = [
   {
@@ -343,6 +353,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [resetBusy, setResetBusy] = useState(false);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [publishChannels, setPublishChannels] = useState<PublisherChannelStatus[]>([]);
+  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
   const [publishBusy, setPublishBusy] = useState<PublisherChannel | null>(null);
   const [publishNotice, setPublishNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [telegramToken, setTelegramToken] = useState("");
@@ -496,12 +507,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     void window.electron?.getModelStatus().then(setModels).catch(() => undefined);
     void window.electron?.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
     void window.electron?.getPublisherChannels().then(setPublishChannels).catch(() => undefined);
+    void refreshScheduledPosts();
     void refreshCopies();
   }, []);
 
   const refreshPublishChannels = async () => {
     const next = await window.electron?.getPublisherChannels();
     if (next) setPublishChannels(next);
+  };
+
+  const refreshScheduledPosts = async () => {
+    const next = await window.electron?.getScheduledPosts();
+    if (next) setScheduledPosts(next);
+  };
+
+  /** Takes a queued post out of the queue; it will not go out. */
+  const cancelScheduledPost = async (id: string) => {
+    setPublishNotice(null);
+    const result = await window.electron?.cancelScheduledPost(id);
+    setPublishNotice(
+      result?.ok
+        ? { text: "The scheduled post was cancelled.", error: false }
+        : { text: result?.error ?? "It could not be cancelled.", error: true }
+    );
+    await refreshScheduledPosts();
   };
 
   /** The token goes to the keychain; the form is cleared so it stays out of the DOM. */
@@ -1107,6 +1136,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     // A server that is still starting, or one that dies, should show up without
     // the user leaving the page and coming back.
     const timer = window.setInterval(() => void refreshMcp(), 2_500);
+    return () => window.clearInterval(timer);
+  }, [section]);
+
+  useEffect(() => {
+    if (section !== "publishing") return;
+    void refreshScheduledPosts();
+    // A post goes out on its own, so the list has to show that without a reload.
+    const timer = window.setInterval(() => void refreshScheduledPosts(), 5_000);
     return () => window.clearInterval(timer);
   }, [section]);
 
@@ -2711,6 +2748,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         )}
                       </div>
                     </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">The queue</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Scheduled posts</p>
+                        <p className="row-copy">
+                          The posts the app will send for you, and the ones that already went out.
+                        </p>
+                      </div>
+                    </div>
+                    {scheduledPosts.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <CalendarClock size={18} className="mx-auto text-faint" />
+                        <p className="text-[11.5px] text-muted mt-2">
+                          Nothing is waiting. Ask the agent to post later and the post will wait here until its time
+                          comes.
+                        </p>
+                      </div>
+                    ) : (
+                      scheduledPosts.map((post) => (
+                        <div key={post.id} className="row">
+                          <div className="min-w-0">
+                            <p className="row-title truncate" data-dynamic="1">
+                              {publishChannelLabel(post.channel)} · {scheduledPostState(post)}
+                            </p>
+                            <p className="row-copy truncate">{post.text}</p>
+                          </div>
+                          {post.status === "pending" && (
+                            <button onClick={() => void cancelScheduledPost(post.id)} className="btn">
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </section>
 
