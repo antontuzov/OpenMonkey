@@ -333,6 +333,47 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     mutating: false,
     timeoutMs: 15_000,
   },
+  {
+    type: "publish",
+    action: "draft",
+    description:
+      "Write a post down for the user to read and change, instead of sending it. Nothing goes out",
+    args: {
+      channel: {
+        type: "string",
+        required: true,
+        description: "Which channel the post is meant for",
+        enum: ["telegram", "reddit", "bluesky", "mastodon"],
+        maxLength: 20,
+      },
+      text: { type: "string", required: true, description: "The text of the post", maxLength: 40_000 },
+      title: {
+        type: "string",
+        description: "Reddit post title; the other channels have no title",
+        maxLength: 300,
+      },
+      imageUrl: {
+        type: "string",
+        description: "Image URL for a Telegram, Bluesky or Mastodon post; Reddit posts cannot carry an image",
+        maxLength: 2_048,
+      },
+      note: {
+        type: "string",
+        description: "One line saying what the post is for, so the user can tell drafts apart",
+        maxLength: 200,
+      },
+    },
+    mutating: true,
+    timeoutMs: 30_000,
+  },
+  {
+    type: "publish",
+    action: "list_drafts",
+    description: "List the posts the agent wrote down but has not sent",
+    args: {},
+    mutating: false,
+    timeoutMs: 15_000,
+  },
 ];
 
 export const getToolDefinition = (type: TaskType, action: string): ToolDefinition | undefined =>

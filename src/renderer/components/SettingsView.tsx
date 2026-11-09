@@ -76,6 +76,7 @@ import {
   type ModelPreference,
   type ModelStatus,
   type Mood,
+  type PostDraft,
   type PrivacyStatus,
   type PublisherChannel,
   type PublisherChannelStatus,
@@ -354,6 +355,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [highlight, setHighlight] = useState<string | null>(null);
   const [publishChannels, setPublishChannels] = useState<PublisherChannelStatus[]>([]);
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
+  const [postDrafts, setPostDrafts] = useState<PostDraft[]>([]);
+  const [draftBusy, setDraftBusy] = useState<string | null>(null);
+  /** The draft the user is changing the wording of, if any. */
+  const [editingDraft, setEditingDraft] = useState<string | null>(null);
+  const [draftText, setDraftText] = useState("");
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftWhen, setDraftWhen] = useState("");
   const [publishBusy, setPublishBusy] = useState<PublisherChannel | null>(null);
   const [publishNotice, setPublishNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [telegramToken, setTelegramToken] = useState("");
@@ -508,6 +516,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     void window.electron?.getPrivacyStatus().then(setPrivacyStatus).catch(() => undefined);
     void window.electron?.getPublisherChannels().then(setPublishChannels).catch(() => undefined);
     void refreshScheduledPosts();
+    void refreshPostDrafts();
     void refreshCopies();
   }, []);
 
@@ -519,6 +528,88 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const refreshScheduledPosts = async () => {
     const next = await window.electron?.getScheduledPosts();
     if (next) setScheduledPosts(next);
+  };
+
+  const refreshPostDrafts = async () => {
+    const next = await window.electron?.getPostDrafts();
+    if (next) setPostDrafts(next);
+  };
+
+  /** Opens the wording of a draft so the user can change it. */
+  const openDraftEditor = (draft: PostDraft) => {
+    setEditingDraft(draft.id);
+    setDraftText(draft.text);
+    setDraftTitle(draft.title ?? "");
+    setDraftWhen("");
+    setPublishNotice(null);
+  };
+
+  /** Keeps the wording the user wrote. */
+  const saveDraftEdit = async (id: string) => {
+    setDraftBusy(id);
+    try {
+      const result = await window.electron?.updatePostDraft(id, {
+        text: draftText,
+        title: draftTitle,
+      });
+      setPublishNotice(
+        result?.ok
+          ? { text: "The draft was changed.", error: false }
+          : { text: result?.error ?? "The draft could not be changed.", error: true }
+      );
+      await refreshPostDrafts();
+    } finally {
+      setDraftBusy(null);
+    }
+  };
+
+  /** Sends the draft as it stands, under the user's own account. */
+  const sendDraft = async (id: string) => {
+    setPublishNotice(null);
+    setDraftBusy(id);
+    try {
+      const result = await window.electron?.sendPostDraft(id);
+      setPublishNotice(
+        result?.ok
+          ? { text: result.detail ?? "The post went out.", error: false }
+          : { text: result?.error ?? "The post did not go out.", error: true }
+      );
+      setEditingDraft(null);
+      await refreshPostDrafts();
+    } finally {
+      setDraftBusy(null);
+    }
+  };
+
+  /** Puts the draft in the queue for a time the user names. */
+  const scheduleDraft = async (id: string) => {
+    setPublishNotice(null);
+    setDraftBusy(id);
+    try {
+      const result = await window.electron?.schedulePostDraft(id, draftWhen);
+      setPublishNotice(
+        result?.ok
+          ? { text: result.detail ?? "The post is queued.", error: false }
+          : { text: result?.error ?? "The post could not be queued.", error: true }
+      );
+      if (result?.ok) setEditingDraft(null);
+      await refreshPostDrafts();
+    } finally {
+      setDraftBusy(null);
+    }
+  };
+
+  /** Throws the draft away without sending it. */
+  const deleteDraft = async (id: string) => {
+    setPublishNotice(null);
+    const result = await window.electron?.deletePostDraft(id);
+    setPublishNotice(
+      result?.ok
+        ? { text: "The draft was deleted.", error: false }
+        : { text: result?.error ?? "It could not be deleted.", error: true }
+    );
+    if (editingDraft === id) setEditingDraft(null);
+    await refreshPostDrafts();
   };
 
   /** Takes a queued post out of the queue; it will not go out. */
@@ -1142,6 +1233,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   useEffect(() => {
     if (section !== "publishing") return;
     void refreshScheduledPosts();
+    void refreshPostDrafts();
     // A post goes out on its own, so the list has to show that without a reload.
     const timer = window.setInterval(() => void refreshScheduledPosts(), 5_000);
     return () => window.clearInterval(timer);
@@ -2748,6 +2840,113 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         )}
                       </div>
                     </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">Drafts</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Post drafts</p>
+                        <p className="row-copy">
+                          Posts the agent wrote for you. Read one, change the wording if you want, and only then send it
+                          or queue it for later.
+                        </p>
+                      </div>
+                    </div>
+                    {postDrafts.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <Pencil size={18} className="mx-auto text-faint" />
+                        <p className="text-[11.5px] text-muted mt-2">
+                          Nothing is waiting for your word. Ask the agent to write a post down instead of sending it, and
+                          it will wait here.
+                        </p>
+                      </div>
+                    ) : (
+                      postDrafts.map((draft) => (
+                        <div key={draft.id}>
+                          <div className="row !items-start">
+                            <div className="min-w-0 flex-1">
+                              <p className="row-title truncate" data-dynamic="1">
+                                {publishChannelLabel(draft.channel)} · written {formatDateTime(draft.createdAt)}
+                              </p>
+                              <p className="row-copy whitespace-pre-wrap break-words">{draft.text}</p>
+                              {draft.note && <p className="row-copy text-faint">{draft.note}</p>}
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={() => openDraftEditor(draft)}
+                                className="btn"
+                                disabled={draftBusy !== null}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => void sendDraft(draft.id)}
+                                className="btn btn-primary"
+                                disabled={draftBusy !== null}
+                              >
+                                {draftBusy === draft.id ? <Loader size={12} className="animate-spin" /> : <Send size={12} />}
+                                Send
+                              </button>
+                              <button
+                                onClick={() => void deleteDraft(draft.id)}
+                                className="btn"
+                                disabled={draftBusy !== null}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                          {editingDraft === draft.id && (
+                            <div className="row !items-start">
+                              <div className="min-w-0 flex-1 flex flex-col gap-2">
+                                {draft.channel === "reddit" && (
+                                  <input
+                                    value={draftTitle}
+                                    onChange={(event) => setDraftTitle(event.target.value)}
+                                    placeholder="Title"
+                                    className="field"
+                                  />
+                                )}
+                                <textarea
+                                  value={draftText}
+                                  onChange={(event) => setDraftText(event.target.value)}
+                                  placeholder="The text of the post"
+                                  className="field min-h-[110px]"
+                                />
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button
+                                    onClick={() => void saveDraftEdit(draft.id)}
+                                    className="btn"
+                                    disabled={draftBusy !== null}
+                                  >
+                                    Save changes
+                                  </button>
+                                  <input
+                                    value={draftWhen}
+                                    onChange={(event) => setDraftWhen(event.target.value)}
+                                    placeholder="in 45 minutes"
+                                    className="field w-[170px]"
+                                  />
+                                  <button
+                                    onClick={() => void scheduleDraft(draft.id)}
+                                    className="btn"
+                                    disabled={draftBusy !== null || !draftWhen.trim()}
+                                  >
+                                    Queue it
+                                  </button>
+                                  <button onClick={() => setEditingDraft(null)} className="btn">
+                                    Close
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </section>
 

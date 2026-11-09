@@ -169,6 +169,12 @@ const api: ElectronAPI = {
   checkPublisherChannel: (channel: PublisherChannel) => ipcRenderer.invoke("check-publisher-channel", channel),
   getScheduledPosts: () => ipcRenderer.invoke("get-scheduled-posts"),
   cancelScheduledPost: (id: string) => ipcRenderer.invoke("cancel-scheduled-post", id),
+  getPostDrafts: () => ipcRenderer.invoke("get-post-drafts"),
+  updatePostDraft: (id: string, patch: { text?: string; title?: string; note?: string }) =>
+    ipcRenderer.invoke("update-post-draft", id, patch),
+  deletePostDraft: (id: string) => ipcRenderer.invoke("delete-post-draft", id),
+  sendPostDraft: (id: string) => ipcRenderer.invoke("send-post-draft", id),
+  schedulePostDraft: (id: string, when: string) => ipcRenderer.invoke("schedule-post-draft", id, when),
 
   onAgentReady: (callback: () => void) => on<undefined>("agent-ready", () => callback()),
   onAgentStatus: (callback: (status: AgentStatus) => void) => on<AgentStatus>("agent-status", callback),

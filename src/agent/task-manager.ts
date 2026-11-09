@@ -28,6 +28,7 @@ import type {
   AuditEntry,
   FileWrite,
   McpServerStatus,
+  PublisherChannel,
   ScheduledPost,
   Task,
   TaskRequest,
@@ -117,6 +118,21 @@ export class TaskManager {
    * audit log like any other.
    */
   async executeScheduledPost(post: ScheduledPost): Promise<{ ok: boolean; error?: string }> {
+    return await this.executeApprovedPost(
+      { channel: post.channel, text: post.text, title: post.title, imageUrl: post.imageUrl },
+      `Scheduled post to ${post.channel}`
+    );
+  }
+
+  /**
+   * Sends a post the user approved by hand: a draft they read, and changed if
+   * they wanted to. The click was the approval, so the app does not ask a second
+   * time, but a Block policy still refuses it.
+   */
+  async executeApprovedPost(
+    post: { channel: PublisherChannel; text: string; title?: string; imageUrl?: string },
+    summary: string
+  ): Promise<{ ok: boolean; error?: string }> {
     const request: TaskRequest = {
       type: "publish",
       action: "post",
@@ -126,7 +142,7 @@ export class TaskManager {
         title: post.title,
         imageUrl: post.imageUrl,
       },
-      summary: `Scheduled post to ${post.channel}`,
+      summary,
       mutating: true,
     };
     const task = await this.executeTask(request, null, undefined, "main", { preApproved: true });

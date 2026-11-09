@@ -60,6 +60,12 @@ and approval-gated tools. Nothing here is a mock screen.
   than pushes through the quiet hours, the network switch and the per-channel caps, and
   Settings → Publishing lists what is waiting with a Cancel on each one. The queued text
   is sealed in the encrypted database like the rest of the history.
+- Post drafts: the agent can write a post down instead of sending it. The draft waits in
+  Settings → Publishing, the user reads it, edits the wording and then sends it or
+  queues it, and the wording the user leaves is the wording that goes out. A draft is
+  held to the safety rules but not to the size limits, and says so when it will not fit.
+  The text is sealed in the encrypted database, and a draft is removed only when the send
+  or the queueing worked.
 - Settings: Profile, Appearance, Approvals, Workspace, Privacy, Model and MCP servers pages
   with search and real controls.
 - Privacy: AES-256-GCM rows, key file mode 0600, path confinement, local-only by default;

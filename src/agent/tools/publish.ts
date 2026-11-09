@@ -11,6 +11,7 @@ import { assertNetworkAllowed } from "../../utils/network";
 import { config, dataRoot } from "../../utils/config";
 import { publisherSecrets, type PublisherSecrets } from "../../utils/publisher-secrets";
 import { publishQueue, type PublishQueue } from "../../utils/publish-queue";
+import { postDrafts, type PostDraftStore } from "../../utils/post-drafts";
 
 /** Telegram's plain message limit, and the much shorter one a photo caption allows. */
 const TELEGRAM_TEXT_LIMIT = 4_096;
@@ -77,6 +78,8 @@ export interface PublishDeps {
   historyFile?: string;
   /** Where a post waits until its time comes. */
   queue?: PublishQueue;
+  /** Where a post waits until the user has read it. */
+  drafts?: PostDraftStore;
 }
 
 export interface PostRequest {
@@ -98,6 +101,7 @@ export class PublishTools {
   private readonly now: () => number;
   private readonly history: PublishHistory;
   private readonly queue: PublishQueue;
+  private readonly drafts: PostDraftStore;
 
   constructor(deps: PublishDeps = {}) {
     this.secrets = deps.secrets ?? publisherSecrets;
@@ -116,6 +120,7 @@ export class PublishTools {
     this.now = deps.now ?? (() => Date.now());
     this.history = new PublishHistory(deps.historyFile ?? publishHistoryFile(), this.now);
     this.queue = deps.queue ?? publishQueue;
+    this.drafts = deps.drafts ?? postDrafts;
   }
 
   async execute(action: string, args: Record<string, unknown>): Promise<string> {
@@ -124,6 +129,10 @@ export class PublishTools {
         return this.listChannels();
       case "list_scheduled":
         return this.listScheduled();
+      case "list_drafts":
+        return this.listDrafts();
+      case "draft":
+        return await this.draft(args);
       case "post":
         return await this.post(args);
       case "schedule":
@@ -171,6 +180,60 @@ export class PublishTools {
     ].join("\n");
   }
 
+  /**
+   * Writes the post down instead of sending it. The user reads it in the settings
+   * page, changes the wording if they want, and only then sends it or queues it.
+   */
+  async draft(args: Record<string, unknown>): Promise<string> {
+    const channel = String(args.channel ?? "") as PublisherChannel;
+    if (!LIMITS[channel]) throw new Error(`Unknown publishing channel: ${channel}`);
+
+    const text = String(args.text ?? "").trim();
+    if (!text) throw new Error("The post has no text");
+    if (!this.drafts.available()) {
+      throw new Error(
+        "The app cannot hold a draft right now: the history is locked, so the draft would have nowhere to wait."
+      );
+    }
+
+    const request: PostRequest = {
+      text,
+      title: args.title ? String(args.title) : undefined,
+      imageUrl: args.imageUrl ? String(args.imageUrl) : undefined,
+    };
+    // A draft is never sent, so only the rules that must never be broken apply to it
+    // here; the sizes are checked when it goes out, and the user may still change it.
+    this.checkSafety(channel, request);
+
+    const note = args.note ? String(args.note).trim() : "";
+    const draft = this.drafts.add({
+      channel,
+      text,
+      title: request.title,
+      imageUrl: request.imageUrl,
+      note: note || undefined,
+    });
+
+    const lines = [
+      `Draft saved for ${channel}. The user reads it in Settings → Publishing and sends it, or queues it for later, themselves.`,
+      `Nothing has gone out. The draft is ${draft.id}.`,
+    ];
+    const warning = this.sizeWarning(channel, request);
+    if (warning) lines.push(warning);
+    return lines.join(" ");
+  }
+
+  /** The drafts the user has not sent yet. */
+  listDrafts(): string {
+    const drafts = this.drafts.list();
+    if (!drafts.length) return "There are no post drafts.";
+    const lines = drafts.map((draft) => {
+      const what = draft.note?.trim() || draft.text.slice(0, 80);
+      return `- ${draft.id}: ${draft.channel} — ${what}`;
+    });
+    return ["Post drafts:", ...lines].join("\n");
+  }
+
   /** Posts a message to the user's own channel or account. */
   async post(args: Record<string, unknown>): Promise<string> {
     const channel = String(args.channel ?? "") as PublisherChannel;
@@ -179,14 +242,7 @@ export class PublishTools {
     const text = String(args.text ?? "").trim();
     if (!text) throw new Error("The post has no text");
 
-    const secret = this.secrets.read(channel);
-    if (!secret) {
-      throw new Error(`No ${channel} ${this.secretNoun(channel)} is saved. Add it in Settings → Publishing first.`);
-    }
-    const target = this.target(channel);
-    if (!target) {
-      throw new Error(`No ${channel} target is set. Add it in Settings → Publishing first.`);
-    }
+    const secret = this.requireChannel(channel);
 
     const request: PostRequest = {
       text,
@@ -248,14 +304,7 @@ export class PublishTools {
     const text = String(args.text ?? "").trim();
     if (!text) throw new Error("The post has no text");
 
-    const secret = this.secrets.read(channel);
-    if (!secret) {
-      throw new Error(`No ${channel} ${this.secretNoun(channel)} is saved. Add it in Settings → Publishing first.`);
-    }
-    const target = this.target(channel);
-    if (!target) {
-      throw new Error(`No ${channel} target is set. Add it in Settings → Publishing first.`);
-    }
+    this.requireChannel(channel);
     if (!this.queue.available()) {
       throw new Error(
         "The app cannot hold a scheduled post right now: the history is locked, so the post would have nowhere to wait."
@@ -284,11 +333,63 @@ export class PublishTools {
       dueAt,
     });
 
+    const target = this.target(channel);
     return [
       `Scheduled: the post goes to ${channel === "reddit" ? `r/${target}` : target} on ${formatWhen(dueAt)}.`,
       "The user approves the post now, and the app sends exactly that text when the time comes.",
       "It can be cancelled in Settings → Publishing.",
     ].join(" ");
+  }
+
+  /**
+   * Queues a post the user read and approved in the settings page. The same rules
+   * apply as for the agent's own schedule, so a post that could never go out is
+   * refused here rather than failing silently later.
+   */
+  scheduleApproved(
+    post: { channel: PublisherChannel; text: string; title?: string; imageUrl?: string },
+    when: string
+  ): { ok: boolean; error?: string; detail?: string } {
+    const channel = post.channel;
+    if (!LIMITS[channel]) return { ok: false, error: `Unknown publishing channel: ${channel}` };
+
+    const text = post.text.trim();
+    if (!text) return { ok: false, error: "The post has no text" };
+
+    try {
+      this.requireChannel(channel);
+    } catch (error) {
+      return { ok: false, error: messageOf(error) };
+    }
+    if (!this.queue.available()) {
+      return {
+        ok: false,
+        error:
+          "The app cannot hold a scheduled post right now: the history is locked, so the post would have nowhere to wait.",
+      };
+    }
+
+    const request: PostRequest = { text, title: post.title, imageUrl: post.imageUrl };
+    try {
+      this.checkContent(channel, request);
+      const dueAt = parseWhen(when, this.now());
+      if (dueAt <= this.now()) {
+        return { ok: false, error: "That time is not in the future. Say when the post should go out." };
+      }
+      if (dueAt - this.now() > MAX_SCHEDULE_MS) {
+        return { ok: false, error: "A post can be scheduled up to 30 days ahead." };
+      }
+      this.queue.add({
+        channel,
+        text,
+        title: request.title,
+        imageUrl: request.imageUrl,
+        dueAt,
+      });
+      return { ok: true, detail: `The post is queued for ${formatWhen(dueAt)}.` };
+    } catch (error) {
+      return { ok: false, error: messageOf(error) };
+    }
   }
 
   /** The posts that are waiting, and the ones that went out. */
@@ -344,6 +445,18 @@ export class PublishTools {
     return "token";
   }
 
+  /** A channel can only take a post once its secret and its target are in place. */
+  private requireChannel(channel: PublisherChannel): PublisherSecret {
+    const secret = this.secrets.read(channel);
+    if (!secret) {
+      throw new Error(`No ${channel} ${this.secretNoun(channel)} is saved. Add it in Settings → Publishing first.`);
+    }
+    if (!this.target(channel)) {
+      throw new Error(`No ${channel} target is set. Add it in Settings → Publishing first.`);
+    }
+    return secret;
+  }
+
   private target(channel: PublisherChannel): string {
     const settings = this.settings();
     if (channel === "telegram") return settings.telegramChat.trim();
@@ -377,6 +490,28 @@ export class PublishTools {
 
   /** Refuses what the platform forbids and what its own limits forbid. */
   private checkContent(channel: PublisherChannel, request: PostRequest): void {
+    this.checkSafety(channel, request);
+    this.checkLimits(channel, request);
+  }
+
+  /**
+   * The rules that hold whatever else is true of the post. A draft is never sent,
+   * so it is held to these too: the app does not write down a post it would have
+   * to refuse later.
+   */
+  private checkSafety(channel: PublisherChannel, request: PostRequest): void {
+    if (channel !== "reddit") return;
+    for (const guard of REDDIT_GUARDS) {
+      if (guard.test(request.text) || guard.test(request.title ?? "")) {
+        throw new Error(
+          "Reddit's rules forbid asking for votes or for comments. Take the request out and try again."
+        );
+      }
+    }
+  }
+
+  /** What the channel can take: the sizes it holds and the fields it needs. */
+  private checkLimits(channel: PublisherChannel, request: PostRequest): void {
     if (channel === "telegram") {
       const limit = request.imageUrl ? TELEGRAM_CAPTION_LIMIT : TELEGRAM_TEXT_LIMIT;
       if (request.text.length > limit) {
@@ -398,13 +533,6 @@ export class PublishTools {
       if (request.text.length > REDDIT_TEXT_LIMIT) {
         throw new Error(`A Reddit post holds ${REDDIT_TEXT_LIMIT} characters; this one has ${request.text.length}.`);
       }
-      for (const guard of REDDIT_GUARDS) {
-        if (guard.test(request.text) || guard.test(request.title ?? "")) {
-          throw new Error(
-            "Reddit's rules forbid asking for votes or for comments. This post was not sent; take the request out and try again."
-          );
-        }
-      }
       return;
     }
 
@@ -419,6 +547,16 @@ export class PublishTools {
     const length = [...request.text].length;
     if (length > MASTODON_TEXT_LIMIT) {
       throw new Error(`A Mastodon post holds ${MASTODON_TEXT_LIMIT} characters; this one has ${length}.`);
+    }
+  }
+
+  /** What is wrong with the post as it stands, if the channel will not take it. */
+  private sizeWarning(channel: PublisherChannel, request: PostRequest): string {
+    try {
+      this.checkLimits(channel, request);
+      return "";
+    } catch (error) {
+      return `It will not go out as it stands: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
 
@@ -872,6 +1010,9 @@ const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 function graphemeLength(text: string): number {
   return [...segmenter.segment(text)].length;
 }
+
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
 
 /** How far ahead a post may be scheduled. */
 const MAX_SCHEDULE_MS = 30 * 24 * 60 * 60_000;

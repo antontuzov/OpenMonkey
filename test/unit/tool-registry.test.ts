@@ -168,6 +168,27 @@ test("the scheduling action is declared the way the queue reads it", () => {
   );
 });
 
+test("the drafting action is declared the way the drafts page reads it", () => {
+  const draft = getToolDefinition("publish", "draft");
+  assert.ok(draft);
+  // A draft is written down rather than sent, but it still changes the disk.
+  assert.equal(draft.mutating, true);
+  assert.equal(draft.args.channel?.required, true);
+  assert.deepEqual(draft.args.channel?.enum, ["telegram", "reddit", "bluesky", "mastodon"]);
+  assert.equal(draft.args.text?.required, true);
+  assert.equal(draft.args.note?.required, undefined);
+  assert.ok(describeBuiltInTools().includes("publish.draft"), "the prompt lists it, or the model cannot use it");
+
+  const list = getToolDefinition("publish", "list_drafts");
+  assert.ok(list);
+  // Listing the drafts only reads them, so it must not stop for approval.
+  assert.equal(list.mutating, false);
+  assert.ok(
+    describeBuiltInTools().includes("publish.list_drafts"),
+    "the prompt lists it, or the model cannot use it"
+  );
+});
+
 test("JSON Schema validation covers the MCP subset", () => {
   const schema = {
     type: "object",

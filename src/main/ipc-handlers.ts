@@ -27,6 +27,7 @@ import { readFileAsAttachment, searchFiles } from "../utils/file-search";
 import { keychainAvailable } from "../utils/secret-key";
 import { publisherSecrets } from "../utils/publisher-secrets";
 import { publishQueue } from "../utils/publish-queue";
+import { postDrafts } from "../utils/post-drafts";
 import { PublishTools, buildSecret } from "../agent/tools/publish";
 import { networkActivity } from "../utils/network";
 import { EXPORT_FILE_SUFFIX, encryptBundle, readBundleFile } from "../utils/portability";
@@ -885,6 +886,74 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     publishQueue.remove(postId);
     logger.info("publisher.scheduled.cancelled", { id: postId });
     return { ok: true };
+  });
+
+  // The posts the agent wrote but has not sent: the user reads them, changes the
+  // wording if they want, and only then sends or queues one.
+  ipcMain.handle("get-post-drafts", () => postDrafts.list());
+
+  ipcMain.handle("update-post-draft", (_event, id: unknown, patch: unknown) => {
+    const draftId = String(id ?? "");
+    const draft = postDrafts.get(draftId);
+    if (!draft) return { ok: false, error: "That draft is not on the list any more." };
+
+    const changes = (patch ?? {}) as { text?: unknown; title?: unknown; note?: unknown };
+    const text = typeof changes.text === "string" ? changes.text.trim() : draft.text;
+    if (!text) return { ok: false, error: "A draft needs some text." };
+    const title = typeof changes.title === "string" ? changes.title.trim() : draft.title;
+    const note = typeof changes.note === "string" ? changes.note.trim() : draft.note;
+
+    postDrafts.save({
+      ...draft,
+      text,
+      title: title || undefined,
+      note: note || undefined,
+      updatedAt: Date.now(),
+    });
+    logger.info("publisher.draft.updated", { id: draftId });
+    return { ok: true };
+  });
+
+  ipcMain.handle("delete-post-draft", (_event, id: unknown) => {
+    const draftId = String(id ?? "");
+    if (!postDrafts.get(draftId)) return { ok: false, error: "That draft is not on the list any more." };
+    postDrafts.remove(draftId);
+    logger.info("publisher.draft.deleted", { id: draftId });
+    return { ok: true };
+  });
+
+  ipcMain.handle("send-post-draft", async (_event, id: unknown) => {
+    const draftId = String(id ?? "");
+    const draft = postDrafts.get(draftId);
+    if (!draft) return { ok: false, error: "That draft is not on the list any more." };
+    const instance = deps.getAgent();
+    if (!instance) return { ok: false, error: "The app is not ready yet." };
+
+    // The click was the approval, so the app does not ask again, but a Block
+    // policy still refuses it and the post lands in the rail and the audit log.
+    const result = await instance.getTaskManager().executeApprovedPost(
+      { channel: draft.channel, text: draft.text, title: draft.title, imageUrl: draft.imageUrl },
+      `Post to ${draft.channel}`
+    );
+    if (!result.ok) return { ok: false, error: result.error };
+    postDrafts.remove(draftId);
+    logger.info("publisher.draft.sent", { id: draftId, channel: draft.channel });
+    return { ok: true, detail: `The post went out to ${draft.channel}.` };
+  });
+
+  ipcMain.handle("schedule-post-draft", (_event, id: unknown, when: unknown) => {
+    const draftId = String(id ?? "");
+    const draft = postDrafts.get(draftId);
+    if (!draft) return { ok: false, error: "That draft is not on the list any more." };
+
+    const result = publisher.scheduleApproved(
+      { channel: draft.channel, text: draft.text, title: draft.title, imageUrl: draft.imageUrl },
+      String(when ?? "")
+    );
+    if (!result.ok) return { ok: false, error: result.error };
+    postDrafts.remove(draftId);
+    logger.info("publisher.draft.scheduled", { id: draftId, channel: draft.channel });
+    return { ok: true, detail: result.detail };
   });
 }
 

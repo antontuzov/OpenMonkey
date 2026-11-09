@@ -392,6 +392,19 @@ export interface ScheduledPost {
   postedAt?: number;
 }
 
+/** A post the agent wrote but has not sent. The user reads it before it goes out. */
+export interface PostDraft {
+  id: string;
+  channel: PublisherChannel;
+  text: string;
+  title?: string;
+  imageUrl?: string;
+  /** Why the agent wrote it: one line the user can scan. */
+  note?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type ApprovalPolicy = "ask" | "allow" | "block";
 
 export type AuditDecision =
@@ -1136,6 +1149,19 @@ export interface ElectronAPI {
   getScheduledPosts: () => Promise<ScheduledPost[]>;
   /** Take a queued post out of the queue without sending it. */
   cancelScheduledPost: (id: string) => Promise<PublisherActionResult>;
+  /** The posts the agent wrote but has not sent. */
+  getPostDrafts: () => Promise<PostDraft[]>;
+  /** Save the wording the user changed. */
+  updatePostDraft: (
+    id: string,
+    patch: { text?: string; title?: string; note?: string }
+  ) => Promise<PublisherActionResult>;
+  /** Throw a draft away without sending it. */
+  deletePostDraft: (id: string) => Promise<PublisherActionResult>;
+  /** Send a draft the user read, as the user approved it. */
+  sendPostDraft: (id: string) => Promise<PublisherActionResult>;
+  /** Put a draft in the queue for a time the user picked. */
+  schedulePostDraft: (id: string, when: string) => Promise<PublisherActionResult>;
 
   /** Each subscription returns an unsubscribe function for the effect cleanup. */
   onAgentReady: (callback: () => void) => () => void;

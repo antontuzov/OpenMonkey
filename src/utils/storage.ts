@@ -31,6 +31,7 @@ import type {
   MemoryFact,
   Message,
   MessageAttachment,
+  PostDraft,
   QuickAskThread,
   SavedSearch,
   ScheduledPost,
@@ -53,7 +54,7 @@ const PREFIX = "enc:v1:";
 const DEFAULT_TITLE = "New chat";
 const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 /** Bumped when the table layout changes; an export carries it so a newer file is refused. */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 interface MessageRow {
   id: string;
@@ -379,6 +380,16 @@ export class Storage {
         attempts INTEGER NOT NULL DEFAULT 0,
         error TEXT,
         posted_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS post_drafts (
+        id TEXT PRIMARY KEY,
+        channel TEXT NOT NULL,
+        text TEXT NOT NULL,
+        title TEXT,
+        image_url TEXT,
+        note TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
       );
     `);
 
@@ -948,6 +959,7 @@ export class Storage {
       ["memory_summaries", ["content"]],
       ["quick_asks", ["question", "answer"]],
       ["scheduled_posts", ["text", "title", "error"]],
+      ["post_drafts", ["text", "title", "note"]],
     ];
     const recode = this.db.transaction(() => {
       for (const [table, names] of columns) {
@@ -1950,6 +1962,69 @@ export class Storage {
   /** Take a queued post out of the queue without sending it. */
   deleteScheduledPost(id: string): void {
     this.db?.prepare("DELETE FROM scheduled_posts WHERE id = ?").run(id);
+  }
+
+  /**
+   * A post the agent wrote but has not sent. The text is sealed like any other
+   * conversation text, so a draft is not left on disk in the clear.
+   */
+  savePostDraft(draft: PostDraft): void {
+    if (!this.db) return;
+    this.db
+      .prepare(
+        `INSERT INTO post_drafts (id, channel, text, title, image_url, note, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           channel = excluded.channel,
+           text = excluded.text,
+           title = excluded.title,
+           image_url = excluded.image_url,
+           note = excluded.note,
+           updated_at = excluded.updated_at`
+      )
+      .run(
+        draft.id,
+        draft.channel,
+        this.seal(draft.text),
+        draft.title ? this.seal(draft.title) : null,
+        draft.imageUrl ?? null,
+        draft.note ? this.seal(draft.note) : null,
+        draft.createdAt,
+        draft.updatedAt
+      );
+  }
+
+  /** The drafts the user has not sent yet, the newest first. */
+  getPostDrafts(): PostDraft[] {
+    if (!this.db) return [];
+    const rows = this.db
+      .prepare("SELECT * FROM post_drafts ORDER BY updated_at DESC")
+      .all() as Array<{
+      id: string;
+      channel: PostDraft["channel"];
+      text: string;
+      title: string | null;
+      image_url: string | null;
+      note: string | null;
+      created_at: number;
+      updated_at: number;
+    }>;
+
+    return rows.map((row) => ({
+      id: row.id,
+      channel: row.channel,
+      text: this.open(row.text),
+      title: row.title ? this.open(row.title) : undefined,
+      imageUrl: row.image_url ?? undefined,
+      note: row.note ? this.open(row.note) : undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  /** Throw a draft away without sending it. */
+  deletePostDraft(id: string): void {
+    this.db?.prepare("DELETE FROM post_drafts WHERE id = ?").run(id);
   }
 
   private pruneOlderThan(days: number): void {

@@ -8,6 +8,29 @@ that produced the build.
 
 ### Added
 
+- **The agent can write a post down for you to read, instead of sending it.** Ask it to
+  draft something — "draft a note for my Telegram channel about the release" — and it
+  writes the post down and stops there. Nothing goes out. The draft waits in
+  Settings → Publishing, where you read it, change the wording if you want, and then
+  either send it or queue it for later. The wording you leave is the wording that goes
+  out, byte for byte. Sending from that page runs the post through the same machinery as
+  any other post, so it lands in the activity rail and in the audit log, the hourly cap
+  and the gap between two posts still hold it back, the network switch still holds it,
+  and the approval policy still refuses a post it would refuse. A draft that asks for
+  upvotes is refused before it is even written down; a draft that will not fit the
+  channel — too long for Bluesky, a Reddit post with no title — is written down anyway
+  but says plainly that it will not go out as it stands. The text of a draft is sealed in
+  the encrypted database like a message body, and a draft is removed only when the send
+  or the queueing actually worked, so a failed send never loses what you wrote.
+  11 integration tests (the agent writing a post down instead of sending it, a draft
+  asking for votes refused, a draft that will not fit saying so, the agent seeing the
+  drafts it wrote, a draft without text or an unknown channel refused, the wording the
+  user wrote being the wording that goes out, the text of a draft sealed in the database,
+  a draft queued under the same rules as an immediate post, a draft asking for votes
+  refused again at queueing, a time in the past refused, and the app's own queue holding
+  a scheduled draft) and a unit test that the two new actions are declared the way the
+  drafts page reads them.
+
 - **The app posts for you later, on its own.** A post can now be queued instead of
   sent, and the app sends it when the time comes. Ask for it in the ordinary way — "post
   this to my Telegram in two hours" — and the app shows the exact text, the channel and

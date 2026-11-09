@@ -165,6 +165,17 @@ quiet hours, the network switch and the per-channel caps, and Settings → Publi
 lists what is waiting with a Cancel on each one. Nothing is sent that the user did not
 read first, and a post whose approval policy is Block is refused.
 
+A post can also be written down instead of sent. The agent drafts it and stops there;
+it waits in Settings → Publishing, where the user reads it, edits the wording and then
+sends it or queues it, and the wording the user leaves is the wording that goes out.
+Sending from that page runs the post through the same machinery as any other post, so it
+lands in the task rail and in the audit log and the hourly cap, the gap between two
+posts, the network switch and the approval policy all still hold. A draft that asks for
+votes is refused before it is written down; a draft that will not fit the channel is
+written down and says so. The draft text is sealed in the encrypted database, and a
+draft is removed only when the send or the queueing worked, so a failed send never loses
+what the user wrote.
+
 Row 25 also asks for trimmed idle memory and a cold start under 400 ms. The idle memory
 is measured on every end-to-end run against a ceiling of 900 MB. The 400 ms is not
 claimed: the same suite holds the app to reaching its first surface inside 2,500 ms on a
