@@ -88,7 +88,7 @@ const ENTRIES: SettingEntry[] = [
   { page: "approvals", label: "Calendar", keywords: ["policy", "events", "apple events"] },
   { page: "approvals", label: "Mail", keywords: ["policy", "unread", "draft"] },
   { page: "approvals", label: "MCP tools", keywords: ["policy", "extension", "server"] },
-  { page: "approvals", label: "Publishing", keywords: ["policy", "post", "telegram", "reddit"] },
+  { page: "approvals", label: "Publishing", keywords: ["policy", "post", "telegram", "reddit", "bluesky", "mastodon"] },
 
   // Memory
   { page: "memory", label: "Local memory", keywords: ["facts", "recall", "pin", "digest", "summary"] },
@@ -141,6 +141,10 @@ const ENTRIES: SettingEntry[] = [
   { page: "publishing", label: "Telegram bot token", keywords: ["token", "botfather", "secret", "keychain"] },
   { page: "publishing", label: "Reddit subreddit", keywords: ["reddit", "subreddit", "community", "r/"] },
   { page: "publishing", label: "Reddit credentials", keywords: ["reddit", "script app", "client id", "password", "login"] },
+  { page: "publishing", label: "Bluesky handle", keywords: ["bluesky", "atproto", "account", "bsky"] },
+  { page: "publishing", label: "Bluesky app password", keywords: ["bluesky", "app password", "secret", "keychain", "atproto"] },
+  { page: "publishing", label: "Mastodon instance", keywords: ["mastodon", "instance", "server", "fediverse", "https"] },
+  { page: "publishing", label: "Mastodon access token", keywords: ["mastodon", "token", "secret", "keychain", "fediverse"] },
   { page: "publishing", label: "Posting policy", keywords: ["approval", "audit", "upvote", "spam", "policy"] },
   { page: "publishing", label: "Room left this hour", keywords: ["rate limit", "cap", "quota", "posts"] },
 

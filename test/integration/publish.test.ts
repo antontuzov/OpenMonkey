@@ -55,6 +55,16 @@ const telegramOk = (): Response =>
 const redditOk = (): Response =>
   jsonReply({ json: { errors: [], data: { id: "abc123", name: "t3_abc123" } } });
 
+/** A picture as the channel would see it: bytes and a type. */
+const imageReply = (type = "image/png", size = 8): Response =>
+  new Response(new Uint8Array(size), { status: 200, headers: { "content-type": type } });
+
+const BLUESKY_SESSION = {
+  accessJwt: "jwt-123",
+  did: "did:plc:openmonkey",
+  handle: "openmonkey.bsky.social",
+};
+
 test("a Telegram post carries the text and the chat the user chose", async () => {
   const calls: Call[] = [];
   const tools = makeTools({
@@ -155,6 +165,14 @@ test("a post without a token or without a target names what is missing", async (
   await assert.rejects(
     withoutToken.execute("post", { channel: "telegram", text: "hi" }),
     /No telegram token is saved/
+  );
+  await assert.rejects(
+    withoutToken.execute("post", { channel: "bluesky", text: "hi" }),
+    /No bluesky app password is saved/
+  );
+  await assert.rejects(
+    withoutToken.execute("post", { channel: "mastodon", text: "hi" }),
+    /No mastodon access token is saved/
   );
 
   const withoutTarget = makeTools({
@@ -296,7 +314,270 @@ test("the saved credentials hold only what the channel needs", async () => {
 
   assert.throws(() => buildSecret("telegram", { token: "not-a-token" }), /Telegram bot token/);
   assert.throws(() => buildSecret("reddit", { clientId: "appid" }), /needs the script app id/);
-  assert.throws(() => buildSecret("mastodon" as PublisherChannel, {}), /Unknown publishing channel/);
+
+  const bluesky = buildSecret("bluesky", {
+    identifier: "  openmonkey.bsky.social  ",
+    password: "app-pass-123",
+    token: "ignored",
+  });
+  assert.deepEqual(bluesky, { identifier: "openmonkey.bsky.social", password: "app-pass-123" });
+
+  const mastodon = buildSecret("mastodon", { accessToken: "  token-abc  ", password: "ignored" });
+  assert.deepEqual(mastodon, { accessToken: "token-abc" });
+
+  assert.throws(() => buildSecret("bluesky", { identifier: "openmonkey.bsky.social" }), /app password itself/);
+  assert.throws(() => buildSecret("bluesky", { identifier: "not a handle", password: "x" }), /does not look like/);
+  assert.throws(() => buildSecret("mastodon", {}), /Mastodon access token is required/);
+  assert.throws(() => buildSecret("mastodon" as PublisherChannel, {}), /Mastodon access token/);
+  assert.throws(() => buildSecret("vimeo" as PublisherChannel, {}), /Unknown publishing channel/);
+});
+
+test("a Bluesky post signs in and writes the record", async () => {
+  const calls: Call[] = [];
+  const tools = makeTools({
+    secrets: secretsWith({
+      bluesky: { identifier: "openmonkey.bsky.social", password: "app-pass-123" },
+    }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      blueskyHandle: "openmonkey.bsky.social",
+    }),
+    fetchImpl: (async (url: string | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), init: init ?? {} });
+      if (String(url).includes("createSession")) return jsonReply(BLUESKY_SESSION);
+      return jsonReply({ uri: "at://did:plc:openmonkey/app.bsky.feed.post/1", cid: "cid-1" });
+    }) as unknown as typeof fetch,
+  });
+
+  const out = await tools.execute("post", { channel: "bluesky", text: "Hello from the desk" });
+  assert.match(out, /Posted to Bluesky @openmonkey\.bsky\.social/);
+  assert.equal(calls.length, 2);
+  assert.ok(calls[0].url.includes("com.atproto.server.createSession"), calls[0].url);
+  assert.deepEqual(JSON.parse(String(calls[0].init.body)), {
+    identifier: "openmonkey.bsky.social",
+    password: "app-pass-123",
+  });
+
+  assert.ok(calls[1].url.includes("com.atproto.repo.createRecord"), calls[1].url);
+  assert.match(String((calls[1].init.headers as Record<string, string>).authorization), /^Bearer jwt-123$/);
+  const body = JSON.parse(String(calls[1].init.body));
+  assert.equal(body.repo, "did:plc:openmonkey");
+  assert.equal(body.collection, "app.bsky.feed.post");
+  assert.equal(body.record.$type, "app.bsky.feed.post");
+  assert.equal(body.record.text, "Hello from the desk");
+  assert.ok(body.record.createdAt, "the record says when it was made");
+});
+
+test("a Bluesky picture is uploaded first and the post points at it", async () => {
+  const calls: Call[] = [];
+  const tools = makeTools({
+    secrets: secretsWith({
+      bluesky: { identifier: "openmonkey.bsky.social", password: "app-pass-123" },
+    }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      blueskyHandle: "openmonkey.bsky.social",
+    }),
+    fetchImpl: (async (url: string | URL, init?: RequestInit) => {
+      const address = String(url);
+      calls.push({ url: address, init: init ?? {} });
+      if (address.includes("createSession")) return jsonReply(BLUESKY_SESSION);
+      if (address.includes("uploadBlob")) return jsonReply({ blob: { $type: "blob", ref: "ref-1" } });
+      if (address.startsWith("https://images.example.org")) return imageReply("image/png", 32);
+      return jsonReply({ uri: "at://did:plc:openmonkey/app.bsky.feed.post/2" });
+    }) as unknown as typeof fetch,
+  });
+
+  await tools.execute("post", {
+    channel: "bluesky",
+    text: "New release",
+    imageUrl: "https://images.example.org/cover.png",
+  });
+
+  const upload = calls.find((call) => call.url.includes("uploadBlob"));
+  assert.ok(upload, "the picture was uploaded");
+  assert.equal(upload.init.headers && (upload.init.headers as Record<string, string>)["content-type"], "image/png");
+
+  const record = calls.find((call) => call.url.includes("createRecord"));
+  assert.ok(record, "the record was written");
+  const body = JSON.parse(String(record.init.body));
+  assert.equal(body.record.embed.$type, "app.bsky.embed.images");
+  assert.equal(body.record.embed.images[0].image.ref, "ref-1");
+});
+
+test("a Bluesky sign-in for another account is refused", async () => {
+  const tools = makeTools({
+    secrets: secretsWith({
+      bluesky: { identifier: "openmonkey.bsky.social", password: "app-pass-123" },
+    }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      blueskyHandle: "someone-else.bsky.social",
+    }),
+    fetchImpl: (async () => jsonReply(BLUESKY_SESSION)) as unknown as typeof fetch,
+  });
+
+  await assert.rejects(
+    tools.execute("post", { channel: "bluesky", text: "Hello" }),
+    /belongs to @openmonkey\.bsky\.social, not to @someone-else\.bsky\.social/
+  );
+});
+
+test("a Bluesky post holds 300 characters a reader can see", async () => {
+  const tools = makeTools({
+    secrets: secretsWith({
+      bluesky: { identifier: "openmonkey.bsky.social", password: "app-pass-123" },
+    }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      blueskyHandle: "openmonkey.bsky.social",
+    }),
+    fetchImpl: (async () => jsonReply(BLUESKY_SESSION)) as unknown as typeof fetch,
+  });
+
+  // An emoji is two code points but one character to a reader.
+  const emoji = "😀".repeat(301);
+  await assert.rejects(
+    tools.execute("post", { channel: "bluesky", text: emoji }),
+    /A Bluesky post holds 300 characters; this one has 301/
+  );
+});
+
+test("a Mastodon post uploads the picture and then the status", async () => {
+  const calls: Call[] = [];
+  const tools = makeTools({
+    secrets: secretsWith({ mastodon: { accessToken: "token-abc" } }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      mastodonInstance: "https://mastodon.social",
+    }),
+    fetchImpl: (async (url: string | URL, init?: RequestInit) => {
+      const address = String(url);
+      calls.push({ url: address, init: init ?? {} });
+      if (address.includes("/api/v2/media")) return jsonReply({ id: "media-1" });
+      if (address.startsWith("https://images.example.org")) return imageReply("image/jpeg", 64);
+      return jsonReply({ url: "https://mastodon.social/@openmonkey/1", account: { acct: "openmonkey" } });
+    }) as unknown as typeof fetch,
+  });
+
+  const out = await tools.execute("post", {
+    channel: "mastodon",
+    text: "Hello from the desk",
+    imageUrl: "https://images.example.org/cover.jpg",
+  });
+  assert.match(out, /Posted to Mastodon openmonkey/);
+
+  const media = calls.find((call) => call.url.includes("/api/v2/media"));
+  assert.ok(media, "the picture was uploaded");
+  assert.match(String((media.init.headers as Record<string, string>).authorization), /^Bearer token-abc$/);
+
+  const status = calls.find((call) => call.url.includes("/api/v1/statuses"));
+  assert.ok(status, "the status was written");
+  const body = JSON.parse(String(status.init.body));
+  assert.equal(body.status, "Hello from the desk");
+  assert.deepEqual(body.media_ids, ["media-1"]);
+});
+
+test("a Mastodon post needs an https instance", async () => {
+  const tools = makeTools({
+    secrets: secretsWith({ mastodon: { accessToken: "token-abc" } }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      mastodonInstance: "http://mastodon.social",
+    }),
+    fetchImpl: (async () => {
+      throw new Error("the instance should never be called");
+    }) as unknown as typeof fetch,
+  });
+
+  await assert.rejects(
+    tools.execute("post", { channel: "mastodon", text: "Hello" }),
+    /not an https address/
+  );
+});
+
+test("a Mastodon post holds 500 characters", async () => {
+  const tools = makeTools({
+    secrets: secretsWith({ mastodon: { accessToken: "token-abc" } }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      mastodonInstance: "https://mastodon.social",
+    }),
+    fetchImpl: (async () => jsonReply({})) as unknown as typeof fetch,
+  });
+
+  await assert.rejects(
+    tools.execute("post", { channel: "mastodon", text: "x".repeat(501) }),
+    /A Mastodon post holds 500 characters; this one has 501/
+  );
+});
+
+test("a picture from the local network is never fetched", async () => {
+  const tools = makeTools({
+    secrets: secretsWith({ mastodon: { accessToken: "token-abc" } }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      mastodonInstance: "https://mastodon.social",
+    }),
+    fetchImpl: (async () => {
+      throw new Error("the picture should never be fetched");
+    }) as unknown as typeof fetch,
+  });
+
+  await assert.rejects(
+    tools.execute("post", {
+      channel: "mastodon",
+      text: "Hello",
+      imageUrl: "http://127.0.0.1:8080/secret.png",
+    }),
+    /private address/
+  );
+  await assert.rejects(
+    tools.execute("post", {
+      channel: "mastodon",
+      text: "Hello",
+      imageUrl: "file:///etc/passwd",
+    }),
+    /only http\(s\) is allowed/
+  );
+});
+
+test("the check names the Bluesky and the Mastodon account", async () => {
+  const bluesky = makeTools({
+    secrets: secretsWith({
+      bluesky: { identifier: "openmonkey.bsky.social", password: "app-pass-123" },
+    }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      blueskyHandle: "openmonkey.bsky.social",
+    }),
+    fetchImpl: (async () => jsonReply(BLUESKY_SESSION)) as unknown as typeof fetch,
+  });
+  const blueskyOut = await bluesky.check("bluesky");
+  assert.match(blueskyOut, /@openmonkey\.bsky\.social/);
+  assert.ok(!blueskyOut.includes("app-pass-123"), blueskyOut);
+
+  const mastodon = makeTools({
+    secrets: secretsWith({ mastodon: { accessToken: "token-abc" } }),
+    settings: () => ({
+      telegramChat: "",
+      redditSubreddit: "",
+      mastodonInstance: "https://mastodon.social",
+    }),
+    fetchImpl: (async () => jsonReply({ acct: "openmonkey" })) as unknown as typeof fetch,
+  });
+  const mastodonOut = await mastodon.check("mastodon");
+  assert.match(mastodonOut, /@openmonkey on https:\/\/mastodon\.social/);
+  assert.ok(!mastodonOut.includes("token-abc"), mastodonOut);
 });
 
 test("the cap file records the posts that were made", async () => {

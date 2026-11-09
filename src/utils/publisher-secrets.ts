@@ -90,7 +90,14 @@ export const publisherSecrets = new KeychainPublisherSecrets();
  */
 export function secretTail(secret: PublisherSecret | null, channel: PublisherChannel): string {
   if (!secret) return "";
-  const value = channel === "telegram" ? secret.token : secret.clientId;
+  const value =
+    channel === "telegram"
+      ? secret.token
+      : channel === "reddit"
+        ? secret.clientId
+        : channel === "bluesky"
+          ? secret.identifier
+          : secret.accessToken;
   if (!value || value.length < 4) return "";
   return value.slice(-4);
 }

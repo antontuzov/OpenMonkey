@@ -15,10 +15,18 @@ const TELEGRAM_TEXT_LIMIT = 4_096;
 const TELEGRAM_CAPTION_LIMIT = 1_024;
 const REDDIT_TITLE_LIMIT = 300;
 const REDDIT_TEXT_LIMIT = 40_000;
+/** Bluesky counts the characters a reader sees, so an emoji is one of them. */
+const BLUESKY_TEXT_LIMIT = 300;
+/** Mastodon counts the characters, and every instance allows at least this many. */
+const MASTODON_TEXT_LIMIT = 500;
+/** What each channel takes for a picture. */
+const BLUESKY_IMAGE_LIMIT = 1_000_000;
+const MASTODON_IMAGE_LIMIT = 10_000_000;
 
 const TELEGRAM_API = "https://api.telegram.org";
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_API = "https://oauth.reddit.com";
+const BLUESKY_API = "https://bsky.social";
 
 interface ChannelLimit {
   /** Posts this app may make in an hour on one channel. */
@@ -35,6 +43,8 @@ interface ChannelLimit {
 const LIMITS: Record<PublisherChannel, ChannelLimit> = {
   telegram: { perHour: 10, minGapMs: 20_000 },
   reddit: { perHour: 2, minGapMs: 15 * 60_000 },
+  bluesky: { perHour: 10, minGapMs: 20_000 },
+  mastodon: { perHour: 5, minGapMs: 60_000 },
 };
 
 /**
@@ -52,6 +62,8 @@ const REDDIT_GUARDS: RegExp[] = [
 export interface PublisherSettings {
   telegramChat: string;
   redditSubreddit: string;
+  blueskyHandle?: string;
+  mastodonInstance?: string;
 }
 
 export interface PublishDeps {
@@ -91,6 +103,8 @@ export class PublishTools {
         return {
           telegramChat: stored?.telegramChat ?? "",
           redditSubreddit: stored?.redditSubreddit ?? "",
+          blueskyHandle: stored?.blueskyHandle ?? "",
+          mastodonInstance: stored?.mastodonInstance ?? "",
         };
       });
     this.fetchImpl = deps.fetchImpl ?? fetch;
@@ -157,7 +171,7 @@ export class PublishTools {
 
     const secret = this.secrets.read(channel);
     if (!secret) {
-      throw new Error(`No ${channel} token is saved. Add it in Settings → Publishing first.`);
+      throw new Error(`No ${channel} ${this.secretNoun(channel)} is saved. Add it in Settings → Publishing first.`);
     }
     const target = this.target(channel);
     if (!target) {
@@ -189,10 +203,7 @@ export class PublishTools {
 
     assertNetworkAllowed("publish.post");
 
-    const result =
-      channel === "telegram"
-        ? await this.postTelegram(secret, request)
-        : await this.postReddit(secret, request);
+    const result = await this.postTo(channel, secret, request);
 
     this.history.record(channel, this.now());
     return result;
@@ -202,19 +213,63 @@ export class PublishTools {
   async check(channel: PublisherChannel): Promise<string> {
     if (!LIMITS[channel]) throw new Error(`Unknown publishing channel: ${channel}`);
     const secret = this.secrets.read(channel);
-    if (!secret) throw new Error(`No ${channel} token is saved. Add it in Settings → Publishing first.`);
+    if (!secret) {
+      throw new Error(`No ${channel} ${this.secretNoun(channel)} is saved. Add it in Settings → Publishing first.`);
+    }
     assertNetworkAllowed("publish.check");
-    return channel === "telegram" ? await this.checkTelegram(secret) : await this.checkReddit(secret);
+    if (channel === "telegram") return await this.checkTelegram(secret);
+    if (channel === "reddit") return await this.checkReddit(secret);
+    if (channel === "bluesky") return await this.checkBluesky(secret);
+    return await this.checkMastodon(secret);
+  }
+
+  private async postTo(
+    channel: PublisherChannel,
+    secret: PublisherSecret,
+    request: PostRequest
+  ): Promise<string> {
+    if (channel === "telegram") return await this.postTelegram(secret, request);
+    if (channel === "reddit") return await this.postReddit(secret, request);
+    if (channel === "bluesky") return await this.postBluesky(secret, request);
+    return await this.postMastodon(secret, request);
+  }
+
+  /** The name of the one thing a channel has to be given. */
+  private secretNoun(channel: PublisherChannel): string {
+    if (channel === "bluesky") return "app password";
+    if (channel === "mastodon") return "access token";
+    return "token";
   }
 
   private target(channel: PublisherChannel): string {
     const settings = this.settings();
-    const value = channel === "telegram" ? settings.telegramChat : settings.redditSubreddit;
-    return value.trim();
+    if (channel === "telegram") return settings.telegramChat.trim();
+    if (channel === "reddit") return settings.redditSubreddit.trim();
+    if (channel === "bluesky") return (settings.blueskyHandle ?? "").trim();
+    return (settings.mastodonInstance ?? "").trim();
   }
 
   private missing(channel: PublisherChannel): string {
-    return channel === "telegram" ? "no chat id" : "no subreddit";
+    if (channel === "telegram") return "no chat id";
+    if (channel === "reddit") return "no subreddit";
+    if (channel === "bluesky") return "no handle";
+    return "no instance";
+  }
+
+  /** The Mastodon instance as an address, or null when it is not one. */
+  private instance(): string | null {
+    const raw = this.target("mastodon");
+    if (!raw) return null;
+    const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    let parsed: URL;
+    try {
+      parsed = new URL(withScheme);
+    } catch {
+      return null;
+    }
+    // A token sent over plain http would travel in the clear, so only https is allowed.
+    if (parsed.protocol !== "https:") return null;
+    return parsed.toString().replace(/\/+$/, "");
   }
 
   /** Refuses what the platform forbids and what its own limits forbid. */
@@ -229,22 +284,38 @@ export class PublishTools {
       return;
     }
 
-    if (request.imageUrl) {
-      throw new Error("Reddit posts cannot carry an image from a URL. Post the text and add the picture in Reddit itself.");
-    }
-    if (!request.title?.trim()) throw new Error("A Reddit post needs a title.");
-    if (request.title.length > REDDIT_TITLE_LIMIT) {
-      throw new Error(`A Reddit title holds ${REDDIT_TITLE_LIMIT} characters; this one has ${request.title.length}.`);
-    }
-    if (request.text.length > REDDIT_TEXT_LIMIT) {
-      throw new Error(`A Reddit post holds ${REDDIT_TEXT_LIMIT} characters; this one has ${request.text.length}.`);
-    }
-    for (const guard of REDDIT_GUARDS) {
-      if (guard.test(request.text) || guard.test(request.title ?? "")) {
-        throw new Error(
-          "Reddit's rules forbid asking for votes or for comments. This post was not sent; take the request out and try again."
-        );
+    if (channel === "reddit") {
+      if (request.imageUrl) {
+        throw new Error("Reddit posts cannot carry an image from a URL. Post the text and add the picture in Reddit itself.");
       }
+      if (!request.title?.trim()) throw new Error("A Reddit post needs a title.");
+      if (request.title.length > REDDIT_TITLE_LIMIT) {
+        throw new Error(`A Reddit title holds ${REDDIT_TITLE_LIMIT} characters; this one has ${request.title.length}.`);
+      }
+      if (request.text.length > REDDIT_TEXT_LIMIT) {
+        throw new Error(`A Reddit post holds ${REDDIT_TEXT_LIMIT} characters; this one has ${request.text.length}.`);
+      }
+      for (const guard of REDDIT_GUARDS) {
+        if (guard.test(request.text) || guard.test(request.title ?? "")) {
+          throw new Error(
+            "Reddit's rules forbid asking for votes or for comments. This post was not sent; take the request out and try again."
+          );
+        }
+      }
+      return;
+    }
+
+    if (channel === "bluesky") {
+      const length = graphemeLength(request.text);
+      if (length > BLUESKY_TEXT_LIMIT) {
+        throw new Error(`A Bluesky post holds ${BLUESKY_TEXT_LIMIT} characters; this one has ${length}.`);
+      }
+      return;
+    }
+
+    const length = [...request.text].length;
+    if (length > MASTODON_TEXT_LIMIT) {
+      throw new Error(`A Mastodon post holds ${MASTODON_TEXT_LIMIT} characters; this one has ${length}.`);
     }
   }
 
@@ -365,6 +436,21 @@ export class PublishTools {
 
   /** Every answer is JSON here, and a body that is not JSON is a real failure. */
   private async json(url: string, init: RequestInit): Promise<Record<string, any>> {
+    const { ok, status, payload } = await this.callJson(url, init);
+    if (!ok && payload.ok !== true) {
+      throw new Error(`The channel answered with HTTP ${status}.`);
+    }
+    return payload;
+  }
+
+  /**
+   * The call, with the answer as it came. A channel that says no in its own words —
+   * Bluesky and Mastodon both do — has to be able to say it, so the body is kept.
+   */
+  private async callJson(
+    url: string,
+    init: RequestInit
+  ): Promise<{ ok: boolean; status: number; payload: Record<string, any> }> {
     const response = await this.fetchImpl(url, { ...init, signal: AbortSignal.timeout(30_000) });
     const body = await response.text();
     let payload: Record<string, any>;
@@ -373,10 +459,197 @@ export class PublishTools {
     } catch {
       throw new Error(`The channel answered with something that is not JSON (HTTP ${response.status}).`);
     }
-    if (!response.ok && payload.ok !== true) {
-      throw new Error(`The channel answered with HTTP ${response.status}.`);
+    return { ok: response.ok, status: response.status, payload };
+  }
+
+  /** Bluesky signs the app in and keeps the session for the post. */
+  private async blueskySession(
+    secret: PublisherSecret
+  ): Promise<{ accessJwt: string; did: string; handle: string }> {
+    const identifier = secret.identifier?.trim();
+    const password = secret.password;
+    if (!identifier || !password) {
+      throw new Error("Bluesky needs the handle the app password belongs to and the app password itself.");
     }
-    return payload;
+
+    const { ok, status, payload } = await this.callJson(
+      `${BLUESKY_API}/xrpc/com.atproto.server.createSession`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ identifier, password }),
+      }
+    );
+    if (!ok) {
+      throw new Error(`Bluesky refused the sign-in: ${payload?.message ?? payload?.error ?? `HTTP ${status}`}`);
+    }
+    const accessJwt = String(payload?.accessJwt ?? "");
+    const did = String(payload?.did ?? "");
+    const handle = String(payload?.handle ?? "");
+    if (!accessJwt || !did) throw new Error("Bluesky accepted the sign-in but returned no session.");
+
+    const target = this.target("bluesky");
+    const isHandle = target.includes(".") && !target.includes("@") && !target.startsWith("did:");
+    if (isHandle && handle.toLowerCase() !== target.toLowerCase()) {
+      throw new Error(
+        `The Bluesky sign-in belongs to @${handle}, not to @${target}. Check the handle in Settings → Publishing.`
+      );
+    }
+    return { accessJwt, did, handle };
+  }
+
+  private async postBluesky(secret: PublisherSecret, request: PostRequest): Promise<string> {
+    const session = await this.blueskySession(secret);
+    const record: Record<string, unknown> = {
+      $type: "app.bsky.feed.post",
+      text: request.text,
+      createdAt: new Date(this.now()).toISOString(),
+      langs: [config.get("ui").language],
+    };
+
+    if (request.imageUrl) {
+      const image = await this.fetchImage(request.imageUrl, BLUESKY_IMAGE_LIMIT);
+      const blob = await this.blueskyBlob(session, image);
+      record.embed = { $type: "app.bsky.embed.images", images: [{ image: blob, alt: "" }] };
+    }
+
+    const { ok, status, payload } = await this.callJson(
+      `${BLUESKY_API}/xrpc/com.atproto.repo.createRecord`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${session.accessJwt}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          repo: session.did,
+          collection: "app.bsky.feed.post",
+          record,
+        }),
+      }
+    );
+    if (!ok) {
+      throw new Error(`Bluesky refused the post: ${payload?.message ?? payload?.error ?? `HTTP ${status}`}`);
+    }
+    const uri = String(payload?.uri ?? "");
+    const handle = session.handle || this.target("bluesky");
+    return `Posted to Bluesky @${handle}${uri ? ` (${uri})` : ""}`;
+  }
+
+  /** The picture is uploaded on its own, and the post points at the blob it returned. */
+  private async blueskyBlob(
+    session: { accessJwt: string },
+    image: { bytes: Buffer; type: string }
+  ): Promise<Record<string, unknown>> {
+    const { ok, status, payload } = await this.callJson(
+      `${BLUESKY_API}/xrpc/com.atproto.repo.uploadBlob`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${session.accessJwt}`, "content-type": image.type },
+        body: Uint8Array.from(image.bytes),
+      }
+    );
+    if (!ok) {
+      throw new Error(`Bluesky refused the picture: ${payload?.message ?? payload?.error ?? `HTTP ${status}`}`);
+    }
+    const blob = payload?.blob;
+    if (!blob) throw new Error("Bluesky took the picture but returned no blob.");
+    return blob as Record<string, unknown>;
+  }
+
+  private async checkBluesky(secret: PublisherSecret): Promise<string> {
+    const session = await this.blueskySession(secret);
+    return `Bluesky accepted the app password. The account is @${session.handle}.`;
+  }
+
+  private async postMastodon(secret: PublisherSecret, request: PostRequest): Promise<string> {
+    const token = secret.accessToken?.trim();
+    if (!token) throw new Error("The Mastodon access token is missing. Save it in Settings → Publishing.");
+    const instance = this.instance();
+    if (!instance) {
+      throw new Error("The Mastodon instance address is not an https address. Set it in Settings → Publishing.");
+    }
+
+    const mediaIds: string[] = [];
+    if (request.imageUrl) {
+      const image = await this.fetchImage(request.imageUrl, MASTODON_IMAGE_LIMIT);
+      const form = new FormData();
+      form.append("file", new Blob([Uint8Array.from(image.bytes)], { type: image.type }), "picture");
+      const { ok, status, payload } = await this.callJson(`${instance}/api/v2/media`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!ok) {
+        throw new Error(`Mastodon refused the picture: ${payload?.error ?? `HTTP ${status}`}`);
+      }
+      const id = String(payload?.id ?? "");
+      if (!id) throw new Error("Mastodon took the picture but returned no media id.");
+      mediaIds.push(id);
+    }
+
+    const { ok, status, payload } = await this.callJson(`${instance}/api/v1/statuses`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ status: request.text, media_ids: mediaIds }),
+    });
+    if (!ok) {
+      throw new Error(`Mastodon refused the post: ${payload?.error ?? `HTTP ${status}`}`);
+    }
+    const account = String(payload?.account?.acct ?? "");
+    const url = String(payload?.url ?? "");
+    return `Posted to Mastodon ${account || this.target("mastodon")}${url ? ` — ${url}` : ""}`;
+  }
+
+  private async checkMastodon(secret: PublisherSecret): Promise<string> {
+    const token = secret.accessToken?.trim();
+    if (!token) throw new Error("The Mastodon access token is missing. Save it in Settings → Publishing.");
+    const instance = this.instance();
+    if (!instance) {
+      throw new Error("The Mastodon instance address is not an https address. Set it in Settings → Publishing.");
+    }
+    const { ok, status, payload } = await this.callJson(`${instance}/api/v1/accounts/verify_credentials`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (!ok) {
+      throw new Error(`Mastodon refused the token: ${payload?.error ?? `HTTP ${status}`}`);
+    }
+    const account = String(payload?.acct ?? "");
+    if (!account) throw new Error("Mastodon accepted the token but did not name the account.");
+    return `Mastodon accepted the token. The account is @${account} on ${instance}.`;
+  }
+
+  /**
+   * The picture is fetched here rather than by the platform, so the address is
+   * checked first: the app must not be talked into reading the local network.
+   */
+  private async fetchImage(
+    imageUrl: string,
+    maxBytes: number
+  ): Promise<{ bytes: Buffer; type: string }> {
+    let parsed: URL;
+    try {
+      parsed = new URL(imageUrl);
+    } catch {
+      throw new Error("That image address is not a web address.");
+    }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error(`Refusing ${parsed.protocol} image; only http(s) is allowed`);
+    }
+    if (isPrivateAddress(parsed.hostname)) {
+      throw new Error("Refusing to fetch a picture from a private address.");
+    }
+
+    const response = await this.fetchImpl(parsed.toString(), { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) {
+      throw new Error(`The picture could not be fetched (HTTP ${response.status}).`);
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > maxBytes) {
+      throw new Error(
+        `The picture is ${Math.round(bytes.length / 1024)} KB; this channel takes ${Math.round(maxBytes / 1024)} KB.`
+      );
+    }
+    const type = (response.headers.get("content-type") ?? "image/jpeg").split(";")[0].trim();
+    return { bytes, type };
   }
 }
 
@@ -385,7 +658,9 @@ export class PublishTools {
  * across restarts: an app that quits between two posts must not forget the first.
  */
 class PublishHistory {
-  private stamps: Record<string, number[]> = { telegram: [], reddit: [] };
+  private stamps: Record<string, number[]> = Object.fromEntries(
+    Object.keys(LIMITS).map((channel) => [channel, [] as number[]])
+  );
 
   constructor(
     private readonly file = publishHistoryFile(),
@@ -461,5 +736,57 @@ export function buildSecret(channel: PublisherChannel, input: unknown): Publishe
     return { clientId, clientSecret, username, password };
   }
 
+  if (channel === "bluesky") {
+    const identifier = text("identifier");
+    const password = typeof source.password === "string" ? source.password : "";
+    if (!identifier || !password) {
+      throw new Error("Bluesky needs the handle the app password belongs to and the app password itself.");
+    }
+    const looksRight =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier) ||
+      /^did:[a-z]+:[a-z0-9]+$/.test(identifier) ||
+      /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(identifier);
+    if (!looksRight) {
+      throw new Error("That does not look like a Bluesky handle, email or DID.");
+    }
+    return { identifier, password };
+  }
+
+  if (channel === "mastodon") {
+    const accessToken = text("accessToken");
+    if (!accessToken) {
+      throw new Error("The Mastodon access token is required.");
+    }
+    return { accessToken };
+  }
+
   throw new Error(`Unknown publishing channel: ${channel}`);
+}
+
+/** How many characters a reader sees, so an emoji counts as one. */
+const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+function graphemeLength(text: string): number {
+  return [...segmenter.segment(text)].length;
+}
+
+/**
+ * The addresses on the local network and the loopback. A picture address comes
+ * from the model, and the app fetches it itself, so it must not be talked into
+ * reading the router or the machine it runs on.
+ */
+function isPrivateAddress(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  if (host === "::1" || host === "0.0.0.0" || host === "::") return true;
+  const parts = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!parts) return false;
+  const first = Number(parts[1]);
+  const second = Number(parts[2]);
+  if (first === 0 || first === 10 || first === 127) return true;
+  if (first === 192 && second === 168) return true;
+  if (first === 172 && second >= 16 && second <= 31) return true;
+  if (first === 169 && second === 254) return true;
+  return false;
 }

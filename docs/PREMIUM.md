@@ -124,6 +124,41 @@ carry-on — only an answer the app lost is. 6 unit tests on the repeat, 7 integ
 tests on the agent and the row on disk, and one e2e spec that reads the button in the
 page.
 
+The publisher is built as well, and it is the one thing this app cannot take back, so
+it is built around that. The agent can post to the user's own Telegram channel, Reddit
+account, Bluesky account or Mastodon account, and nothing else: the target comes from
+Settings rather than from the model, so the model cannot post to a channel the user did
+not name. Every post stops for approval and is written to the audit log. The secret for
+each channel lives in the macOS keychain and never in the settings file — the Telegram
+bot token, the Reddit script app and account password, the Bluesky app password, the
+Mastodon access token — and the page shows only the last four characters of the
+identifying field, so a token cannot be read off the screen or out of a log. The app
+keeps itself slow, because a channel that answers every few minutes reads as a bot:
+ten posts an hour on Telegram, two on Reddit, ten on Bluesky, five on Mastodon, a
+quarter of an hour between Reddit posts and a minute between Mastodon ones, and the
+count survives a restart. A post that asks for upvotes, comments or follows is refused
+before it leaves the Mac, since that is what gets an account removed. Bluesky and
+Mastodon each carry a picture: the app fetches it itself, uploads it first, and writes
+the post pointing at it — and a picture address on the local network is refused before
+anything is fetched, so the app cannot be talked into reading the machine it runs on.
+The platforms' own limits are the app's: 300 characters a reader can see on Bluesky, so
+an emoji counts as one rather than two, and 500 on Mastodon. A Bluesky sign-in that
+belongs to another handle is refused, and a Mastodon instance has to be an https
+address, because the token travels with every post. 23 integration tests (a Telegram
+post carrying the text and the chat, a picture posted as a photo, Reddit asking for a
+token and then posting, a post asking for upvotes refused before it leaves the Mac, a
+post without a token or a target naming what is missing, the hourly cap stopping a
+channel, two posts in a row refused until the gap has passed, the network switch off
+asking for nothing, the channel list never showing the token it holds, a check naming
+the account, a channel that refuses the post naming the reason, each channel's length
+limits enforced, the saved credentials holding only what the channel needs, a Bluesky
+post signing in and writing the record, a picture uploaded before the post that points
+at it, a sign-in for another account refused, the 300 characters counted the way a
+reader sees them, a Mastodon post uploading the picture and then the status, an
+instance that is not https refused, the 500 characters, a picture from the local network
+never fetched, the check naming the Bluesky and the Mastodon account, and the cap file
+recording the posts that were made) and 1 unit test on the tool declaration.
+
 Row 25 also asks for trimmed idle memory and a cold start under 400 ms. The idle memory
 is measured on every end-to-end run against a ceiling of 900 MB. The 400 ms is not
 claimed: the same suite holds the app to reaching its first surface inside 2,500 ms on a

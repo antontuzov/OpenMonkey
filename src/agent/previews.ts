@@ -236,7 +236,15 @@ export async function buildPreview(
       const channel = String(args.channel ?? "");
       const publishing = config.get("publishing");
       const target =
-        channel === "telegram" ? publishing?.telegramChat : channel === "reddit" ? publishing?.redditSubreddit : "";
+        channel === "telegram"
+          ? publishing?.telegramChat
+          : channel === "reddit"
+            ? publishing?.redditSubreddit
+            : channel === "bluesky"
+              ? publishing?.blueskyHandle
+              : channel === "mastodon"
+                ? publishing?.mastodonInstance
+                : "";
       return {
         kind: "fields",
         title: "Post to your own channel",

@@ -322,7 +322,7 @@ export interface TaskRequest {
 }
 
 /** The social channels the app can post to. */
-export type PublisherChannel = "telegram" | "reddit";
+export type PublisherChannel = "telegram" | "reddit" | "bluesky" | "mastodon";
 
 /**
  * What the user types for a channel. The secret parts go to the system keychain;
@@ -337,8 +337,12 @@ export interface PublisherSecret {
   clientSecret?: string;
   /** Reddit account name. */
   username?: string;
-  /** Reddit account password. */
+  /** The account password: the Reddit password, or a Bluesky app password. */
   password?: string;
+  /** Bluesky handle or email the app password belongs to. */
+  identifier?: string;
+  /** Mastodon access token for the instance. */
+  accessToken?: string;
 }
 
 /** What the publishing page knows about one channel. Never holds a secret. */
@@ -839,6 +843,10 @@ export interface Config {
     telegramChat: string;
     /** Reddit subreddit the account posts to, without the r/ prefix. */
     redditSubreddit: string;
+    /** Bluesky handle the app posts as, such as openmonkey.bsky.social. */
+    blueskyHandle: string;
+    /** Mastodon instance the account posts on, such as https://mastodon.social. */
+    mastodonInstance: string;
   };
   mcp: {
     servers: McpServerConfig[];

@@ -140,7 +140,7 @@ test("the publish action is declared the way the publisher reads it", () => {
   assert.equal(post.mutating, true);
   const channel = post.args.channel;
   assert.equal(channel?.required, true);
-  assert.deepEqual(channel?.enum, ["telegram", "reddit"]);
+  assert.deepEqual(channel?.enum, ["telegram", "reddit", "bluesky", "mastodon"]);
   assert.equal(post.args.title?.required, undefined);
   assert.equal(post.args.imageUrl?.required, undefined);
   assert.ok(describeBuiltInTools().includes("publish.post"), "the prompt lists it, or the model cannot use it");

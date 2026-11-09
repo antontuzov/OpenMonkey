@@ -267,24 +267,25 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: "publish",
     action: "post",
-    description: "Post a message to the user's own Telegram channel or Reddit account",
+    description:
+      "Post a message to the user's own Telegram channel, Reddit account, Bluesky account or Mastodon account",
     args: {
       channel: {
         type: "string",
         required: true,
         description: "Which channel to post to",
-        enum: ["telegram", "reddit"],
+        enum: ["telegram", "reddit", "bluesky", "mastodon"],
         maxLength: 20,
       },
       text: { type: "string", required: true, description: "The text of the post", maxLength: 40_000 },
       title: {
         type: "string",
-        description: "Reddit post title; Telegram posts have no title",
+        description: "Reddit post title; the other channels have no title",
         maxLength: 300,
       },
       imageUrl: {
         type: "string",
-        description: "Image URL for a Telegram post; Reddit posts cannot carry an image",
+        description: "Image URL for a Telegram, Bluesky or Mastodon post; Reddit posts cannot carry an image",
         maxLength: 2_048,
       },
     },

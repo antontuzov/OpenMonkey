@@ -836,7 +836,9 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   const publisher = new PublishTools();
 
   const publisherChannel = (value: unknown): PublisherChannel => {
-    if (value !== "telegram" && value !== "reddit") throw new Error("That publishing channel does not exist");
+    if (value !== "telegram" && value !== "reddit" && value !== "bluesky" && value !== "mastodon") {
+      throw new Error("That publishing channel does not exist");
+    }
     return value;
   };
 

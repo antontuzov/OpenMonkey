@@ -122,7 +122,7 @@ const POLICY_ROWS: Array<{
   { type: "calendar", icon: CalendarClock, name: "Calendar", copy: "Read events and create new ones." },
   { type: "email", icon: Mail, name: "Mail", copy: "Read unread mail and create drafts. Never sends." },
   { type: "mcp", icon: Plug, name: "MCP tools", copy: "Calls on local extension servers." },
-  { type: "publish", icon: Send, name: "Publishing", copy: "Post to your own Telegram channel or Reddit account." },
+  { type: "publish", icon: Send, name: "Publishing", copy: "Post to your own Telegram channel, Reddit account, Bluesky account or Mastodon account." },
 ];
 
 const POLICY_OPTIONS: Array<{ value: ApprovalPolicy; label: string }> = [
@@ -173,6 +173,16 @@ function splitArgs(value: string): string[] {
   while ((match = pattern.exec(value))) result.push(match[1] ?? match[2] ?? match[3]);
   return result;
 }
+
+/** The name each publishing channel goes by in the settings, not the code. */
+const PUBLISH_CHANNEL_LABEL: Record<PublisherChannel, string> = {
+  telegram: "Telegram",
+  reddit: "Reddit",
+  bluesky: "Bluesky",
+  mastodon: "Mastodon",
+};
+
+const publishChannelLabel = (channel: PublisherChannel): string => PUBLISH_CHANNEL_LABEL[channel];
 
 const NAV = [
   {
@@ -243,7 +253,7 @@ const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede?: string
   },
   publishing: {
     titleKey: "settings.publishing",
-    lede: "Post to your own Telegram channel or Reddit account. The token goes into the macOS keychain, never into the settings file, and every post asks for approval first.",
+    lede: "Post to your own Telegram channel, Reddit account, Bluesky account or Mastodon account. The secret goes into the macOS keychain, never into the settings file, and every post asks for approval first.",
   },
   model: {
     titleKey: "settings.model",
@@ -340,6 +350,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [redditSecret, setRedditSecret] = useState("");
   const [redditUser, setRedditUser] = useState("");
   const [redditPassword, setRedditPassword] = useState("");
+  const [blueskyIdentifier, setBlueskyIdentifier] = useState("");
+  const [blueskyPassword, setBlueskyPassword] = useState("");
+  const [mastodonToken, setMastodonToken] = useState("");
   const [online, setOnline] = useState(() => navigator.onLine);
   /** Which theme's colours are on screen in the colour editor. */
   const [tokenTheme, setTokenTheme] = useState<"light" | "dark">(() =>
@@ -385,7 +398,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const { model, agent, privacy } = config;
   const memoryConfig = config.memory ?? { enabled: true, workspaceSearch: false };
-  const publishing = config.publishing ?? { telegramChat: "", redditSubreddit: "" };
+  const publishing = config.publishing ?? {
+    telegramChat: "",
+    redditSubreddit: "",
+    blueskyHandle: "",
+    mastodonInstance: "",
+  };
   const policies = { ...DEFAULT_POLICIES, ...(agent.approvalPolicies ?? {}) };
   const quietHours = config.desktop.quietHours ?? { enabled: false, from: "22:00", to: "08:00" };
   /** What the publishing policy really does right now, so the page cannot lie about it. */
@@ -434,6 +452,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const providerLabel = status.provider === "mlx" ? "MLX" : "Bonsai 4B";
   const telegramStatus = publishChannels.find((item) => item.channel === "telegram");
   const redditStatus = publishChannels.find((item) => item.channel === "reddit");
+  const blueskyStatus = publishChannels.find((item) => item.channel === "bluesky");
+  const mastodonStatus = publishChannels.find((item) => item.channel === "mastodon");
   const modelMemory = models?.memory ?? null;
   const lastBenchmark = models?.lastBenchmark ?? null;
 
@@ -492,26 +512,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       const result =
         channel === "telegram"
           ? await window.electron?.savePublisherSecret("telegram", { token: telegramToken })
-          : await window.electron?.savePublisherSecret("reddit", {
-              clientId: redditAppId,
-              clientSecret: redditSecret,
-              username: redditUser,
-              password: redditPassword,
-            });
+          : channel === "reddit"
+            ? await window.electron?.savePublisherSecret("reddit", {
+                clientId: redditAppId,
+                clientSecret: redditSecret,
+                username: redditUser,
+                password: redditPassword,
+              })
+            : channel === "bluesky"
+              ? await window.electron?.savePublisherSecret("bluesky", {
+                  identifier: blueskyIdentifier,
+                  password: blueskyPassword,
+                })
+              : await window.electron?.savePublisherSecret("mastodon", { accessToken: mastodonToken });
       if (!result?.ok) {
         setPublishNotice({ text: result?.error ?? "The credentials could not be saved.", error: true });
         return;
       }
       if (channel === "telegram") setTelegramToken("");
-      else {
+      else if (channel === "reddit") {
         setRedditSecret("");
         setRedditPassword("");
-      }
+      } else if (channel === "bluesky") setBlueskyPassword("");
+      else setMastodonToken("");
       setPublishNotice({
         text:
           channel === "telegram"
             ? "The Telegram token is in the keychain."
-            : "The Reddit credentials are in the keychain.",
+            : channel === "reddit"
+              ? "The Reddit credentials are in the keychain."
+              : channel === "bluesky"
+                ? "The Bluesky app password is in the keychain."
+                : "The Mastodon access token is in the keychain.",
         error: false,
       });
       await refreshPublishChannels();
@@ -2533,6 +2565,156 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </section>
 
                 <section>
+                  <p className="section-label">Bluesky</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Bluesky handle</p>
+                        <p className="row-copy">The account the app posts as, such as openmonkey.bsky.social.</p>
+                      </div>
+                      <input
+                        key={publishing.blueskyHandle}
+                        defaultValue={publishing.blueskyHandle ?? ""}
+                        aria-label="Bluesky handle"
+                        placeholder="openmonkey.bsky.social"
+                        onBlur={(event) => {
+                          const value = event.target.value.trim().replace(/^@/, "");
+                          if (value !== publishing.blueskyHandle) {
+                            void onPatch({ publishing: { ...publishing, blueskyHandle: value } });
+                          }
+                        }}
+                        className="field w-[220px] font-mono !text-[11px]"
+                      />
+                    </div>
+
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Bluesky app password</p>
+                        <p className="row-copy">
+                          An app password from the account's settings, with the handle or email it belongs to. They go into
+                          the macOS keychain.
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2.5 w-[340px]">
+                        <div className="grid grid-cols-2 gap-2">
+                          <label className="block">
+                            <span className="text-[10px] text-muted">Handle or email</span>
+                            <input
+                              value={blueskyIdentifier}
+                              onChange={(event) => setBlueskyIdentifier(event.target.value)}
+                              placeholder="openmonkey.bsky.social"
+                              className="field w-full mt-1 font-mono !text-[11px]"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-[10px] text-muted">App password</span>
+                            <input
+                              type="password"
+                              value={blueskyPassword}
+                              onChange={(event) => setBlueskyPassword(event.target.value)}
+                              placeholder="••••"
+                              className="field w-full mt-1 font-mono !text-[11px]"
+                            />
+                          </label>
+                        </div>
+                        <div className="flex items-center gap-2 justify-end">
+                          <button
+                            onClick={() => void savePublishSecret("bluesky")}
+                            disabled={publishBusy !== null}
+                            className="btn btn-primary"
+                          >
+                            {publishBusy === "bluesky" ? <Loader size={12} className="animate-spin" /> : <Check size={12} />}
+                            Save
+                          </button>
+                          {blueskyStatus?.hasSecret && (
+                            <>
+                              <button
+                                onClick={() => void checkPublishChannel("bluesky")}
+                                disabled={publishBusy !== null}
+                                className="btn"
+                              >
+                                Check
+                              </button>
+                              <button onClick={() => void forgetPublishSecret("bluesky")} className="btn">
+                                Forget
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">Mastodon</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Mastodon instance</p>
+                        <p className="row-copy">
+                          The instance the account lives on, such as https://mastodon.social. It has to be an https
+                          address, because the token travels with every post.
+                        </p>
+                      </div>
+                      <input
+                        key={publishing.mastodonInstance}
+                        defaultValue={publishing.mastodonInstance ?? ""}
+                        aria-label="Mastodon instance"
+                        placeholder="https://mastodon.social"
+                        onBlur={(event) => {
+                          const value = event.target.value.trim().replace(/\/+$/, "");
+                          if (value !== publishing.mastodonInstance) {
+                            void onPatch({ publishing: { ...publishing, mastodonInstance: value } });
+                          }
+                        }}
+                        className="field w-[220px] font-mono !text-[11px]"
+                      />
+                    </div>
+
+                    <div className="row">
+                      <div>
+                        <p className="row-title">Mastodon access token</p>
+                        <p className="row-copy">
+                          The access token from the instance under Settings → Developer. It goes into the macOS keychain.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2.5">
+                        <input
+                          type="password"
+                          value={mastodonToken}
+                          onChange={(event) => setMastodonToken(event.target.value)}
+                          placeholder={mastodonStatus?.hasSecret ? "Saved in the keychain" : "Paste the access token"}
+                          className="field w-[200px] font-mono !text-[11px]"
+                        />
+                        <button
+                          onClick={() => void savePublishSecret("mastodon")}
+                          disabled={publishBusy !== null}
+                          className="btn btn-primary"
+                        >
+                          {publishBusy === "mastodon" ? <Loader size={12} className="animate-spin" /> : <Check size={12} />}
+                          Save
+                        </button>
+                        {mastodonStatus?.hasSecret && (
+                          <>
+                            <button
+                              onClick={() => void checkPublishChannel("mastodon")}
+                              disabled={publishBusy !== null}
+                              className="btn"
+                            >
+                              Check
+                            </button>
+                            <button onClick={() => void forgetPublishSecret("mastodon")} className="btn">
+                              Forget
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
                   <p className="section-label">How posting works</p>
                   <div className="card">
                     <div className="row">
@@ -2552,7 +2734,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <div className="flex items-center gap-2">
                         {publishChannels.map((item) => (
                           <span key={item.channel} className="chip">
-                            {item.channel === "telegram" ? "Telegram" : "Reddit"}: {item.remaining} left
+                            {publishChannelLabel(item.channel)}: {item.remaining} left
                           </span>
                         ))}
                       </div>

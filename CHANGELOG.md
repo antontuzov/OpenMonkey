@@ -8,6 +8,32 @@ that produced the build.
 
 ### Added
 
+- **The app posts to Bluesky and Mastodon as well.** The publisher now carries four
+  channels: the Telegram channel and the Reddit account it already had, plus a
+  **Bluesky** account and a **Mastodon** account. Settings → Publishing grows two
+  sections. **Bluesky** asks for the handle the app posts as and the app password from
+  the account's own settings; the app signs in with the AT Protocol and refuses to post
+  if the sign-in belongs to a different account than the handle you set, so a token
+  cannot go out under the wrong name. **Mastodon** asks for the instance the account
+  lives on and the access token from the instance's developer page; the instance has to
+  be an https address, because the token travels with every post. Both secrets go into
+  the macOS keychain like the other two, and the page never shows one of them again.
+  Both channels carry a picture: the app fetches it itself and uploads it first, then
+  writes the post pointing at it — Bluesky under a 1 MB limit, Mastodon under 10 MB. A
+  picture address on the local network is refused before anything is fetched, so the app
+  cannot be talked into reading the machine it runs on. The limits the platforms set are
+  the app's own: a Bluesky post holds 300 characters a reader can see, so an emoji
+  counts as one rather than two, and a Mastodon post holds 500. The hourly cap and the
+  gap between two posts cover the new channels too — 10 an hour for Bluesky, 5 for
+  Mastodon, and a minute between Mastodon posts — and the counts survive a restart. 9
+  integration tests (a Bluesky post signing in and writing the record, a picture being
+  uploaded before the post that points at it, a sign-in for another account refused, the
+  300 characters counted the way a reader sees them, a Mastodon post uploading the
+  picture and then the status, an instance that is not https refused, the 500 characters,
+  a picture from the local network never fetched, and the check naming the Bluesky and
+  the Mastodon account) and the secret of each channel holding only what that channel
+  needs.
+
 - **The app speaks Arabic.** Settings → Appearance → Language now offers العربية next to
   English and Русский, and picking it turns the whole interface the other way round: the
   side panel stands on the other side of the window, the rule that separates it follows,

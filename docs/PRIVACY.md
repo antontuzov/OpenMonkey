@@ -53,6 +53,18 @@ The app only makes a request when you ask for one:
 | Check for updates (installed builds) | GitHub Releases for this repository |
 | MCP server you configured | whatever that server reaches |
 | Open a link | your default browser, after you click it |
+| Post to your own Telegram channel | `api.telegram.org` |
+| Post to your own Reddit account | `www.reddit.com` / `oauth.reddit.com` |
+| Post to your own Bluesky account | `bsky.social` |
+| Post to your own Mastodon account | the instance you set in Settings → Publishing |
+| Fetch a picture for a Bluesky or Mastodon post | the picture's own address |
+
+The four publishing destinations carry the secret that belongs to them, and only to
+them: the Telegram bot token, the Reddit script app and password, the Bluesky app
+password and the Mastodon access token. Each of them lives in the macOS keychain,
+never in the settings file, and the page shows only the last four characters of the
+identifying field. A post goes to the target you set in Settings, never to a target
+the model names.
 
 **Network access** in Settings → Privacy → Diagnostics is a hard switch for
 app-initiated requests: model downloads, page fetches, update checks and MCP traffic

@@ -46,6 +46,13 @@ and approval-gated tools. Nothing here is a mock screen.
   `[file:<path>:<line>]` / `[fact:<id>]` citations. Settings → Memory exposes facts, digests,
   index status, rebuild/clear/search and a full opt-out.
 - Appearance: light/dark/system, eight accents, 12 mood logos propagated to window, tray and Dock.
+- Publishing: the agent can post to the user's own Telegram channel, Reddit account, Bluesky
+  account or Mastodon account. Every post stops for approval, the secret lives in the macOS
+  keychain and never in the settings file, the target comes from Settings rather than from
+  the model, and the app keeps itself slow — an hourly cap and a minimum gap per channel,
+  kept on disk so a restart does not forget them. A Bluesky sign-in that belongs to another
+  handle is refused, a Mastodon instance has to be https because the token rides with every
+  post, and a picture address on the local network is never fetched.
 - Settings: Profile, Appearance, Approvals, Workspace, Privacy, Model and MCP servers pages
   with search and real controls.
 - Privacy: AES-256-GCM rows, key file mode 0600, path confinement, local-only by default;

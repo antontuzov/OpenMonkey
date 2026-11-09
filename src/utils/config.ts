@@ -78,6 +78,8 @@ const defaultConfig: Config = {
   publishing: {
     telegramChat: "",
     redditSubreddit: "",
+    blueskyHandle: "",
+    mastodonInstance: "",
   },
   mcp: {
     servers: [],
@@ -221,6 +223,8 @@ const PAGE_DEFAULTS: Partial<Record<SettingsPage, ConfigPatch>> = {
     publishing: {
       telegramChat: defaultConfig.publishing.telegramChat,
       redditSubreddit: defaultConfig.publishing.redditSubreddit,
+      blueskyHandle: defaultConfig.publishing.blueskyHandle,
+      mastodonInstance: defaultConfig.publishing.mastodonInstance,
     },
   },
   model: {
