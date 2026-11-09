@@ -28,6 +28,7 @@ import { keychainAvailable } from "../utils/secret-key";
 import { publisherSecrets } from "../utils/publisher-secrets";
 import { publishQueue } from "../utils/publish-queue";
 import { postDrafts } from "../utils/post-drafts";
+import { licenseService } from "../utils/license-service";
 import { PublishTools, buildSecret } from "../agent/tools/publish";
 import { networkActivity } from "../utils/network";
 import { EXPORT_FILE_SUFFIX, encryptBundle, readBundleFile } from "../utils/portability";
@@ -954,6 +955,45 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     postDrafts.remove(draftId);
     logger.info("publisher.draft.scheduled", { id: draftId, channel: draft.channel });
     return { ok: true, detail: result.detail };
+  });
+
+  // The license of this Mac. It is checked on this disk and nowhere else: no
+  // request is made to find out whether this copy is paid for.
+  ipcMain.handle("get-license-state", () => licenseService.state());
+
+  ipcMain.handle("activate-license", (_event, text: unknown) => {
+    const result = licenseService.activate(String(text ?? ""));
+    if (result.ok) logger.info("license.activated");
+    return result;
+  });
+
+  ipcMain.handle("pick-license-file", async () => {
+    const window = deps.getWindow();
+    const options = {
+      title: "Choose a license file",
+      filters: [{ name: "License", extensions: ["json"] }],
+    };
+    const result = window
+      ? await dialog.showOpenDialog(window, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || result.filePaths.length === 0) {
+      return { ok: true, detail: "No license file was chosen." };
+    }
+    let text: string;
+    try {
+      text = await fs.promises.readFile(result.filePaths[0], "utf8");
+    } catch (error) {
+      return { ok: false, error: errorText(error) };
+    }
+    const outcome = licenseService.activate(text);
+    if (outcome.ok) logger.info("license.activated");
+    return outcome;
+  });
+
+  ipcMain.handle("remove-license", () => {
+    licenseService.remove();
+    logger.info("license.removed");
+    return { ok: true };
   });
 }
 

@@ -19,6 +19,7 @@ import {
   Globe,
   Info,
   Keyboard,
+  KeyRound,
   Loader,
   Lock,
   LockOpen,
@@ -70,6 +71,7 @@ import {
   type Config,
   type ConfigPatch,
   type IntegrityReport,
+  type LicenseState,
   type McpServerConfig,
   type McpServerStatus,
   type MemorySnapshot,
@@ -213,6 +215,7 @@ const NAV = [
       { id: "permissions", labelKey: "settings.permissions", icon: Fingerprint },
       { id: "privacy", labelKey: "settings.privacy", icon: Lock },
       { id: "publishing", labelKey: "settings.publishing", icon: Send },
+      { id: "licensing", labelKey: "settings.licensing", icon: KeyRound },
     ],
   },
   {
@@ -265,6 +268,10 @@ const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede?: string
   publishing: {
     titleKey: "settings.publishing",
     lede: "Post to your own Telegram channel, Reddit account, Bluesky account or Mastodon account. The secret goes into the macOS keychain, never into the settings file, and every post asks for approval first.",
+  },
+  licensing: {
+    titleKey: "settings.licensing",
+    ledeKey: "license.lede",
   },
   model: {
     titleKey: "settings.model",
@@ -364,6 +371,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [draftWhen, setDraftWhen] = useState("");
   const [publishBusy, setPublishBusy] = useState<PublisherChannel | null>(null);
   const [publishNotice, setPublishNotice] = useState<{ text: string; error: boolean } | null>(null);
+  /** Where this Mac stands with the license, read from the disk and nothing else. */
+  const [licenseState, setLicenseState] = useState<LicenseState | null>(null);
+  /** The license the user is pasting in. */
+  const [licenseText, setLicenseText] = useState("");
+  const [licenseBusy, setLicenseBusy] = useState(false);
+  const [licenseNotice, setLicenseNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [telegramToken, setTelegramToken] = useState("");
   const [redditAppId, setRedditAppId] = useState("");
   const [redditSecret, setRedditSecret] = useState("");
@@ -517,6 +530,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     void window.electron?.getPublisherChannels().then(setPublishChannels).catch(() => undefined);
     void refreshScheduledPosts();
     void refreshPostDrafts();
+    void refreshLicense();
     void refreshCopies();
   }, []);
 
@@ -534,6 +548,91 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const next = await window.electron?.getPostDrafts();
     if (next) setPostDrafts(next);
   };
+
+  /** Reads what this Mac holds a license for. Nothing comes from the network. */
+  const refreshLicense = async () => {
+    const next = await window.electron?.getLicenseState();
+    if (next) setLicenseState(next);
+  };
+
+  /** Keeps the license the user pasted in, if the signature checks out. */
+  const activateLicense = async () => {
+    setLicenseBusy(true);
+    setLicenseNotice(null);
+    try {
+      const result = await window.electron?.activateLicense(licenseText);
+      setLicenseNotice(
+        result?.ok
+          ? { text: "The license is on this Mac now.", error: false }
+          : { text: result?.error ?? "The license could not be activated.", error: true }
+      );
+      if (result?.ok) setLicenseText("");
+      await refreshLicense();
+    } finally {
+      setLicenseBusy(false);
+    }
+  };
+
+  /** Takes the license from a file the user picks. */
+  const chooseLicenseFile = async () => {
+    setLicenseBusy(true);
+    setLicenseNotice(null);
+    try {
+      const result = await window.electron?.pickLicenseFile();
+      if (result && !result.ok) {
+        setLicenseNotice({ text: result.error ?? "The license could not be read.", error: true });
+      } else if (result?.detail) {
+        setLicenseNotice({ text: result.detail, error: false });
+      }
+      await refreshLicense();
+    } finally {
+      setLicenseBusy(false);
+    }
+  };
+
+  /** Takes the license off this Mac. The app falls back to the free tier. */
+  const removeLicense = async () => {
+    setLicenseBusy(true);
+    setLicenseNotice(null);
+    try {
+      await window.electron?.removeLicense();
+      setLicenseNotice({ text: "The license was taken off this Mac.", error: false });
+      await refreshLicense();
+    } finally {
+      setLicenseBusy(false);
+    }
+  };
+
+  // The license, said in the reader's own language. Nothing here asks the network.
+  const licenseSentence = (() => {
+    if (!licenseState) return "—";
+    if (licenseState.status === "trial") {
+      return t("license.status.trial", { days: String(licenseState.daysLeft ?? 0) });
+    }
+    if (licenseState.status === "licensed") {
+      return licenseState.holder
+        ? t("license.status.licensed", { holder: licenseState.holder })
+        : t("license.status.licensedNoName");
+    }
+    if (licenseState.status === "grace") {
+      return t("license.status.grace", { days: String(licenseState.daysLeft ?? 0) });
+    }
+    return t("license.status.free");
+  })();
+  const licenseChip = (() => {
+    if (!licenseState) return "—";
+    if (licenseState.status === "trial") return t("license.status.trial", { days: String(licenseState.daysLeft ?? 0) });
+    if (licenseState.status === "licensed") return licenseState.holder ? licenseState.holder : "Pro";
+    if (licenseState.status === "grace") return t("license.status.grace", { days: String(licenseState.daysLeft ?? 0) });
+    return "Free";
+  })();
+  const trialSentence = (() => {
+    if (!licenseState?.trialEndsAt) return "—";
+    const date = formatDate(licenseState.trialEndsAt);
+    return licenseState.status === "trial"
+      ? t("license.trial.ends", { date })
+      : t("license.trial.ended", { date });
+  })();
 
   /** Opens the wording of a draft so the user can change it. */
   const openDraftEditor = (draft: PostDraft) => {
@@ -3020,6 +3119,122 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {publishNotice && (
                   <p className={`text-[10.5px] mt-2 ${publishNotice.error ? "!text-danger" : "text-muted"}`}>
                     {publishNotice.text}
+                  </p>
+                )}
+              </>
+            )}
+
+            {section === "licensing" && (
+              <>
+                <section>
+                  <p className="section-label">{t("license.section.state")}</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("license.status")}</p>
+                        <p className="row-copy">{licenseSentence}</p>
+                      </div>
+                      <span className={`chip ${licenseState?.tier === "pro" ? "chip-accent" : ""}`}>
+                        {licenseChip}
+                      </span>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("license.trial")}</p>
+                        <p className="row-copy">{trialSentence}</p>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("license.price")}</p>
+                        <p className="row-copy">{t("license.priceCopy")}</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">{t("license.section.features")}</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("license.featurePublish")}</p>
+                        <p className="row-copy">{t("license.featurePublishCopy")}</p>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("license.featureSchedule")}</p>
+                        <p className="row-copy">{t("license.featureScheduleCopy")}</p>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("license.featureDrafts")}</p>
+                        <p className="row-copy">{t("license.featureDraftsCopy")}</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">{t("license.section.activate")}</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("license.activate")}</p>
+                        <p className="row-copy">{t("license.activateCopy")}</p>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div className="min-w-0 flex-1">
+                        <textarea
+                          value={licenseText}
+                          onChange={(event) => setLicenseText(event.target.value)}
+                          placeholder={t("license.activatePlaceholder")}
+                          aria-label={t("license.activate")}
+                          className="field min-h-[90px] font-mono !text-[11px]"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => void chooseLicenseFile()}
+                          disabled={licenseBusy}
+                          className="btn"
+                        >
+                          {t("license.chooseFile")}
+                        </button>
+                        <button
+                          onClick={() => void activateLicense()}
+                          disabled={licenseBusy || !licenseText.trim()}
+                          className="btn btn-primary"
+                        >
+                          {licenseBusy ? <Loader size={12} className="animate-spin" /> : <Check size={12} />}
+                          {t("license.activateButton")}
+                        </button>
+                      </div>
+                    </div>
+                    {licenseState?.status === "licensed" && (
+                      <div className="row">
+                        <div>
+                          <p className="row-title">{t("license.remove")}</p>
+                          <p className="row-copy">{t("license.removeCopy")}</p>
+                        </div>
+                        <button
+                          onClick={() => void removeLicense()}
+                          disabled={licenseBusy}
+                          className="btn"
+                        >
+                          {t("license.removeButton")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                {licenseNotice && (
+                  <p className={`text-[10.5px] mt-2 ${licenseNotice.error ? "!text-danger" : "text-muted"}`}>
+                    {licenseNotice.text}
                   </p>
                 )}
               </>

@@ -26,6 +26,13 @@ remote API. Everything below describes what version 0.9 stores and what it sends
 - **Logs.** `logs/openmonkey.log` in the same directory.
 - **Attachments.** A file you attach is read locally and its text is sent to the local
   model; there is no upload.
+- **The license.** `data/license.json` holds the license file you pasted or picked, and
+  `data/trial.json` holds the day the trial started — one number. Both are written with
+  mode `0600` inside the app's own folder. A license may be bound to this Mac: the
+  binding is a hash of the machine, so the hostname, the user name and the platform are
+  never written down. Neither file is included in an exported backup, and neither is
+  sent anywhere: the license is checked on this disk with the public key that ships
+  inside the app, and the app never asks the network whether it is paid for.
 
 ## Encryption at rest
 
@@ -122,5 +129,6 @@ cannot be undone; export a backup first if the history matters.
 
 The privacy behaviour is covered by tests: encryption on/off cycles and the `VACUUM`,
 retention pruning, save-history off, export contents, path confinement including a
-symlink escape, log redaction/rotation, and the text of a queued post and of a draft
-staying sealed in the database. See `ROADMAP.md` → Phase 7.
+symlink escape, log redaction/rotation, the text of a queued post and of a draft
+staying sealed in the database, and a license that is checked on disk and never leaves
+it. See `ROADMAP.md` → Phase 7.

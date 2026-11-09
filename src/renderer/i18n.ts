@@ -251,6 +251,45 @@ const EN = {
   "settings.resetConfirm": "Confirm reset",
   "settings.resetHint": "Puts only this page's own settings back to their defaults.",
   "settings.matches": "Matching rows",
+  "settings.licensing": "License",
+
+  "license.lede":
+    "What this copy may do. The license is checked on this Mac — nothing about it is sent anywhere.",
+  "license.section.state": "This Mac",
+  "license.status": "Your license",
+  "license.status.free":
+    "Free — chat, tools and memory are yours. Publishing needs a Pro license.",
+  "license.status.trial": "Pro on trial — {days} days left.",
+  "license.status.licensed": "Pro — licensed to {holder}.",
+  "license.status.licensedNoName": "Pro — this Mac holds a valid license.",
+  "license.status.grace": "Pro — {days} days left before it ends.",
+  "license.trial": "Trial",
+  "license.trial.ends": "The trial ends on {date}.",
+  "license.trial.ended": "The trial ran for 14 days and ended on {date}.",
+  "license.price": "Price",
+  "license.priceCopy":
+    "Pro is $29, once. No subscription and no account: the license is a file on this Mac.",
+  "license.section.features": "What Pro carries",
+  "license.featurePublish": "Posting to your channels",
+  "license.featurePublishCopy":
+    "Telegram, Reddit, Bluesky and Mastodon, under your own accounts.",
+  "license.featureSchedule": "Posts queued for later",
+  "license.featureScheduleCopy":
+    "The app sends them when their time comes, without asking again.",
+  "license.featureDrafts": "Drafts before they go out",
+  "license.featureDraftsCopy":
+    "The agent writes a post down; you read it, change the wording and send it.",
+  "license.section.activate": "Using a license",
+  "license.activate": "Activate a license",
+  "license.activateCopy":
+    "Paste the license file you were sent, or choose it from your Mac. It is checked here, on this disk.",
+  "license.activatePlaceholder": "Paste the contents of the license file",
+  "license.chooseFile": "Choose a file…",
+  "license.activateButton": "Activate",
+  "license.remove": "Remove the license",
+  "license.removeCopy":
+    "Take the license off this Mac. The app falls back to the free tier.",
+  "license.removeButton": "Remove",
 
   "desktop.startup": "Startup",
   "desktop.launchAtLogin": "Launch at login",
@@ -764,6 +803,45 @@ const RU: Record<StringKey, string> = {
   "settings.resetConfirm": "Подтвердить сброс",
   "settings.resetHint": "Возвращает значения по умолчанию только для этой страницы.",
   "settings.matches": "Подходящие строки",
+  "settings.licensing": "Лицензия",
+
+  "license.lede":
+    "Что может эта копия. Лицензия проверяется на этом Mac — о ней никуда не отправляется ничего.",
+  "license.section.state": "Этот Mac",
+  "license.status": "Ваша лицензия",
+  "license.status.free":
+    "Бесплатно — чат, инструменты и память ваши. Для публикаций нужна лицензия Pro.",
+  "license.status.trial": "Pro на пробном периоде — осталось {days} дн.",
+  "license.status.licensed": "Pro — лицензия выдана на имя {holder}.",
+  "license.status.licensedNoName": "Pro — на этом Mac действует лицензия.",
+  "license.status.grace": "Pro — осталось {days} дн. до конца.",
+  "license.trial": "Пробный период",
+  "license.trial.ends": "Пробный период заканчивается {date}.",
+  "license.trial.ended": "Пробный период длился 14 дней и закончился {date}.",
+  "license.price": "Цена",
+  "license.priceCopy":
+    "Pro стоит $29 один раз. Без подписки и без аккаунта: лицензия — это файл на этом Mac.",
+  "license.section.features": "Что входит в Pro",
+  "license.featurePublish": "Публикация в ваши каналы",
+  "license.featurePublishCopy":
+    "Telegram, Reddit, Bluesky и Mastodon — под вашими собственными аккаунтами.",
+  "license.featureSchedule": "Посты, отложенные на потом",
+  "license.featureScheduleCopy":
+    "Приложение отправляет их, когда подходит время, и не спрашивает снова.",
+  "license.featureDrafts": "Черновик до отправки",
+  "license.featureDraftsCopy":
+    "Агент записывает пост, вы читаете его, меняете формулировку и отправляете.",
+  "license.section.activate": "Как использовать лицензию",
+  "license.activate": "Активировать лицензию",
+  "license.activateCopy":
+    "Вставьте файл лицензии, который вам прислали, или выберите его на этом Mac. Всё проверяется здесь, на этом диске.",
+  "license.activatePlaceholder": "Вставьте содержимое файла лицензии",
+  "license.chooseFile": "Выбрать файл…",
+  "license.activateButton": "Активировать",
+  "license.remove": "Убрать лицензию",
+  "license.removeCopy":
+    "Лицензия убирается с этого Mac. Приложение вернётся к бесплатному уровню.",
+  "license.removeButton": "Убрать",
 
   "desktop.startup": "Запуск",
   "desktop.launchAtLogin": "Запускать при входе",
@@ -1270,6 +1348,44 @@ const AR: Record<StringKey, string> = {
   "settings.resetConfirm": "أكّد إعادة الضبط",
   "settings.resetHint": "يعيد إعدادات هذه الصفحة وحدها إلى قيمها الافتراضية.",
   "settings.matches": "الصفوف المطابقة",
+  "settings.licensing": "الترخيص",
+
+  "license.lede":
+    "ما يمكن لهذه النسخة أن تفعله. يُتحقق من الترخيص على هذا Mac — ولا يُرسل عنه أي شيء.",
+  "license.section.state": "هذا Mac",
+  "license.status": "ترخيصك",
+  "license.status.free":
+    "مجاني — المحادثة والأدوات والذاكرة لك. أما النشر فيحتاج إلى ترخيص Pro.",
+  "license.status.trial": "Pro في الفترة التجريبية — بقي {days} يومًا.",
+  "license.status.licensed": "Pro — مرخّص باسم {holder}.",
+  "license.status.licensedNoName": "Pro — هذا Mac يحمل ترخيصًا صالحًا.",
+  "license.status.grace": "Pro — بقي {days} يومًا قبل انتهائه.",
+  "license.trial": "الفترة التجريبية",
+  "license.trial.ends": "تنتهي الفترة التجريبية في {date}.",
+  "license.trial.ended": "استمرت الفترة التجريبية 14 يومًا وانتهت في {date}.",
+  "license.price": "السعر",
+  "license.priceCopy":
+    "‏Pro بـ 29 دولارًا مرة واحدة. بلا اشتراك وبلا حساب: الترخيص ملف على هذا Mac.",
+  "license.section.features": "ما الذي يشمله Pro",
+  "license.featurePublish": "النشر في قنواتك",
+  "license.featurePublishCopy":
+    "‏Telegram وReddit وBluesky وMastodon، تحت حساباتك الخاصة.",
+  "license.featureSchedule": "منشورات تُجدول لاحقًا",
+  "license.featureScheduleCopy":
+    "يرسلها التطبيق حين يحين وقتها دون أن يسأل مرة أخرى.",
+  "license.featureDrafts": "مسودّات قبل النشر",
+  "license.featureDraftsCopy":
+    "يكتب الوكيل المنشور، وأنت تقرأه وتعدّل صياغته ثم ترسله.",
+  "license.section.activate": "استخدام الترخيص",
+  "license.activate": "تفعيل الترخيص",
+  "license.activateCopy":
+    "الصق ملف الترخيص الذي أُرسل إليك، أو اختره من هذا Mac. يتم التحقق منه هنا، على هذا القرص.",
+  "license.activatePlaceholder": "الصق محتوى ملف الترخيص",
+  "license.chooseFile": "اختر ملفًا…",
+  "license.activateButton": "تفعيل",
+  "license.remove": "إزالة الترخيص",
+  "license.removeCopy": "يزول الترخيص من هذا Mac. يعود التطبيق إلى المستوى المجاني.",
+  "license.removeButton": "إزالة",
 
   "desktop.startup": "عند الإقلاع",
   "desktop.launchAtLogin": "شغّل التطبيق عند تسجيل الدخول",

@@ -12,6 +12,7 @@ import { config, dataRoot } from "../../utils/config";
 import { publisherSecrets, type PublisherSecrets } from "../../utils/publisher-secrets";
 import { publishQueue, type PublishQueue } from "../../utils/publish-queue";
 import { postDrafts, type PostDraftStore } from "../../utils/post-drafts";
+import { licenseGate } from "../../utils/license-service";
 
 /** Telegram's plain message limit, and the much shorter one a photo caption allows. */
 const TELEGRAM_TEXT_LIMIT = 4_096;
@@ -80,12 +81,23 @@ export interface PublishDeps {
   queue?: PublishQueue;
   /** Where a post waits until the user has read it. */
   drafts?: PostDraftStore;
+  /** What this Mac holds a license for. */
+  license?: LicenseGate;
 }
 
 export interface PostRequest {
   text: string;
   title?: string;
   imageUrl?: string;
+}
+
+/**
+ * The gate a paid action goes through. It says why the action is refused and what
+ * would open it, so the user is never left guessing.
+ */
+export interface LicenseGate {
+  entitled(): boolean;
+  require(feature: string): void;
 }
 
 /**
@@ -102,6 +114,7 @@ export class PublishTools {
   private readonly history: PublishHistory;
   private readonly queue: PublishQueue;
   private readonly drafts: PostDraftStore;
+  private readonly license: LicenseGate;
 
   constructor(deps: PublishDeps = {}) {
     this.secrets = deps.secrets ?? publisherSecrets;
@@ -121,6 +134,7 @@ export class PublishTools {
     this.history = new PublishHistory(deps.historyFile ?? publishHistoryFile(), this.now);
     this.queue = deps.queue ?? publishQueue;
     this.drafts = deps.drafts ?? postDrafts;
+    this.license = deps.license ?? licenseGate;
   }
 
   async execute(action: string, args: Record<string, unknown>): Promise<string> {
@@ -187,6 +201,7 @@ export class PublishTools {
   async draft(args: Record<string, unknown>): Promise<string> {
     const channel = String(args.channel ?? "") as PublisherChannel;
     if (!LIMITS[channel]) throw new Error(`Unknown publishing channel: ${channel}`);
+    this.license.require("Publishing");
 
     const text = String(args.text ?? "").trim();
     if (!text) throw new Error("The post has no text");
@@ -238,6 +253,7 @@ export class PublishTools {
   async post(args: Record<string, unknown>): Promise<string> {
     const channel = String(args.channel ?? "") as PublisherChannel;
     if (!LIMITS[channel]) throw new Error(`Unknown publishing channel: ${channel}`);
+    this.license.require("Publishing");
 
     const text = String(args.text ?? "").trim();
     if (!text) throw new Error("The post has no text");
@@ -303,6 +319,7 @@ export class PublishTools {
 
     const text = String(args.text ?? "").trim();
     if (!text) throw new Error("The post has no text");
+    this.license.require("Publishing");
 
     this.requireChannel(channel);
     if (!this.queue.available()) {
@@ -357,6 +374,7 @@ export class PublishTools {
     if (!text) return { ok: false, error: "The post has no text" };
 
     try {
+      this.license.require("Publishing");
       this.requireChannel(channel);
     } catch (error) {
       return { ok: false, error: messageOf(error) };

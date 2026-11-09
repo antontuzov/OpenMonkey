@@ -405,8 +405,52 @@ export interface PostDraft {
   updatedAt: number;
 }
 
-export type ApprovalPolicy = "ask" | "allow" | "block";
+/** What a signed license says about itself. The signature is checked on this Mac. */
+export interface LicensePayload {
+  /** The format the payload is written in. */
+  v: number;
+  /** Which product the license is for. */
+  product: string;
+  /** Which tier the license carries. */
+  tier: string;
+  /** The license's own name, so two of them can be told apart. */
+  id: string;
+  /** Who bought it. */
+  name?: string;
+  email?: string;
+  /** When it was issued. */
+  issuedAt: number;
+  /** When it ends; null means it does not end. */
+  expiresAt: number | null;
+  /** The Mac it is bound to, when it is bound to one. */
+  deviceId?: string | null;
+}
 
+export type LicenseTier = "free" | "pro";
+
+/** Where a Mac stands with the paid tier: on a trial, on a license, or out of time. */
+export type LicenseStatus = "trial" | "licensed" | "grace" | "expired" | "free";
+
+/** What this Mac knows about its own license. Nothing here came from the network. */
+export interface LicenseState {
+  tier: LicenseTier;
+  status: LicenseStatus;
+  /** Days left of the trial, of the license, or of the grace period. */
+  daysLeft: number | null;
+  trialStartedAt: number | null;
+  trialEndsAt: number | null;
+  graceEndsAt: number | null;
+  /** Who the license was issued to. */
+  holder: string | null;
+  /** When the license ends, when it ends at all. */
+  expiresAt: number | null;
+  /** True when the license only works on this Mac. */
+  deviceBound: boolean;
+  /** A sentence saying where this Mac stands. */
+  notice: string;
+}
+
+export type ApprovalPolicy = "ask" | "allow" | "block";
 export type AuditDecision =
   | "read-only"
   | "auto"
@@ -606,6 +650,7 @@ export type SettingsPage =
   | "permissions"
   | "privacy"
   | "publishing"
+  | "licensing"
   | "extensions"
   | "model";
 
@@ -620,6 +665,7 @@ export const SETTINGS_PAGES: SettingsPage[] = [
   "permissions",
   "privacy",
   "publishing",
+  "licensing",
   "extensions",
   "model",
 ];
@@ -1162,6 +1208,14 @@ export interface ElectronAPI {
   sendPostDraft: (id: string) => Promise<PublisherActionResult>;
   /** Put a draft in the queue for a time the user picked. */
   schedulePostDraft: (id: string, when: string) => Promise<PublisherActionResult>;
+  /** Where this Mac stands with the license, read from the disk and nothing else. */
+  getLicenseState: () => Promise<LicenseState>;
+  /** Take a license the user was sent and keep it on this Mac. */
+  activateLicense: (text: string) => Promise<PublisherActionResult>;
+  /** Read a license file the user picks and activate it. */
+  pickLicenseFile: () => Promise<PublisherActionResult>;
+  /** Take the license off this Mac. */
+  removeLicense: () => Promise<PublisherActionResult>;
 
   /** Each subscription returns an unsubscribe function for the effect cleanup. */
   onAgentReady: (callback: () => void) => () => void;

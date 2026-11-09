@@ -8,6 +8,34 @@ that produced the build.
 
 ### Added
 
+- **A license you can check on this Mac, and a trial that starts the day you do.**
+  Settings → License says what this copy may do. A fresh install is on a fourteen-day
+  trial of Pro — publishing to your own channels, posts queued for later and drafts you
+  read before they go out — and the day the trial started is remembered on disk, so a
+  restart does not hand out another fortnight. When the trial ends there is a seven-day
+  grace period, and after that the app falls back to the free tier, which keeps chat,
+  tools and memory and says plainly that publishing needs a license. A license is a
+  file: a signed JSON document, checked on this disk with an Ed25519 signature against
+  the public key that ships inside the app. Nothing is asked of the network — there is
+  no phone-home, no account and no request that leaves the Mac — and the private half
+  of the signing key stays in the author's keychain, where a script on the author's own
+  machine reads it to mint a license. A license may be bound to one Mac, and a license
+  that was issued for another one is refused here; the binding is a hash of the
+  machine, so the raw values are never written down. Settings → License takes a
+  license as pasted text or as a file you pick, says why a file was refused rather
+  than failing quietly, and can take the license off again. Publishing is gated in one
+  place — the publisher itself — so the agent's own posts, the posts the app sends
+  for you and the posts you send from the settings page are all refused the same way
+  and with the same words. 11 unit tests (the canonical payload signing to the same
+  bytes twice, a license signed by the author's key and by nobody else's, a tampered
+  payload and a tampered file both refused, the trial and the grace period running
+  out, a license turning Pro on and taking it off again, a license bound to another
+  Mac refused, and the paid action saying what it needs), 6 integration tests (a post,
+  a draft, a queued post and a post queued from the settings page all refused before
+  anything reaches the network, a licensed post going out as before, and a fresh Mac
+  being on trial) and an e2e spec that opens the page, reads the trial and refuses a
+  forged license.
+
 - **The agent can write a post down for you to read, instead of sending it.** Ask it to
   draft something — "draft a note for my Telegram channel about the release" — and it
   writes the post down and stops there. Nothing goes out. The draft waits in

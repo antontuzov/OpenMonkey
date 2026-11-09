@@ -300,6 +300,7 @@ test("every row a settings page renders can be found by typing its own name", as
     "Permissions",
     "Privacy",
     "Publishing",
+    "License",
     "MCP servers",
     "Model",
   ]) {
@@ -366,6 +367,27 @@ test("Settings → Publishing lists the queued posts and can cancel one", async 
       return row;
     })
     .toBeUndefined();
+});
+
+test("Settings → License says what this Mac holds, and takes a license in", async () => {
+  await openSettingsPage("License");
+  await expect(page.getByRole("heading", { name: "License" })).toBeVisible();
+
+  // A fresh Mac is on the trial, and the page says so in plain words.
+  await expect(page.locator("main").getByText("Your license", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Pro on trial/).first()).toBeVisible();
+  await expect(page.locator("main").getByText("Trial", { exact: true })).toBeVisible();
+  await expect(page.locator("main").getByText("Price", { exact: true })).toBeVisible();
+
+  // Nothing is sent anywhere: the button only wakes up once a license is pasted.
+  const activate = page.getByRole("button", { name: "Activate", exact: true });
+  await expect(activate).toBeDisabled();
+  await page
+    .getByLabel("Activate a license")
+    .fill('{"payload":{"v":1,"product":"openmonkey","tier":"pro"},"signature":"nonsense"}');
+  await expect(activate).toBeEnabled();
+  await activate.click();
+  await expect(page.getByText(/signature does not match/i)).toBeVisible();
 });
 
 test("the empty chat offers starter prompts that fill the composer", async () => {

@@ -150,6 +150,32 @@ const ENTRIES: SettingEntry[] = [
   { page: "publishing", label: "Posting policy", keywords: ["approval", "audit", "upvote", "spam", "policy"] },
   { page: "publishing", label: "Room left this hour", keywords: ["rate limit", "cap", "quota", "posts"] },
 
+  // Licensing
+  { page: "licensing", key: "license.status", keywords: ["pro", "paid", "free tier", "entitlement"] },
+  { page: "licensing", key: "license.trial", keywords: ["trial", "days left", "grace"] },
+  { page: "licensing", key: "license.price", keywords: ["cost", "price", "buy", "purchase", "subscription"] },
+  {
+    page: "licensing",
+    key: "license.featurePublish",
+    keywords: ["telegram", "reddit", "bluesky", "mastodon", "channels"],
+  },
+  {
+    page: "licensing",
+    key: "license.featureSchedule",
+    keywords: ["schedule", "queue", "later", "send"],
+  },
+  {
+    page: "licensing",
+    key: "license.featureDrafts",
+    keywords: ["draft", "edit", "wording", "review"],
+  },
+  {
+    page: "licensing",
+    key: "license.activate",
+    keywords: ["activate", "license file", "key", "unlock", "sign"],
+  },
+  { page: "licensing", key: "license.remove", keywords: ["remove", "delete", "return", "free tier"] },
+
   // Model
   { page: "model", label: `${BONSAI_4B.name} GGUF`, keywords: ["weights", "download", "sha", "verify", "delete"] },
   { page: "model", label: "MLX server", keywords: ["runtime", "backend", "apple silicon"] },

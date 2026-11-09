@@ -175,6 +175,10 @@ const api: ElectronAPI = {
   deletePostDraft: (id: string) => ipcRenderer.invoke("delete-post-draft", id),
   sendPostDraft: (id: string) => ipcRenderer.invoke("send-post-draft", id),
   schedulePostDraft: (id: string, when: string) => ipcRenderer.invoke("schedule-post-draft", id, when),
+  getLicenseState: () => ipcRenderer.invoke("get-license-state"),
+  activateLicense: (text: string) => ipcRenderer.invoke("activate-license", text),
+  pickLicenseFile: () => ipcRenderer.invoke("pick-license-file"),
+  removeLicense: () => ipcRenderer.invoke("remove-license"),
 
   onAgentReady: (callback: () => void) => on<undefined>("agent-ready", () => callback()),
   onAgentStatus: (callback: (status: AgentStatus) => void) => on<AgentStatus>("agent-status", callback),

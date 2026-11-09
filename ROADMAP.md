@@ -648,7 +648,25 @@ run left **0 crash reports** in `~/Library/Logs/DiagnosticReports`.
 The product-polish backlog that precedes pricing, with acceptance evidence and a
 sprint order, is in [docs/PREMIUM.md](docs/PREMIUM.md).
 
-36. **Licensing**: offline-verifiable license, trial, grace period, no phone-home by default.
+36. ✅ **Licensing**: the paid part of the app is a file on your own disk, checked there and
+    nowhere else. A license is a signed JSON document — an Ed25519 signature over a payload
+    written with its keys in a fixed order, so the same license always signs to the same
+    bytes — and the public key that checks it ships inside the app. The private half stays
+    in the author's keychain: a script on the author's own machine reads it to mint a
+    license, so the app can check a license but cannot mint one. A fresh install is on a
+    **14-day trial**, remembered on disk so a restart does not hand out another fortnight;
+    then a **7-day grace period**; then the free tier, which keeps chat, tools and memory
+    and says plainly that publishing needs a license instead of quietly doing nothing. A
+    license may be **bound to one Mac** — the binding is a hash of the machine, never the
+    raw hostname or user name — and a license issued for another Mac is refused here.
+    **No phone-home**: nothing about the license is sent anywhere, there is no account, and
+    the app never asks the network whether it is paid for. Settings → License takes a
+    license as pasted text or as a file you pick, says why a file was refused rather than
+    failing quietly, and can take it off again. The gate sits in the publisher itself, so
+    the agent's own posts, the posts the app sends on a timer and the posts you send from
+    the settings page are refused the same way and with the same words. 11 unit tests, 6
+    integration tests and an e2e spec that opens the page, reads the trial and refuses a
+    forged license.
 37. **Update & support policy**: supported macOS versions, model deprecations, refund policy.
 38. **Optional paid convenience** (hosted nothing): curated model packs, team policy templates,
     priority support — while the local core stays fully functional without an account.
