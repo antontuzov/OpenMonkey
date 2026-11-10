@@ -398,18 +398,20 @@ test("Settings → License shelves the legal pages and opens them in the browser
     await expect(page.locator("main").getByText(title, { exact: true })).toBeVisible();
   }
 
-  // The link is the OS browser's job, so the test watches the bridge, not a window:
-  // the bridge is stubbed whole, and no browser opens on the runner.
-  const opened = [];
-  await page.exposeFunction("recordLegalLink", (url) => opened.push(url));
-  await page.evaluate(() => {
-    window.electron.openExternal = (url) => {
-      window.recordLegalLink(url);
-      return Promise.resolve();
-    };
+  // The link is the OS browser's job, so the test watches the IPC, not a window:
+  // the main-process handler becomes a recorder, and no browser opens on the runner.
+  // A page-side stub cannot do this — contextBridge deep-freezes the exposed API,
+  // so assigning window.electron.openExternal silently does nothing.
+  await app.evaluate(({ ipcMain }) => {
+    globalThis.__openedLegalLinks = [];
+    ipcMain.removeHandler("open-external");
+    ipcMain.handle("open-external", (_event, url) => {
+      globalThis.__openedLegalLinks.push(url);
+    });
   });
   await page.getByRole("button", { name: "Open: Terms of use (EULA)", exact: true }).click();
-  await expect.poll(() => opened.length).toBe(1);
+  await expect.poll(() => app.evaluate(() => globalThis.__openedLegalLinks.length)).toBe(1);
+  const opened = await app.evaluate(() => globalThis.__openedLegalLinks);
   expect(opened[0]).toBe("https://github.com/antontuzov/OpenMonkey/blob/main/docs/LEGAL.md#end-user-license-agreement");
 });
 
