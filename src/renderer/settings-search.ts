@@ -175,6 +175,15 @@ const ENTRIES: SettingEntry[] = [
     keywords: ["activate", "license file", "key", "unlock", "sign"],
   },
   { page: "licensing", key: "license.remove", keywords: ["remove", "delete", "return", "free tier"] },
+  { page: "licensing", key: "license.legal.eula", keywords: ["eula", "terms", "agreement", "legal", "warranty"] },
+  { page: "licensing", key: "license.legal.refunds", keywords: ["refund", "money back", "return", "cancel purchase"] },
+  { page: "licensing", key: "license.legal.export", keywords: ["export", "sanctions", "encryption", "law"] },
+  { page: "licensing", key: "license.legal.privacy", keywords: ["privacy", "policy", "data", "telemetry"] },
+  {
+    page: "licensing",
+    key: "license.legal.security",
+    keywords: ["security", "vulnerability", "report", "disclosure", "cve"],
+  },
 
   // Model
   { page: "model", label: `${BONSAI_4B.name} GGUF`, keywords: ["weights", "download", "sha", "verify", "delete"] },

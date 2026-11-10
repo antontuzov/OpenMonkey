@@ -390,6 +390,29 @@ test("Settings → License says what this Mac holds, and takes a license in", as
   await expect(page.getByText(/signature does not match/i)).toBeVisible();
 });
 
+test("Settings → License shelves the legal pages and opens them in the browser", async () => {
+  await openSettingsPage("License");
+  await expect(page.getByRole("heading", { name: "License" })).toBeVisible();
+
+  for (const title of ["Terms of use (EULA)", "Refund policy", "Export control", "Report a security issue"]) {
+    await expect(page.locator("main").getByText(title, { exact: true })).toBeVisible();
+  }
+
+  // The link is the OS browser's job, so the test watches the bridge, not a window:
+  // the bridge is stubbed whole, and no browser opens on the runner.
+  const opened = [];
+  await page.exposeFunction("recordLegalLink", (url) => opened.push(url));
+  await page.evaluate(() => {
+    window.electron.openExternal = (url) => {
+      window.recordLegalLink(url);
+      return Promise.resolve();
+    };
+  });
+  await page.getByRole("button", { name: "Open: Terms of use (EULA)", exact: true }).click();
+  await expect.poll(() => opened.length).toBe(1);
+  expect(opened[0]).toBe("https://github.com/antontuzov/OpenMonkey/blob/main/docs/LEGAL.md#end-user-license-agreement");
+});
+
 test("the empty chat offers starter prompts that fill the composer", async () => {
   // Until the agent is ready, the empty chat shows the card that says where the
   // weights come from instead of the welcome panel; that card is the honest answer

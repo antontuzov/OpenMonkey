@@ -356,4 +356,6 @@ More answers and the security-report path are in [docs/SUPPORT.md](docs/SUPPORT.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). The terms for the official builds and the Pro license,
+the refund policy and the export-control note are in [docs/LEGAL.md](docs/LEGAL.md);
+the private security-report path is in [SECURITY.md](SECURITY.md).

@@ -49,7 +49,9 @@ Never paste your passphrase, a backup file, or the contents of `data/secret.key`
 
 Please do not open a public issue for a vulnerability. Use the repository's **Security
 → Report a vulnerability** flow so the report stays private until a fix ships. Include
-the version, a minimal reproduction and the impact you believe it has.
+the version, a minimal reproduction and the impact you believe it has. The full policy —
+what is in scope, what is a documented limit rather than a bug, and what to expect — is
+in [SECURITY.md](../SECURITY.md).
 
 ## Support policy for 0.9
 
@@ -58,4 +60,6 @@ the version, a minimal reproduction and the impact you believe it has.
 - Third-party model weights, custom MCP servers and edited configuration files are
   supported on a best-effort basis only.
 - Response times are best-effort; this is a small project, not a paid support desk.
-  The planned commercial layer (Phase 8 in `ROADMAP.md`) is not available.
+  Pro licensing exists (Settings → License), but there is no checkout yet and no paid
+  support tier. The terms, the refund policy and the export-control note are in
+  [LEGAL.md](LEGAL.md).

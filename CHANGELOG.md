@@ -8,6 +8,23 @@ that produced the build.
 
 ### Added
 
+- **The legal shelf: terms, refunds and export control, linked from the app and the
+  site.** `docs/LEGAL.md` shelves the end-user license agreement (the code stays MIT;
+  the agreement covers the official builds and the Pro license file), the refund
+  policy (the 14-day trial comes first, then 30 days to change your mind, and a
+  refund cannot reach into your Mac — you remove the file yourself) and the
+  export-control note (standard cryptography, public source, your local law).
+  `SECURITY.md` writes down the private reporting path, and the repository's private
+  vulnerability reporting is switched on so the path works. Settings → License
+  carries a Legal card — terms, refunds, export control, privacy and the security
+  report — each row opening the document in your browser, in all three languages;
+  the landing-page footer links the shelf and the policy. 7 unit tests (the
+  statements exist, every linked fragment is a heading anchor GitHub really
+  renders, every linked document is on disk, the security row and the policy name
+  the same private flow, the License page opens every link, the footer links both
+  documents, and Support hands security reports to the policy) and an e2e spec that
+  reads the rows and watches the EULA row hand its URL to the bridge.
+
 - **A license you can check on this Mac, and a trial that starts the day you do.**
   Settings → License says what this copy may do. A fresh install is on a fourteen-day
   trial of Pro — publishing to your own channels, posts queued for later and drafts you

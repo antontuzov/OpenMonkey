@@ -50,6 +50,7 @@ import { UpdatePanel } from "./UpdatePanel";
 import { SettingRow, Toggle } from "./controls";
 import { ACCENTS } from "../constants";
 import { checkAccent, parseHex } from "../../utils/colour";
+import { LEGAL_LINKS } from "../../utils/legal";
 import { THEME_TOKENS, effectivePalette, type ThemeToken } from "../../utils/theme-tokens";
 import { paletteProblems } from "../../utils/a11y-palette";
 import { runAccessibilityAudit } from "../a11y";
@@ -3229,6 +3230,36 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </button>
                       </div>
                     )}
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">{t("license.section.legal")}</p>
+                  <div className="card">
+                    {(
+                      [
+                        ["license.legal.eula", "license.legal.eulaCopy", LEGAL_LINKS.eula],
+                        ["license.legal.refunds", "license.legal.refundsCopy", LEGAL_LINKS.refunds],
+                        ["license.legal.export", "license.legal.exportCopy", LEGAL_LINKS.exportControl],
+                        ["license.legal.privacy", "license.legal.privacyCopy", LEGAL_LINKS.privacy],
+                        ["license.legal.security", "license.legal.securityCopy", LEGAL_LINKS.security],
+                      ] as Array<[StringKey, StringKey, string]>
+                    ).map(([titleKey, copyKey, href]) => (
+                      <div className="row" key={titleKey}>
+                        <div>
+                          <p className="row-title">{t(titleKey)}</p>
+                          <p className="row-copy">{t(copyKey)}</p>
+                        </div>
+                        <button
+                          onClick={() => void window.electron?.openExternal(href)}
+                          className="btn"
+                          aria-label={`${t("license.legal.open")}: ${t(titleKey)}`}
+                        >
+                          <ExternalLink size={12} />
+                          {t("license.legal.open")}
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </section>
 

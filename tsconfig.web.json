@@ -30,6 +30,7 @@
     "src/utils/diff.ts",
     "src/utils/task-steps.ts",
     "src/utils/citations.ts",
+    "src/utils/legal.ts",
     "src/models/catalog.ts",
     "src/models/benchmark.ts"
   ]
