@@ -44,6 +44,9 @@ Never paste your passphrase, a backup file, or the contents of `data/secret.key`
   window closes** (on by default outside macOS). Use the menu bar icon or Quit.
 - **Two copies will not open.** OpenMonkey is single-instance: launching it again
   focuses the existing window.
+- **Uninstalling.** A Homebrew install goes with `brew uninstall --cask openmonkey`;
+  add `--zap` to remove `~/Library/Application Support/OpenMonkey` and the caches too.
+  Without `--zap` your chats stay on disk.
 
 ## Security reports
 

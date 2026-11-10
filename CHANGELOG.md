@@ -8,6 +8,21 @@ that produced the build.
 
 ### Added
 
+- **One line to install, one line to uninstall.** A Homebrew tap
+  (`antontuzov/openmonkey`) carries a cask pinned to the release and its SHA-256, so
+  `brew install --cask antontuzov/openmonkey/openmonkey` puts the exact disk image the
+  tag pipeline published into `/Applications`, checksum-verified, and
+  `brew uninstall --cask openmonkey` takes it away again (`--zap` also removes the
+  data folder). The caveats say plainly that the build is unsigned and name the one
+  quarantine command. The tap's CI audits and styles the cask, installs it on a
+  macOS runner, reads the bundle id back and uninstalls it; `npm run cask:bump`
+  re-pins the cask from the release's own digest after each tag, without downloading
+  the disk image. The landing page's download card and the README carry both lines.
+  10 unit tests (the bump rewriting only the two pinned lines, a bump to the same
+  pins changing nothing, a cask missing either stanza refused, a bad digest or
+  version refused, the digest read from the release's own asset metadata, and a
+  release without the DMG, without a digest, or with another algorithm all refused).
+
 - **The legal shelf: terms, refunds and export control, linked from the app and the
   site.** `docs/LEGAL.md` shelves the end-user license agreement (the code stays MIT;
   the agreement covers the official builds and the Pro license file), the refund

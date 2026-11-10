@@ -20,6 +20,7 @@
     "download-models": "tsx scripts/download-models.ts",
     "benchmark-model": "tsx scripts/benchmark-model.ts",
     "license:make": "tsx scripts/make-license.ts",
+    "cask:bump": "tsx scripts/bump-cask.ts",
     "brand:art": "python3 scripts/make-brand-art.py",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-rebuild -f -w better-sqlite3",

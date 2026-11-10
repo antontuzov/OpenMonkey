@@ -121,6 +121,21 @@ hear it before you set anything up.
 
 ## Get started
 
+The published build installs with Homebrew, checksum-verified against the release:
+
+```bash
+brew install --cask antontuzov/openmonkey/openmonkey
+```
+
+The build is unsigned, so clear quarantine once:
+`xattr -dr com.apple.quarantine /Applications/OpenMonkey.app`. To uninstall:
+`brew uninstall --cask openmonkey` (add `--zap` to remove the data folder too).
+The [tap](https://github.com/antontuzov/homebrew-openmonkey) pins each release;
+`npm run cask:bump -- --tag v0.9.3 --cask <tap>/Casks/openmonkey.rb` updates the pin
+from the release's own digest after a tag ships.
+
+From source:
+
 ```bash
 npm install          # also runs electron-rebuild for better-sqlite3
 npm run download-models
