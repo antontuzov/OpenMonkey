@@ -303,6 +303,48 @@ const EN = {
   "license.legal.securityCopy": "A private channel to the maintainers, not a public issue.",
   "license.legal.open": "Open",
 
+  "settings.support": "Support",
+
+  "support.lede":
+    "Report a problem without leaving the app, and find the answer before you write one.",
+  "support.section.report": "Report a problem",
+  "support.facts": "This Mac",
+  "support.factsCopy": "OpenMonkey {version} on macOS {macos} ({arch}){source}.",
+  "support.source": ", run from source",
+  "support.factsLoading": "Reading what this Mac is.",
+  "support.diagnostics": "Diagnostics file",
+  "support.diagnosticsCopy":
+    "Saves a JSON file with the version, the privacy state, the model and the last log lines. It holds no conversations, keys or credentials.",
+  "support.saveButton": "Save diagnostics",
+  "support.ticket": "Open a ticket",
+  "support.ticketCopy":
+    "GitHub opens with the three questions already written. You read it before anything is sent.",
+  "support.ticketButton": "Open a ticket",
+  "support.section.bundle": "What the file holds",
+  "support.bundleHolds": "What it holds",
+  "support.bundleHoldsCopy":
+    "The app version, the macOS release, the architecture, the privacy state, the loaded model, the MCP servers and the last 500 log lines.",
+  "support.bundleNever": "What it never holds",
+  "support.bundleNeverCopy":
+    "Your conversations, your prompts, your keys, your publishing credentials or the contents of your files.",
+  "support.section.docs": "Search the docs",
+  "support.docsCopy":
+    "The documentation in this repository, searched on this Mac. The results open on GitHub.",
+  "support.docsPlaceholder": "Search the documentation…",
+  "support.docsEmpty": "Nothing in the documentation matches “{query}”.",
+  "support.docsOpen": "Open",
+  "support.section.policy": "Response time",
+  "support.policy": "When to expect an answer",
+  "support.policyCopy":
+    "Bugs and crashes get a fix within a week. Questions and feature requests get a reply within a week, or a note saying why not.",
+  "support.policyLink": "The support policy",
+  "support.securityLink": "Report a security issue privately",
+  "support.securityLinkCopy":
+    "Security reports go to the maintainers' private advisory flow, never to a public issue.",
+  "support.savedNotice": "Diagnostics saved to {path}.",
+  "support.savedNothing": "Nothing was saved.",
+  "support.ticketNotice": "The issue form is open in your browser. Nothing has been sent yet.",
+
   "desktop.startup": "Startup",
   "desktop.launchAtLogin": "Launch at login",
   "desktop.launchAtLoginCopy": "Starts with your Mac and stays in the menu bar. Applies to installed builds; dev runs are skipped.",
@@ -867,6 +909,45 @@ const RU: Record<StringKey, string> = {
   "license.legal.securityCopy": "Приватный канал к разработчикам, не публичный тикет.",
   "license.legal.open": "Открыть",
 
+  "settings.support": "Поддержка",
+
+  "support.lede": "Сообщите о проблеме, не выходя из приложения, и найдите ответ раньше, чем напишете.",
+  "support.section.report": "Сообщить о проблеме",
+  "support.facts": "Этот Mac",
+  "support.factsCopy": "OpenMonkey {version} на macOS {macos} ({arch}){source}.",
+  "support.source": ", запуск из исходников",
+  "support.factsLoading": "Читаем сведения об этом Mac.",
+  "support.diagnostics": "Файл диагностики",
+  "support.diagnosticsCopy":
+    "Сохраняет JSON с версией, состоянием приватности, моделью и последними строками журнала. Без переписок, ключей и учётных данных.",
+  "support.saveButton": "Сохранить диагностику",
+  "support.ticket": "Открыть обращение",
+  "support.ticketCopy": "GitHub откроется с тремя вопросами уже написанными. Вы прочитаете это до отправки.",
+  "support.ticketButton": "Открыть обращение",
+  "support.section.bundle": "Что в файле",
+  "support.bundleHolds": "Что он содержит",
+  "support.bundleHoldsCopy":
+    "Версия приложения, версия macOS, архитектура, состояние приватности, загруженная модель, серверы MCP и последние 500 строк журнала.",
+  "support.bundleNever": "Чего в нём нет",
+  "support.bundleNeverCopy":
+    "Ваших переписок, запросов, ключей, учётных данных публикации или содержимого файлов.",
+  "support.section.docs": "Поиск по документации",
+  "support.docsCopy": "Документация этого репозитория, поиск идёт на этом Mac. Результаты открываются на GitHub.",
+  "support.docsPlaceholder": "Искать в документации…",
+  "support.docsEmpty": "В документации нет ничего по запросу «{query}».",
+  "support.docsOpen": "Открыть",
+  "support.section.policy": "Срок ответа",
+  "support.policy": "Когда ждать ответа",
+  "support.policyCopy":
+    "Ошибкам и падениям — исправление за неделю. Вопросам и предложениям — ответ за неделю или заметка о том, почему не будет.",
+  "support.policyLink": "Политика поддержки",
+  "support.securityLink": "Сообщить об уязвимости приватно",
+  "support.securityLinkCopy":
+    "Сообщения о безопасности идут в личный канал мейнтейнеров, а не в публичную задачу.",
+  "support.savedNotice": "Диагностика сохранена в {path}.",
+  "support.savedNothing": "Ничего не сохранено.",
+  "support.ticketNotice": "Форма обращения открыта в браузере. Ничего ещё не отправлено.",
+
   "desktop.startup": "Запуск",
   "desktop.launchAtLogin": "Запускать при входе",
   "desktop.launchAtLoginCopy": "Стартует вместе с Mac и остаётся в строке меню. Для установленных сборок; в dev пропускается.",
@@ -1422,6 +1503,43 @@ const AR: Record<StringKey, string> = {
   "license.legal.security": "الإبلاغ عن مشكلة أمنية",
   "license.legal.securityCopy": "قناة خاصة إلى المشرفين، لا تذكرة عامة.",
   "license.legal.open": "افتح",
+
+  "settings.support": "الدعم",
+
+  "support.lede": "أبلغ عن مشكلة دون مغادرة التطبيق، وابحث عن الجواب قبل أن تكتب.",
+  "support.section.report": "الإبلاغ عن مشكلة",
+  "support.facts": "هذا الـ Mac",
+  "support.factsCopy": "OpenMonkey {version} على macOS {macos} ({arch}){source}.",
+  "support.source": "، يعمل من المصدر",
+  "support.factsLoading": "نقرأ معلومات هذا الـ Mac.",
+  "support.diagnostics": "ملف التشخيص",
+  "support.diagnosticsCopy":
+    "يحفظ ملف JSON فيه الإصدار وحالة الخصوصية والنموذج وآخر أسطر السجل. لا يحتوي محادثات أو مفاتيح أو بيانات اعتماد.",
+  "support.saveButton": "حفظ التشخيص",
+  "support.ticket": "فتح تذكرة",
+  "support.ticketCopy": "يفتح GitHub الأسئلة الثلاثة مكتوبة مسبقًا. تقرأها قبل إرسال أي شيء.",
+  "support.ticketButton": "فتح تذكرة",
+  "support.section.bundle": "ما في الملف",
+  "support.bundleHolds": "ما يحتويه",
+  "support.bundleHoldsCopy":
+    "إصدار التطبيق وإصدار macOS والمعمارية وحالة الخصوصية والنموذج المحمّل وخوادم MCP وآخر ٥٠٠ سطر من السجل.",
+  "support.bundleNever": "ما لا يحتويه",
+  "support.bundleNeverCopy": "محادثاتك وطلباتك ومفاتيحك وبيانات اعتماد النشر أو محتوى ملفاتك.",
+  "support.section.docs": "البحث في التوثيق",
+  "support.docsCopy": "توثيق هذا المستودع، البحث يتم على هذا Mac. النتائج تُفتح على GitHub.",
+  "support.docsPlaceholder": "ابحث في التوثيق…",
+  "support.docsEmpty": "لا شيء في التوثيق يطابق «{query}».",
+  "support.docsOpen": "فتح",
+  "support.section.policy": "وقت الرد",
+  "support.policy": "متى تتوقع الرد",
+  "support.policyCopy":
+    "الأخطاء والانهيارات: إصلاح خلال أسبوع. الأسئلة وطلبات الميزات: رد خلال أسبوع أو ملاحظة تشرح السبب.",
+  "support.policyLink": "سياسة الدعم",
+  "support.securityLink": "الإبلاغ عن ثغرة بشكل خاص",
+  "support.securityLinkCopy": "تقارير الأمان تذهب إلى قناة القيمين الخاصة، لا إلى مشكلة عامة.",
+  "support.savedNotice": "حُفظ التشخيص في {path}.",
+  "support.savedNothing": "لم يُحفظ شيء.",
+  "support.ticketNotice": "نموذج التذكرة مفتوح في متصفحك. لم يُرسل شيء بعد.",
 
   "desktop.startup": "عند الإقلاع",
   "desktop.launchAtLogin": "شغّل التطبيق عند تسجيل الدخول",

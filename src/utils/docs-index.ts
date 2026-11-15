@@ -188,6 +188,12 @@ export function docsUrl(entry: DocEntry): string {
   return `${REPO}/blob/main/${entry.doc}#${entry.anchor}`;
 }
 
+/** The two pages a support question lands on, named the way GitHub renders them. */
+export const SUPPORT_LINKS = {
+  policy: `${REPO}/blob/main/docs/SUPPORT.md#support-policy-for-09`,
+  security: `${REPO}/blob/main/SECURITY.md#reporting-a-vulnerability`,
+} as const;
+
 const score = (entry: DocEntry, words: string[]): number => {
   const title = entry.title.toLowerCase();
   const keywords = entry.keywords.map((keyword) => keyword.toLowerCase());

@@ -651,6 +651,7 @@ export type SettingsPage =
   | "privacy"
   | "publishing"
   | "licensing"
+  | "support"
   | "extensions"
   | "model";
 
@@ -666,6 +667,7 @@ export const SETTINGS_PAGES: SettingsPage[] = [
   "privacy",
   "publishing",
   "licensing",
+  "support",
   "extensions",
   "model",
 ];

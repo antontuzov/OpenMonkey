@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { DOCS_INDEX, docsUrl, searchDocs } from "../../src/utils/docs-index";
+import { DOCS_INDEX, SUPPORT_LINKS, docsUrl, searchDocs } from "../../src/utils/docs-index";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 
@@ -68,4 +68,17 @@ test("nothing asked finds nothing", () => {
   assert.deepEqual(searchDocs(""), []);
   assert.deepEqual(searchDocs("   "), []);
   assert.deepEqual(searchDocs("zxcvbnm"), []);
+});
+
+test("the support links land on headings the index also carries", () => {
+  for (const [name, url] of Object.entries(SUPPORT_LINKS)) {
+    assert.ok(url.startsWith("https://github.com/antontuzov/OpenMonkey/blob/main/"), url);
+    const [file, anchor] = url.split("/blob/main/")[1].split("#");
+    assert.ok(existsSync(path.join(ROOT, file)), `${name} points at ${file}, which is not on disk`);
+    assert.ok(headingsOf(file).has(anchor), `${file} has no heading that produces #${anchor}`);
+    assert.ok(
+      DOCS_INDEX.some((entry) => entry.doc === file && entry.anchor === anchor),
+      `${name} names a heading the search does not carry`,
+    );
+  }
 });

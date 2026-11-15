@@ -185,6 +185,32 @@ const ENTRIES: SettingEntry[] = [
     keywords: ["security", "vulnerability", "report", "disclosure", "cve"],
   },
 
+  // Support
+  { page: "support", key: "support.facts", keywords: ["version", "macos", "about", "system info"] },
+  {
+    page: "support",
+    key: "support.diagnostics",
+    keywords: ["diagnostics", "logs", "bundle", "troubleshoot", "save"],
+  },
+  { page: "support", key: "support.ticket", keywords: ["ticket", "issue", "bug", "report", "github"] },
+  {
+    page: "support",
+    key: "support.bundleHolds",
+    keywords: ["bundle", "contents", "what is saved", "privacy"],
+  },
+  {
+    page: "support",
+    key: "support.bundleNever",
+    keywords: ["never", "credentials", "conversations", "prompts"],
+  },
+  { page: "support", key: "support.policy", keywords: ["response time", "sla", "when", "answer", "expect"] },
+  { page: "support", key: "support.policyLink", keywords: ["support policy", "docs", "guarantee"] },
+  {
+    page: "support",
+    key: "support.securityLink",
+    keywords: ["security", "vulnerability", "private", "advisory"],
+  },
+
   // Model
   { page: "model", label: `${BONSAI_4B.name} GGUF`, keywords: ["weights", "download", "sha", "verify", "delete"] },
   { page: "model", label: "MLX server", keywords: ["runtime", "backend", "apple silicon"] },

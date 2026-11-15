@@ -83,6 +83,24 @@ test("the colour tokens are found by their own names", () => {
   }
 });
 
+test("the support rows answer to their own names", () => {
+  const labels = [
+    "This Mac",
+    "Diagnostics file",
+    "Open a ticket",
+    "What it holds",
+    "What it never holds",
+    "When to expect an answer",
+    "The support policy",
+    "Report a security issue privately",
+  ];
+  for (const label of labels) {
+    const hit = searchSettings(label, 100).find((entry) => entry.label === label);
+    assert.ok(hit, `“${label}” is findable`);
+    assert.equal(hit.page, "support");
+  }
+});
+
 test("the index speaks Russian too", () => {
   setLanguage("ru");
   try {

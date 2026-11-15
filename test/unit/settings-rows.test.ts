@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import { searchSettings } from "../../src/renderer/settings-search";
+import { SETTINGS_PAGES, RESETTABLE_PAGES } from "../../src/utils/types";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const VIEW = readFileSync(path.join(ROOT, "src/renderer/components/SettingsView.tsx"), "utf8");
@@ -29,4 +30,16 @@ test("every row the settings page titles can be found by typing its own name", (
     (title) => !searchSettings(title, 100).some((hit) => hit.label === title)
   );
   assert.deepEqual(missing, [], "these rows are not in the settings search index");
+});
+
+test("every page in the list has a button in the sidebar and a title of its own", () => {
+  for (const page of SETTINGS_PAGES) {
+    assert.ok(VIEW.includes(`id: "${page}"`), `the sidebar has no button for ${page}`);
+    assert.ok(new RegExp(`^  ${page}: \\{`, "m").test(VIEW), `the view has no title for ${page}`);
+  }
+});
+
+test("the support page stores nothing, so it offers no reset", () => {
+  assert.ok(SETTINGS_PAGES.includes("support"), "the support page is a real page");
+  assert.ok(!RESETTABLE_PAGES.includes("support"), "the support page owns no setting to put back");
 });

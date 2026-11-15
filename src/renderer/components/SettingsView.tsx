@@ -20,6 +20,7 @@ import {
   Info,
   Keyboard,
   KeyRound,
+  LifeBuoy,
   Loader,
   Lock,
   LockOpen,
@@ -51,6 +52,8 @@ import { SettingRow, Toggle } from "./controls";
 import { ACCENTS } from "../constants";
 import { checkAccent, parseHex } from "../../utils/colour";
 import { LEGAL_LINKS } from "../../utils/legal";
+import { docsUrl, searchDocs, SUPPORT_LINKS, type DocEntry } from "../../utils/docs-index";
+import { supportTicketUrl } from "../../utils/support-bundle";
 import { THEME_TOKENS, effectivePalette, type ThemeToken } from "../../utils/theme-tokens";
 import { paletteProblems } from "../../utils/a11y-palette";
 import { runAccessibilityAudit } from "../a11y";
@@ -86,6 +89,7 @@ import {
   type ScheduledPost,
   type SafeModeInfo,
   type SettingsPage,
+  type SupportFacts,
   type WorkspaceHit,
 } from "../../utils/types";
 import { formatBytes, formatMilliseconds } from "../../models/benchmark";
@@ -217,6 +221,7 @@ const NAV = [
       { id: "privacy", labelKey: "settings.privacy", icon: Lock },
       { id: "publishing", labelKey: "settings.publishing", icon: Send },
       { id: "licensing", labelKey: "settings.licensing", icon: KeyRound },
+      { id: "support", labelKey: "settings.support", icon: LifeBuoy },
     ],
   },
   {
@@ -273,6 +278,10 @@ const TITLES: Record<Section, { titleKey: Parameters<typeof t>[0]; lede?: string
   licensing: {
     titleKey: "settings.licensing",
     ledeKey: "license.lede",
+  },
+  support: {
+    titleKey: "settings.support",
+    ledeKey: "support.lede",
   },
   model: {
     titleKey: "settings.model",
@@ -378,6 +387,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [licenseText, setLicenseText] = useState("");
   const [licenseBusy, setLicenseBusy] = useState(false);
   const [licenseNotice, setLicenseNotice] = useState<{ text: string; error: boolean } | null>(null);
+  /** What this Mac is running, read from the main process and nowhere else. */
+  const [supportFacts, setSupportFacts] = useState<SupportFacts | null>(null);
+  const [supportBusy, setSupportBusy] = useState(false);
+  const [supportNotice, setSupportNotice] = useState<{ text: string; error: boolean } | null>(null);
+  /** The words the reader typed into the documentation search. */
+  const [docsQuery, setDocsQuery] = useState("");
   const [telegramToken, setTelegramToken] = useState("");
   const [redditAppId, setRedditAppId] = useState("");
   const [redditSecret, setRedditSecret] = useState("");
@@ -533,6 +548,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     void refreshPostDrafts();
     void refreshLicense();
     void refreshCopies();
+    void refreshSupportFacts();
   }, []);
 
   const refreshPublishChannels = async () => {
@@ -603,6 +619,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setLicenseBusy(false);
     }
   };
+
+  /** Reads the version, the macOS release and whether this is an installed build. */
+  const refreshSupportFacts = async () => {
+    const next = await window.electron?.getSupportFacts();
+    if (next) setSupportFacts(next);
+  };
+
+  /** Writes the diagnostics file the reader chose, and says where it went. */
+  const saveDiagnostics = async () => {
+    setSupportBusy(true);
+    setSupportNotice(null);
+    try {
+      const path = await window.electron?.saveSupportBundle();
+      setSupportNotice(
+        path
+          ? { text: t("support.savedNotice", { path }), error: false }
+          : { text: t("support.savedNothing"), error: false }
+      );
+    } catch {
+      setSupportNotice({ text: t("support.savedNothing"), error: true });
+    } finally {
+      setSupportBusy(false);
+    }
+  };
+
+  /** Opens GitHub's issue form with the three questions already written. Nothing is sent. */
+  const openTicket = async () => {
+    if (!supportFacts) return;
+    await window.electron?.openExternal(supportTicketUrl(supportFacts));
+    setSupportNotice({ text: t("support.ticketNotice"), error: false });
+  };
+
+  /** Opens one document on GitHub, at the heading the search found. */
+  const openDoc = async (entry: DocEntry) => {
+    await window.electron?.openExternal(docsUrl(entry));
+  };
+
+  /** The headings that answer what the reader typed. */
+  const docHits = useMemo(() => (docsQuery.trim() ? searchDocs(docsQuery) : []), [docsQuery]);
+
+  /** This Mac, said in one line: the version, the release and where it came from. */
+  const factsSentence = supportFacts
+    ? t("support.factsCopy", {
+        version: supportFacts.version,
+        macos: supportFacts.macos,
+        arch: supportFacts.arch,
+        source: supportFacts.packaged ? "" : t("support.source"),
+      })
+    : t("support.factsLoading");
 
   // The license, said in the reader's own language. Nothing here asks the network.
   const licenseSentence = (() => {
@@ -3268,6 +3333,152 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     {licenseNotice.text}
                   </p>
                 )}
+              </>
+            )}
+
+            {section === "support" && (
+              <>
+                <section>
+                  <p className="section-label">{t("support.section.report")}</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("support.facts")}</p>
+                        <p className="row-copy">{factsSentence}</p>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("support.diagnostics")}</p>
+                        <p className="row-copy">{t("support.diagnosticsCopy")}</p>
+                      </div>
+                      <button
+                        onClick={() => void saveDiagnostics()}
+                        disabled={supportBusy}
+                        className="btn"
+                        aria-label={t("support.saveButton")}
+                      >
+                        {supportBusy ? <Loader size={12} className="animate-spin" /> : <Files size={12} />}
+                        {t("support.saveButton")}
+                      </button>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("support.ticket")}</p>
+                        <p className="row-copy">{t("support.ticketCopy")}</p>
+                      </div>
+                      <button
+                        onClick={() => void openTicket()}
+                        disabled={!supportFacts}
+                        className="btn"
+                        aria-label={t("support.ticketButton")}
+                      >
+                        <ExternalLink size={12} />
+                        {t("support.ticketButton")}
+                      </button>
+                    </div>
+                  </div>
+                  {supportNotice && (
+                    <p className={`text-[10.5px] mt-2 ${supportNotice.error ? "!text-danger" : "text-muted"}`}>
+                      {supportNotice.text}
+                    </p>
+                  )}
+                </section>
+
+                <section>
+                  <p className="section-label">{t("support.section.bundle")}</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("support.bundleHolds")}</p>
+                        <p className="row-copy">{t("support.bundleHoldsCopy")}</p>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("support.bundleNever")}</p>
+                        <p className="row-copy">{t("support.bundleNeverCopy")}</p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="section-label">{t("support.section.docs")}</p>
+                  <div className="card">
+                    <div className="row">
+                      <div className="min-w-0 flex-1">
+                        <input
+                          value={docsQuery}
+                          onChange={(event) => setDocsQuery(event.target.value)}
+                          placeholder={t("support.docsPlaceholder")}
+                          aria-label={t("support.docsPlaceholder")}
+                          className="field w-full !text-[11.5px]"
+                        />
+                      </div>
+                    </div>
+                    {docsQuery.trim() && docHits.length === 0 && (
+                      <p className="text-[10.5px] text-muted px-4 py-3">{t("support.docsEmpty", { query: docsQuery })}</p>
+                    )}
+                    {docHits.map((entry) => (
+                      <div className="row" key={`${entry.doc}#${entry.anchor}`}>
+                        <div className="min-w-0">
+                          <p className="text-[12.5px] font-medium text-ink">{entry.title}</p>
+                          <p className="row-copy font-mono !text-[10px]">{entry.doc}</p>
+                        </div>
+                        <button
+                          onClick={() => void openDoc(entry)}
+                          className="btn"
+                          aria-label={`${t("support.docsOpen")}: ${entry.title}`}
+                        >
+                          <ExternalLink size={12} />
+                          {t("support.docsOpen")}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10.5px] text-muted mt-2">{t("support.docsCopy")}</p>
+                </section>
+
+                <section>
+                  <p className="section-label">{t("support.section.policy")}</p>
+                  <div className="card">
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("support.policy")}</p>
+                        <p className="row-copy">{t("support.policyCopy")}</p>
+                      </div>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("support.policyLink")}</p>
+                        <p className="row-copy font-mono !text-[10px]">docs/SUPPORT.md</p>
+                      </div>
+                      <button
+                        onClick={() => void window.electron?.openExternal(SUPPORT_LINKS.policy)}
+                        className="btn"
+                        aria-label={`${t("support.docsOpen")}: ${t("support.policyLink")}`}
+                      >
+                        <ExternalLink size={12} />
+                        {t("support.docsOpen")}
+                      </button>
+                    </div>
+                    <div className="row">
+                      <div>
+                        <p className="row-title">{t("support.securityLink")}</p>
+                        <p className="row-copy">{t("support.securityLinkCopy")}</p>
+                      </div>
+                      <button
+                        onClick={() => void window.electron?.openExternal(LEGAL_LINKS.security)}
+                        className="btn"
+                        aria-label={`${t("support.docsOpen")}: ${t("support.securityLink")}`}
+                      >
+                        <ExternalLink size={12} />
+                        {t("support.docsOpen")}
+                      </button>
+                    </div>
+                  </div>
+                </section>
               </>
             )}
 
