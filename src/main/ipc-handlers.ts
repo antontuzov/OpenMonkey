@@ -1,5 +1,6 @@
 import { BrowserWindow, app, dialog, ipcMain, shell } from "electron";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import type { OpenMonkey } from "../agent/OpenMonkey";
 import config, { allowedRoots, ggufPath, resetPatch } from "../utils/config";
@@ -19,6 +20,7 @@ import {
   type PublisherChannel,
   type SafeModeInfo,
   type SettingsPage,
+  type SupportFacts,
 } from "../utils/types";
 import storage, { SCHEMA_VERSION } from "../utils/storage";
 import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENT_TEXT, MAX_ATTACHMENTS_PER_MESSAGE } from "../utils/attachments";
@@ -38,6 +40,7 @@ import { openPermissionSettings, probeAutomation } from "./permissions";
 import { checkForUpdates, currentUpdateState, installUpdate, openReleasePage } from "./updater";
 import { releaseNotesPayload } from "./release-notes";
 import { findRollbackTarget, startRollback } from "./rollback";
+import { buildSupportBundle } from "../utils/support-bundle";
 import logger from "../utils/logger";
 import type { TrayManager } from "./tray-manager";
 
@@ -459,6 +462,42 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     return result.filePath;
   });
 
+  // Support: the facts a ticket opens with, and a file the user can attach to it.
+  // Nothing is sent anywhere — the app writes the bundle, the user reads it and
+  // decides whether it goes into the ticket.
+  const supportFacts = (): SupportFacts => ({
+    version: app.getVersion(),
+    macos: process.getSystemVersion?.() ?? os.release(),
+    arch: process.arch,
+    packaged: app.isPackaged,
+  });
+
+  ipcMain.handle("get-support-facts", (): SupportFacts => supportFacts());
+
+  ipcMain.handle("save-support-bundle", async () => {
+    const window = deps.getWindow();
+    const options: Electron.SaveDialogOptions = {
+      title: "Save diagnostics",
+      defaultPath: `openmonkey-diagnostics-${new Date().toISOString().slice(0, 10)}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    };
+    const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    const instance = deps.getAgent();
+    const bundle = buildSupportBundle({
+      facts: supportFacts(),
+      privacy: privacyStatus(),
+      // A bundle saved from a half-started app still says what it can.
+      model: instance ? await instance.modelStatus() : null,
+      mcp: instance ? instance.getMcpStatus() : [],
+      logTail: logger.tail(500),
+    });
+    fs.writeFileSync(result.filePath, JSON.stringify(bundle, null, 2), { mode: 0o600 });
+    shell.showItemInFolder(result.filePath);
+    logger.info("support.bundle.saved");
+    return result.filePath;
+  });
+
   ipcMain.handle("choose-workspace-folder", async () => {
     const window = deps.getWindow();
     const options: Electron.OpenDialogOptions = {
@@ -542,7 +581,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   ipcMain.handle("get-config", () => config.getAll());
 
   // The privacy page states where the key actually lives, so it asks instead of guessing.
-  ipcMain.handle("get-privacy-status", (): PrivacyStatus => {
+  const privacyStatus = (): PrivacyStatus => {
     const activity = networkActivity();
     return {
       keySource: storage.keySource,
@@ -557,7 +596,9 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       requestsAllowed: activity.allowed,
       requestsBlocked: activity.blocked,
     };
-  });
+  };
+
+  ipcMain.handle("get-privacy-status", (): PrivacyStatus => privacyStatus());
 
   const passphraseFrom = (value: unknown): string | null => {
     if (typeof value !== "string") return null;

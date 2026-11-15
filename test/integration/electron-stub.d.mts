@@ -78,8 +78,10 @@ export declare const dialog: {
 export declare const shell: {
   opened: string[];
   openedPaths: string[];
+  revealed: string[];
   openExternal(url: string): Promise<boolean>;
   openPath(filePath: string): Promise<string>;
+  showItemInFolder(filePath: string): void;
 };
 
 export declare const app: {

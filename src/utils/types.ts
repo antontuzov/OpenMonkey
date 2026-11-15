@@ -713,6 +713,37 @@ export interface PrivacyActionResult {
   error?: string;
 }
 
+/** The machine facts a support report opens with; nothing here identifies the user. */
+export interface SupportFacts {
+  version: string;
+  macos: string;
+  arch: string;
+  packaged: boolean;
+}
+
+/** One MCP server as a support bundle may describe it: no command, no env, no stderr. */
+export interface SupportMcpSummary {
+  name: string;
+  enabled: boolean;
+  state: McpServerStatus["state"];
+  toolCount: number;
+}
+
+/**
+ * The file a user can attach to a support ticket. Everything in it is already visible
+ * somewhere in Settings; conversations, keys and credentials never enter it.
+ */
+export interface SupportBundle {
+  app: "OpenMonkey";
+  generatedAt: string;
+  facts: SupportFacts;
+  privacy: PrivacyStatus;
+  model: ModelStatus | null;
+  mcp: SupportMcpSummary[];
+  /** The newest redacted log lines, oldest first — the same text Settings shows. */
+  logTail: string;
+}
+
 /**
  * Outcome of an encrypted backup round trip. `cancelled` is not an error: the user
  * closed the file dialog, and nothing was written or read.
@@ -1136,6 +1167,10 @@ export interface ElectronAPI {
   /** The tail of the live log file, already redacted at write time. */
   getLogTail: (lines?: number) => Promise<string>;
   clearLogs: () => Promise<PrivacyActionResult>;
+  /** The version and OS a support ticket opens with. */
+  getSupportFacts: () => Promise<SupportFacts>;
+  /** Write the redacted diagnostics bundle where the user chooses; null when cancelled. */
+  saveSupportBundle: () => Promise<string | null>;
   chooseWorkspaceFolder: () => Promise<string | null>;
   getMcpStatus: () => Promise<McpServerStatus[]>;
   restartMcpServer: (id: string) => Promise<McpServerStatus[]>;

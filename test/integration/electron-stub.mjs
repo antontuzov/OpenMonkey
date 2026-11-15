@@ -79,6 +79,8 @@ export const shell = {
   opened: [],
   /** The files the app asked the system to open. */
   openedPaths: [],
+  /** The files the app asked Finder to show. */
+  revealed: [],
   openExternal: async (url) => {
     shell.opened.push(url);
     return true;
@@ -86,6 +88,9 @@ export const shell = {
   openPath: async (filePath) => {
     shell.openedPaths.push(filePath);
     return "";
+  },
+  showItemInFolder: (filePath) => {
+    shell.revealed.push(filePath);
   },
 };
 

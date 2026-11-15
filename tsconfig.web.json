@@ -31,6 +31,8 @@
     "src/utils/task-steps.ts",
     "src/utils/citations.ts",
     "src/utils/legal.ts",
+    "src/utils/support-bundle.ts",
+    "src/utils/docs-index.ts",
     "src/models/catalog.ts",
     "src/models/benchmark.ts"
   ]
