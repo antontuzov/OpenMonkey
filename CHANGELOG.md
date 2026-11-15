@@ -8,6 +8,24 @@ that produced the build.
 
 ### Added
 
+- **Report a problem without leaving the app.** Settings → Support says which version
+  this Mac runs, writes a diagnostics file you choose — the app version, the privacy
+  state, the loaded model, the MCP servers and the last 500 log lines, written with
+  mode `0600` — prepares GitHub's issue form with the three questions already written
+  into it, and searches this repository's documentation for the heading that answers
+  the question. Nothing is sent: the browser opens a page, you read it, you attach
+  the file, you press the button. The bundle is assembled in one place, and the MCP
+  list is mapped down to four fields there, so a server's command, its arguments and
+  its environment cannot ride along into a public issue. The response time is stated
+  plainly: a week for a bug, a reply within a week for a question, and a note saying
+  why not when the answer is no. The documentation index is built from real headings
+  — a renamed heading fails the test instead of producing a dead link. 16 unit tests
+  (the bundle carrying the facts and never the MCP stderr, the ticket URL, the
+  anchors the index names, the searches that find the answer, and every support row
+  reachable by its own name), 3 integration tests (the facts handler, the file
+  written with its permissions, a cancelled save writing nothing) and 2 e2e specs
+  (the file read back from disk with the ticket URL, and the documentation search).
+
 - **One line to install, one line to uninstall.** A Homebrew tap
   (`antontuzov/openmonkey`) carries a cask pinned to the release and its SHA-256, so
   `brew install --cask antontuzov/openmonkey/openmonkey` puts the exact disk image the

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { _electron as electron } from "playwright-core";
 import Database from "better-sqlite3";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -301,6 +301,7 @@ test("every row a settings page renders can be found by typing its own name", as
     "Privacy",
     "Publishing",
     "License",
+    "Support",
     "MCP servers",
     "Model",
   ]) {
@@ -390,6 +391,23 @@ test("Settings → License says what this Mac holds, and takes a license in", as
   await expect(page.getByText(/signature does not match/i)).toBeVisible();
 });
 
+/**
+ * Watches the links the app asks macOS to open, without opening any.
+ *
+ * The handler lives in the main process, where the IPC arrives: a page-side stub
+ * cannot do this, because contextBridge deep-freezes the exposed API, so assigning
+ * window.electron.openExternal silently does nothing.
+ */
+async function recordOpenedLinks() {
+  await app.evaluate(({ ipcMain }) => {
+    globalThis.__openedLinks = [];
+    ipcMain.removeHandler("open-external");
+    ipcMain.handle("open-external", (_event, url) => {
+      globalThis.__openedLinks.push(url);
+    });
+  });
+}
+
 test("Settings → License shelves the legal pages and opens them in the browser", async () => {
   await openSettingsPage("License");
   await expect(page.getByRole("heading", { name: "License" })).toBeVisible();
@@ -400,19 +418,73 @@ test("Settings → License shelves the legal pages and opens them in the browser
 
   // The link is the OS browser's job, so the test watches the IPC, not a window:
   // the main-process handler becomes a recorder, and no browser opens on the runner.
-  // A page-side stub cannot do this — contextBridge deep-freezes the exposed API,
-  // so assigning window.electron.openExternal silently does nothing.
-  await app.evaluate(({ ipcMain }) => {
-    globalThis.__openedLegalLinks = [];
+  await recordOpenedLinks();
+  await page.getByRole("button", { name: "Open: Terms of use (EULA)", exact: true }).click();
+  await expect.poll(() => app.evaluate(() => globalThis.__openedLinks.length)).toBe(1);
+  const opened = await app.evaluate(() => globalThis.__openedLinks);
+  expect(opened[0]).toBe("https://github.com/antontuzov/OpenMonkey/blob/main/docs/LEGAL.md#end-user-license-agreement");
+});
+
+test("Settings → Support writes the diagnostics file and prepares the ticket", async () => {
+  await openSettingsPage("Support");
+  await expect(page.getByRole("heading", { name: "Support" })).toBeVisible();
+  await expect(page.locator("main").getByText("This Mac", { exact: true })).toBeVisible();
+
+  const bundleFile = path.join(profile, "diagnostics.json");
+  // The save panel and the Finder window belong to a person, not to a test: both are
+  // replaced in the main process, and the file lands where the test can read it.
+  await app.evaluate(({ ipcMain, dialog, shell }, filePath) => {
+    globalThis.__openedLinks = [];
     ipcMain.removeHandler("open-external");
     ipcMain.handle("open-external", (_event, url) => {
-      globalThis.__openedLegalLinks.push(url);
+      globalThis.__openedLinks.push(url);
     });
-  });
-  await page.getByRole("button", { name: "Open: Terms of use (EULA)", exact: true }).click();
-  await expect.poll(() => app.evaluate(() => globalThis.__openedLegalLinks.length)).toBe(1);
-  const opened = await app.evaluate(() => globalThis.__openedLegalLinks);
-  expect(opened[0]).toBe("https://github.com/antontuzov/OpenMonkey/blob/main/docs/LEGAL.md#end-user-license-agreement");
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+    shell.showItemInFolder = () => {};
+  }, bundleFile);
+
+  await page.getByRole("button", { name: "Save diagnostics", exact: true }).click();
+  await expect.poll(() => existsSync(bundleFile)).toBe(true);
+  await expect(page.getByText(/Diagnostics saved to/)).toBeVisible();
+
+  const bundle = JSON.parse(readFileSync(bundleFile, "utf8"));
+  expect(bundle.app).toBe("OpenMonkey");
+  // Exactly these fields: a bundle that grew a field would grow a leak with it.
+  expect(Object.keys(bundle).sort()).toEqual(
+    ["app", "facts", "generatedAt", "logTail", "mcp", "model", "privacy"].sort()
+  );
+  expect(bundle.facts.arch).toBeTruthy();
+  expect(bundle.facts.macos).toBeTruthy();
+  expect(bundle.facts.packaged).toBe(false);
+  expect(Array.isArray(bundle.mcp)).toBe(true);
+  expect(typeof bundle.logTail).toBe("string");
+  // The file is written for the reader to read before it goes anywhere.
+  expect(statSync(bundleFile).mode & 0o777).toBe(0o600);
+
+  // The ticket is prepared, not sent: the URL carries the three questions, and the
+  // browser does the sending.
+  await page.getByRole("button", { name: "Open a ticket", exact: true }).click();
+  await expect.poll(() => app.evaluate(() => globalThis.__openedLinks.length)).toBe(1);
+  const ticket = await app.evaluate(() => globalThis.__openedLinks[0]);
+  expect(ticket.startsWith("https://github.com/antontuzov/OpenMonkey/issues/new?body=")).toBe(true);
+  const body = decodeURIComponent(ticket.split("?body=")[1]);
+  expect(body).toContain("**What I did**");
+  expect(body).toContain("**What I expected**");
+  expect(body).toContain("**What happened**");
+  expect(body).toContain("no conversations, keys or credentials");
+});
+
+test("Settings → Support searches the documentation and opens the heading", async () => {
+  await openSettingsPage("Support");
+  await recordOpenedLinks();
+
+  await page.getByLabel("Search the documentation").fill("gatekeeper");
+  await expect(page.getByText("Common answers", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Open: Common answers", exact: true }).click();
+  await expect.poll(() => app.evaluate(() => globalThis.__openedLinks.length)).toBe(1);
+  const opened = await app.evaluate(() => globalThis.__openedLinks);
+  expect(opened[0]).toBe("https://github.com/antontuzov/OpenMonkey/blob/main/docs/SUPPORT.md#common-answers");
 });
 
 test("the empty chat offers starter prompts that fill the composer", async () => {

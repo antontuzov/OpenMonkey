@@ -51,6 +51,12 @@ export const DOCS_INDEX: DocEntry[] = [
   },
   {
     doc: "docs/SUPPORT.md",
+    anchor: "reporting-from-inside-the-app",
+    title: "Reporting from inside the app",
+    keywords: ["diagnostics", "bundle", "ticket", "issue", "support page", "search the docs"],
+  },
+  {
+    doc: "docs/SUPPORT.md",
     anchor: "support-policy-for-09",
     title: "Support policy for 0.9",
     keywords: ["support", "policy", "response time", "paid", "tier", "refund", "guarantee"],
@@ -102,6 +108,12 @@ export const DOCS_INDEX: DocEntry[] = [
     anchor: "troubleshooting",
     title: "Troubleshooting",
     keywords: ["trouble", "broken", "problem", "fix", "not working", "stuck", "crash"],
+  },
+  {
+    doc: "README.md",
+    anchor: "support",
+    title: "Support",
+    keywords: ["help", "diagnostics", "ticket", "report", "issue", "docs search"],
   },
   {
     doc: "README.md",

@@ -365,6 +365,16 @@ log line to the console, not only to `logs/openmonkey.log`.
 
 More answers and the security-report path are in [docs/SUPPORT.md](docs/SUPPORT.md).
 
+## Support
+
+Settings → Support reports a problem without leaving the app. It says which version
+this Mac runs, writes a diagnostics file you choose (the version, the privacy state,
+the model, the MCP servers and the last log lines — no conversations, keys or
+credentials), prepares GitHub's issue form with the three questions already written,
+and searches this repository's documentation for the heading that answers your
+question. Nothing is sent: the browser opens a page, you read it and you press the
+button. The response times are in [docs/SUPPORT.md](docs/SUPPORT.md).
+
 ## Release notes
 
 [CHANGELOG.md](CHANGELOG.md) records what shipped in 0.9.0 and its known limitations.
