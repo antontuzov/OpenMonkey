@@ -16,6 +16,7 @@ export const SETTINGS_PAGE_TITLES: Record<SettingsPage, StringKey> = {
   privacy: "settings.privacy",
   publishing: "settings.publishing",
   licensing: "settings.licensing",
+  support: "settings.support",
   extensions: "settings.extensions",
   model: "settings.model",
 };
@@ -32,6 +33,7 @@ export const SETTINGS_PAGE_ORDER: SettingsPage[] = [
   "privacy",
   "publishing",
   "licensing",
+  "support",
   "extensions",
   "model",
 ];
